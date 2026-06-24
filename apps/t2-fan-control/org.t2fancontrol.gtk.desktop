@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=T2 Fan Control
+Comment=Control T2 Mac fans on Linux
+Exec=/usr/local/bin/t2-fancontrol-gtk
+Icon=org.t2fancontrol.gtk
+Terminal=false
+Categories=System;Settings;HardwareSettings;
+Keywords=fan;cooling;temperature;T2;Mac;
+StartupNotify=true

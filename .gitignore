@@ -1,0 +1,30 @@
+# OS/editor noise
+.DS_Store
+*~
+*.swp
+*.tmp
+
+# Logs
+*.log
+
+# Kernel module build output
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+.*.cmd
+Module.symvers
+modules.order
+.tmp_versions/
+
+# Rust build output
+target/
+
+# Node build output
+node_modules/
+dist/
+build/
+
+# Local generated files
+compile_commands.json

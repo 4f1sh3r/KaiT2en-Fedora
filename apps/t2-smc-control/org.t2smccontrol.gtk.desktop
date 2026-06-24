@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SMC Control
+Comment=SMC temperatures and battery charge limit
+Exec=/usr/local/bin/t2-smc-control
+TryExec=/usr/local/bin/t2-smc-control
+Icon=org.t2smccontrol.gtk
+Terminal=false
+Categories=System;
+StartupNotify=false

@@ -1,0 +1,71 @@
+# Install KaiT2en modules and apps
+
+1. [Introduction](00-introduction.md)
+2. [Get Broadcom firmware from macOS](01-get-broadcom-firmware.md)
+3. [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md)
+4. [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md)
+5. [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md) (you are here)
+
+Previous: [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md) | [Back to README](../README.md)
+
+Run this command from the KaiT2en repository root on your Fedora system:
+
+```bash
+sudo bash ./scripts/fedora/install.sh
+```
+
+This runs all required installation steps in order:
+
+- Fedora dependencies
+- KaiT2en kernel arguments
+- KaiT2en DKMS modules
+- initramfs rebuild
+- KaiT2en apps
+- react-drm, last and only on Touch Bar Macs
+- KaiT2en suspend helper service
+
+This will take a few minutes.
+Stay around to enter needed confirmations while the script is running.
+Please reboot after the script completed without errors.
+
+```bash
+sudo reboot
+```
+
+The installer also installs the required KaiT2en apps:
+
+- t2-fan-control # Adjustable fan curves with GUI
+- t2-smc-control # Battery charge limit and SMC sensors in a GUI
+- react-drm # Touchbar daemon, last and only on Touch Bar Macs
+
+t2-fan-control and t2-smc-control can be found in the GNOME-App-Drawer
+after installation is finished.
+
+The installer also enables `kait2en-suspend.service`. It runs before suspend and
+after resume. The helper detects the local hardware and only applies fixes that
+match the machine.
+
+## Suspend helper
+
+The suspend helper is installed as:
+
+```text
+/etc/systemd/system/kait2en-suspend.service # systemd service to run the .sh below
+/usr/local/libexec/kait2en/kait2en-suspend.sh # actual script
+```
+
+The source files in this repository are:
+
+```text
+systemd/kait2en-suspend.service
+scripts/fedora/kait2en-suspend.sh
+scripts/fedora/install-suspend-service.sh
+```
+
+The service runs before `sleep.target` and again after resume. On affected
+dual-GPU MacBook Pro models it unloads `amdgpu` before suspend and loads it
+again after resume. On BCM4377 systems it unloads `brcmfmac_wcc`, `brcmfmac`
+and `hci_bcm4377` before suspend, then loads only the modules it unloaded after
+resume.
+
+If the helper does not detect matching hardware, it does not unload anything.

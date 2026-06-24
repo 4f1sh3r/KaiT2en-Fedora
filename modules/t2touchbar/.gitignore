@@ -1,0 +1,9 @@
+*
+!.gitignore
+!README.md
+!Makefile
+!dkms.conf
+!t2hid.c
+!t2touchbar_bl.c
+!t2touchbar_kbd.c
+!hid-ids.h

@@ -1,0 +1,14 @@
+[Unit]
+Description=T2 Fan Control daemon
+After=multi-user.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/t2-fancontrol-gtk --daemon
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Kait2en T2 suspend and resume hardware fixes
+Before=sleep.target
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/kait2en/kait2en-suspend.sh pre
+ExecStop=/usr/local/libexec/kait2en/kait2en-suspend.sh post
+
+[Install]
+WantedBy=sleep.target
