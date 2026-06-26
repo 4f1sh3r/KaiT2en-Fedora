@@ -5,7 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
 require_root
 require_repo_root
 require_fedora
-require_command grubby awk date install mktemp rm
+require_command grubby sed
 
 REMOVE_ARGS=(
 	intel_iommu
@@ -32,8 +32,9 @@ ADD_ARGS=(
 	"pcie_ports=native"
 	"mem_sleep_default=deep"
 	"initcall_blacklist=cmos_init,magicmouse_driver_init"
-	"module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,thunderbolt,apple_bce,apple_mfi_fastcharge,apple_gmux"
 )
+
+MODULE_BLACKLIST="module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,thunderbolt,apple_bce,apple_mfi_fastcharge,apple_gmux"
 
 model_specific_args() {
 	local model
@@ -49,38 +50,8 @@ model_specific_args() {
 }
 
 model_specific_args
+ADD_ARGS+=("$MODULE_BLACKLIST")
 KERNEL_ARGS="${ADD_ARGS[*]}"
-
-repair_etc_default_grub() {
-	local file=/etc/default/grub tmp backup
-	[[ -f "$file" ]] || return
-
-	backup="$file.kait2en.bak.$(date +%Y%m%d-%H%M%S)"
-	tmp="$(mktemp)"
-	install -o root -g root -m 0644 "$file" "$backup"
-
-	awk -v args="$KERNEL_ARGS" '
-		BEGIN { done = 0 }
-		/^GRUB_CMDLINE_LINUX=/ {
-			print "GRUB_CMDLINE_LINUX=\"" args "\""
-			done = 1
-			next
-		}
-		{ print }
-		END {
-			if (!done) {
-				print "GRUB_CMDLINE_LINUX=\"" args "\""
-			}
-		}
-	' "$file" >"$tmp"
-
-	install -o root -g root -m 0644 "$tmp" "$file"
-	rm -f "$tmp"
-	info "backed up $file to $backup"
-}
-
-info "repairing /etc/default/grub kernel arguments"
-repair_etc_default_grub
 
 info "removing old or non-default kernel arguments"
 for arg in "${REMOVE_ARGS[@]}"; do
