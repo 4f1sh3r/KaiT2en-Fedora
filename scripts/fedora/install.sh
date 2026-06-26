@@ -11,6 +11,7 @@ STEPS=(
 	install-dependencies.sh
 	install-kernel-args.sh
 	install-dkms-modules.sh
+	install-networkmanager-rules.sh
 	rebuild-initramfs.sh
 	install-suspend-service.sh
 	install-apps.sh
