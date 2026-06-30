@@ -645,5 +645,6 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@gmail.com>");
 MODULE_DESCRIPTION("T2 BCE Driver");
 MODULE_VERSION("0.041");
+MODULE_SOFTDEP("pre: t2touchbar_cfg");
 module_init(t2bce_module_init);
 module_exit(t2bce_module_exit);
