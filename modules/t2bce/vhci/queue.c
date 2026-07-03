@@ -214,7 +214,10 @@ static int __bce_vhci_command_queue_execute(struct bce_vhci_command_queue *cq, s
     int status;
     struct bce_vhci_command_queue_completion *c;
     struct bce_vhci_message creq;
-    ktime_t t_start = ktime_get();
+    /* boottime: ktime_get() read back near-zero deltas across real resume
+     * even when other (jiffies/boottime-based) clocks showed multi-second
+     * real gaps in the same window -- see vhci.c bce_vhci_reset_device(). */
+    ktime_t t_start = ktime_get_boottime();
     u16 req_cmd = req->cmd;
     u32 req_param1 = req->param1;
     u64 req_param2 = req->param2;
@@ -223,7 +226,7 @@ static int __bce_vhci_command_queue_execute(struct bce_vhci_command_queue *cq, s
     if ((status = bce_reserve_submission(cq->mq->sq, &timeout))) {
         pr_warn("bce-vhci: cmd reserve failed req=%x p1=%x p2=%llx status=%d elapsed_ms=%lld\n",
                 req_cmd, req_param1, req_param2, status,
-                ktime_ms_delta(ktime_get(), t_start));
+                ktime_ms_delta(ktime_get_boottime(), t_start));
         return status;
     }
 
@@ -238,10 +241,10 @@ static int __bce_vhci_command_queue_execute(struct bce_vhci_command_queue *cq, s
         /* we ran out of time, send cancellation */
         pr_warn("bce-vhci: command timed out req=%x p1=%x p2=%llx timeout_ms=%u elapsed_ms=%lld\n",
                 req_cmd, req_param1, req_param2, jiffies_to_msecs(timeout),
-                ktime_ms_delta(ktime_get(), t_start));
+                ktime_ms_delta(ktime_get_boottime(), t_start));
         if ((status = bce_reserve_submission(cq->mq->sq, &timeout))) {
             pr_warn("bce-vhci: cmd cancel-reserve failed req=%x status=%d elapsed_ms=%lld\n",
-                    req_cmd, status, ktime_ms_delta(ktime_get(), t_start));
+                    req_cmd, status, ktime_ms_delta(ktime_get_boottime(), t_start));
             return status;
         }
 
@@ -251,7 +254,7 @@ static int __bce_vhci_command_queue_execute(struct bce_vhci_command_queue *cq, s
 
         if (!wait_for_completion_timeout(&c->completion, 1000)) {
             pr_err("bce-vhci: Possible desync, cmd cancel timed out req=%x elapsed_ms=%lld\n",
-                    req_cmd, ktime_ms_delta(ktime_get(), t_start));
+                    req_cmd, ktime_ms_delta(ktime_get_boottime(), t_start));
 
             spin_lock(&cq->completion_lock);
             c->result = NULL;
@@ -260,23 +263,23 @@ static int __bce_vhci_command_queue_execute(struct bce_vhci_command_queue *cq, s
         }
         if ((res->cmd & ~0x8000) == creq.cmd) {
             pr_warn("bce-vhci: cmd cancel confirmed req=%x elapsed_ms=%lld\n",
-                    req_cmd, ktime_ms_delta(ktime_get(), t_start));
+                    req_cmd, ktime_ms_delta(ktime_get_boottime(), t_start));
             return -ETIMEDOUT;
         }
         /* reply for the previous command most likely arrived */
         pr_info("bce-vhci: cmd late reply arrived after cancel req=%x res_cmd=%x elapsed_ms=%lld\n",
-                req_cmd, res->cmd, ktime_ms_delta(ktime_get(), t_start));
+                req_cmd, res->cmd, ktime_ms_delta(ktime_get_boottime(), t_start));
     }
 
     if ((res->cmd & ~0x8000) != req_cmd) {
         pr_err("bce-vhci: Possible desync, cmd reply mismatch req=%x, res=%x elapsed_ms=%lld\n",
-                req_cmd, res->cmd, ktime_ms_delta(ktime_get(), t_start));
+                req_cmd, res->cmd, ktime_ms_delta(ktime_get_boottime(), t_start));
         return -EIO;
     }
 
     pr_info("bce-vhci: cmd done req=%x p1=%x p2=%llx res_status=%x elapsed_ms=%lld\n",
             req_cmd, req_param1, req_param2, res->status,
-            ktime_ms_delta(ktime_get(), t_start));
+            ktime_ms_delta(ktime_get_boottime(), t_start));
 
     if (res->status == BCE_VHCI_SUCCESS)
         return 0;

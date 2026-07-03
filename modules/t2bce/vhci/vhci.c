@@ -58,6 +58,20 @@ static unsigned long bce_vhci_resume_reset_guard_left_ms(struct bce_vhci *vhci)
     return jiffies_to_msecs(guard_until - jiffies);
 }
 
+/*
+ * Real (suspend-inclusive) elapsed time since this resume cycle started.
+ * Use this, not raw printk timestamps, to reason about how long the resume
+ * path actually took: printk's own timestamp clock has been observed to
+ * read back near-frozen for several real seconds at a time right after a
+ * genuine ACPI resume on this hardware, while ktime_get_boottime() deltas
+ * against resume_start_boottime line up with the independently-measured
+ * "PM: resume devices took ..." / pm_notify boottime_elapsed_ms figures.
+ */
+static s64 bce_vhci_resume_elapsed_ms(struct bce_vhci *vhci)
+{
+    return ktime_ms_delta(ktime_get_boottime(), vhci->resume_start_boottime);
+}
+
 static unsigned long bce_vhci_all_port_bits(struct bce_vhci *vhci)
 {
     unsigned long bits = 0;
@@ -341,8 +355,9 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
          * stall (observed ~30-50s) instead of the intended <=5s per port.
          */
         if (vhci->stateful_resume_gating && (READ_ONCE(vhci->port_change_waiting) & port_bit))
-            pr_info("bce-vhci: hub GetPortStatus gate enter port=%u waiting=%lx\n",
-                    wIndex, READ_ONCE(vhci->port_change_waiting));
+            pr_info("bce-vhci: hub GetPortStatus gate enter port=%u waiting=%lx real_elapsed_ms=%lld\n",
+                    wIndex, READ_ONCE(vhci->port_change_waiting),
+                    bce_vhci_resume_elapsed_ms(vhci));
 
         for (retries = 0; vhci->stateful_resume_gating &&
                          (READ_ONCE(vhci->port_change_waiting) & port_bit) &&
@@ -351,15 +366,17 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
             msleep(20);
 
         if (vhci->stateful_resume_gating && (READ_ONCE(vhci->port_change_waiting) & port_bit)) {
-            pr_warn("bce-vhci: hub GetPortStatus gate timeout port=%u waiting=%lx\n",
-                    wIndex, READ_ONCE(vhci->port_change_waiting));
+            pr_warn("bce-vhci: hub GetPortStatus gate timeout port=%u waiting=%lx real_elapsed_ms=%lld\n",
+                    wIndex, READ_ONCE(vhci->port_change_waiting),
+                    bce_vhci_resume_elapsed_ms(vhci));
             if (port_bit)
                 clear_bit(wIndex - 1, &vhci->port_change_waiting);
         }
 
         if (retries)
-            pr_info("bce-vhci: hub GetPortStatus gate exit port=%u retries=%d waiting=%lx\n",
-                    wIndex, retries, READ_ONCE(vhci->port_change_waiting));
+            pr_info("bce-vhci: hub GetPortStatus gate exit port=%u retries=%d waiting=%lx real_elapsed_ms=%lld\n",
+                    wIndex, retries, READ_ONCE(vhci->port_change_waiting),
+                    bce_vhci_resume_elapsed_ms(vhci));
 
         if (vhci->port_power_mask & BIT(wIndex))
             ps->wPortStatus |= USB_PORT_STAT_POWER;
@@ -388,9 +405,10 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
                 queue_delayed_work(vhci->tq_state_wq,
                                    &vhci->w_port_status_change, 0);
             }
-            pr_info("bce-vhci: hub GetPortStatus resume-suspended port=%u raw=%x status=%x waiting=%lx\n",
+            pr_info("bce-vhci: hub GetPortStatus resume-suspended port=%u raw=%x status=%x waiting=%lx real_elapsed_ms=%lld\n",
                     wIndex, port_status, ps->wPortStatus,
-                    READ_ONCE(vhci->port_change_waiting));
+                    READ_ONCE(vhci->port_change_waiting),
+                    bce_vhci_resume_elapsed_ms(vhci));
         }
 
         if (port_status & BCE_VHCI_PORT_STATUS_C_CONNECTION)
@@ -409,7 +427,8 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
             return status;
         }
         if (wValue == USB_PORT_FEAT_RESET) {
-            pr_info("bce-vhci: hub SetPortFeature RESET port=%u\n", wIndex);
+            pr_info("bce-vhci: hub SetPortFeature RESET port=%u real_elapsed_ms=%lld\n",
+                    wIndex, bce_vhci_resume_elapsed_ms(vhci));
             if (bce_vhci_resume_reset_guard_left_ms(vhci) &&
                 wIndex > 0 && wIndex <= vhci->port_count) {
                 unsigned long guard_left = bce_vhci_resume_reset_guard_left_ms(vhci);
@@ -431,11 +450,12 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
                                              BCE_VHCI_PORT_RESUME_MAX_TRIES;
 
                     if (!port_resume_exhausted) {
-                        pr_warn("bce-vhci: hub RESET suppressed during resume guard port=%u raw=%x ready=%d needs_resume=%d tries=%u guard_left_ms=%lu waiting=%lx\n",
+                        pr_warn("bce-vhci: hub RESET suppressed during resume guard port=%u raw=%x ready=%d needs_resume=%d tries=%u guard_left_ms=%lu waiting=%lx real_elapsed_ms=%lld\n",
                                 wIndex, port_status,
                                 bce_vhci_port_ready_for_hub(port_status),
                                 needs_resume, vhci->port_resume_tries[wIndex],
-                                guard_left, READ_ONCE(vhci->port_change_waiting));
+                                guard_left, READ_ONCE(vhci->port_change_waiting),
+                                bce_vhci_resume_elapsed_ms(vhci));
                         if (needs_resume) {
                             status = bce_vhci_cmd_port_resume(&vhci->cq, (u8) wIndex);
                             pr_warn("bce-vhci: hub RESET-suppressed PORT_RESUME port=%u raw=%x -> %d\n",
@@ -447,16 +467,18 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
                         return 0;
                     }
 
-                    pr_warn("bce-vhci: hub RESET allowed for resume-exhausted port during resume guard port=%u raw=%x tries=%u guard_left_ms=%lu waiting=%lx\n",
+                    pr_warn("bce-vhci: hub RESET allowed for resume-exhausted port during resume guard port=%u raw=%x tries=%u guard_left_ms=%lu waiting=%lx real_elapsed_ms=%lld\n",
                             wIndex, port_status, vhci->port_resume_tries[wIndex],
-                            guard_left, READ_ONCE(vhci->port_change_waiting));
+                            guard_left, READ_ONCE(vhci->port_change_waiting),
+                            bce_vhci_resume_elapsed_ms(vhci));
                     set_bit(wIndex - 1, &vhci->port_change_waiting);
                     queue_delayed_work(vhci->tq_state_wq,
                                        &vhci->w_port_status_change, 0);
                 } else {
-                    pr_warn("bce-vhci: hub RESET status query failed during resume guard port=%u status=%d guard_left_ms=%lu waiting=%lx\n",
+                    pr_warn("bce-vhci: hub RESET status query failed during resume guard port=%u status=%d guard_left_ms=%lu waiting=%lx real_elapsed_ms=%lld\n",
                             wIndex, status, guard_left,
-                            READ_ONCE(vhci->port_change_waiting));
+                            READ_ONCE(vhci->port_change_waiting),
+                            bce_vhci_resume_elapsed_ms(vhci));
                 }
             }
             return bce_vhci_reset_device(vhci, wIndex, wValue);
@@ -579,7 +601,16 @@ static int bce_vhci_reset_device(struct bce_vhci *vhci, int index, u16 timeout)
     int i;
     int status;
     enum dma_data_direction dir;
-    ktime_t t_total = ktime_get();
+    /*
+     * boottime, not monotonic: monotonic-clock deltas measured across the
+     * first seconds after a real ACPI resume on this hardware read back
+     * near-zero even when real (wall-clock) elapsed time is several
+     * seconds -- confirmed by comparing these against the jiffies-based
+     * resume_reset_guard countdown and against core "PM: resume devices
+     * took ..." / pm_notify boottime numbers, which do show the real
+     * multi-second gaps. boottime is the one clock that stayed honest.
+     */
+    ktime_t t_total = ktime_get_boottime();
     ktime_t t_phase;
     pr_info("bce_vhci_reset_device port=%i timeout_param=%u (raw wValue passthrough, likely not a real ms value)\n",
             index, timeout);
@@ -602,31 +633,31 @@ static int bce_vhci_reset_device(struct bce_vhci *vhci, int index, u16 timeout)
         vhci->devices[devid] = NULL;
         vhci->port_to_device[index] = 0;
 
-        t_phase = ktime_get();
+        t_phase = ktime_get_boottime();
         bce_vhci_cmd_device_destroy(&vhci->cq, devid);
         pr_info("bce_vhci_reset_device port=%i devid=%i: DEVICE_DESTROY took %lld ms\n",
-                index, devid, ktime_ms_delta(ktime_get(), t_phase));
+                index, devid, ktime_ms_delta(ktime_get_boottime(), t_phase));
     }
 
-    t_phase = ktime_get();
+    t_phase = ktime_get_boottime();
     status = bce_vhci_cmd_port_reset(&vhci->cq, (u8) index, timeout);
     pr_info("bce_vhci_reset_device port=%i: PORT_RESET took %lld ms status=%d\n",
-            index, ktime_ms_delta(ktime_get(), t_phase), status);
+            index, ktime_ms_delta(ktime_get_boottime(), t_phase), status);
 
     if (dev) {
-        t_phase = ktime_get();
+        t_phase = ktime_get_boottime();
         if ((status = bce_vhci_cmd_device_create(&vhci->cq, index, &devid))) {
             pr_warn("bce_vhci_reset_device port=%i: DEVICE_CREATE failed status=%d after %lld ms, total %lld ms\n",
-                    index, status, ktime_ms_delta(ktime_get(), t_phase),
-                    ktime_ms_delta(ktime_get(), t_total));
+                    index, status, ktime_ms_delta(ktime_get_boottime(), t_phase),
+                    ktime_ms_delta(ktime_get_boottime(), t_total));
             return status;
         }
         pr_info("bce_vhci_reset_device port=%i devid=%i: DEVICE_CREATE took %lld ms\n",
-                index, devid, ktime_ms_delta(ktime_get(), t_phase));
+                index, devid, ktime_ms_delta(ktime_get_boottime(), t_phase));
         vhci->devices[devid] = dev;
         vhci->port_to_device[index] = devid;
 
-        t_phase = ktime_get();
+        t_phase = ktime_get_boottime();
         for (i = 0; i < 32; i++) {
             if (dev->tq_mask & BIT(i)) {
                 dir = usb_endpoint_dir_in(&dev->tq[i].endp->desc) ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
@@ -638,11 +669,11 @@ static int bce_vhci_reset_device(struct bce_vhci *vhci, int index, u16 timeout)
             }
         }
         pr_info("bce_vhci_reset_device port=%i devid=%i: endpoint re-create loop took %lld ms\n",
-                index, devid, ktime_ms_delta(ktime_get(), t_phase));
+                index, devid, ktime_ms_delta(ktime_get_boottime(), t_phase));
     }
 
     pr_info("bce_vhci_reset_device port=%i done: total %lld ms status=%d\n",
-            index, ktime_ms_delta(ktime_get(), t_total), status);
+            index, ktime_ms_delta(ktime_get_boottime(), t_total), status);
     return status;
 }
 
@@ -832,6 +863,7 @@ static int bce_vhci_bus_resume(struct usb_hcd *hcd)
     vhci->port_resume_pass1_done = 0;
     memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
     vhci->system_suspending = false;
+    vhci->resume_start_boottime = ktime_get_boottime();
     WRITE_ONCE(vhci->resume_reset_guard_until,
                jiffies + msecs_to_jiffies(BCE_VHCI_RESUME_RESET_GUARD_MS));
     pr_info("bce_vhci: resume started reset_guard_ms=%u guard_left_ms=%lu active_ports=%lx\n",
@@ -844,7 +876,8 @@ static int bce_vhci_bus_resume(struct usb_hcd *hcd)
     else
         status = bce_vhci_resume_stateful(hcd);
 
-    pr_info("bce_vhci: bus_resume exit status=%d no_state_resume=%d\n", status, vhci->no_state_resume);
+    pr_info("bce_vhci: bus_resume exit status=%d no_state_resume=%d real_elapsed_ms=%lld\n",
+            status, vhci->no_state_resume, bce_vhci_resume_elapsed_ms(vhci));
     return status;
 }
 
@@ -1193,10 +1226,11 @@ static void bce_vhci_port_status_change_w(struct work_struct *ws)
             continue;
         }
 
-        pr_info("bce-vhci: port worker poll port=%d raw=%x waiting=%lx tries=%u guard_left_ms=%lu\n",
+        pr_info("bce-vhci: port worker poll port=%d raw=%x waiting=%lx tries=%u guard_left_ms=%lu real_elapsed_ms=%lld\n",
                 port + 1, port_status, READ_ONCE(vhci->port_change_waiting),
                 vhci->port_resume_tries[port + 1],
-                bce_vhci_resume_reset_guard_left_ms(vhci));
+                bce_vhci_resume_reset_guard_left_ms(vhci),
+                bce_vhci_resume_elapsed_ms(vhci));
 
         if (!bce_vhci_port_connected(port_status)) {
             clear_bit(port, &vhci->port_change_waiting);
@@ -1231,8 +1265,9 @@ static void bce_vhci_port_status_change_w(struct work_struct *ws)
             }
 
             /* Stop local retrying; only real firmware change bits should wake usbcore. */
-            pr_warn("bce-vhci: port worker resume retries exhausted port=%d raw=%x waiting=%lx\n",
-                    port + 1, port_status, READ_ONCE(vhci->port_change_waiting));
+            pr_warn("bce-vhci: port worker resume retries exhausted port=%d raw=%x waiting=%lx real_elapsed_ms=%lld\n",
+                    port + 1, port_status, READ_ONCE(vhci->port_change_waiting),
+                    bce_vhci_resume_elapsed_ms(vhci));
             clear_bit(port, &vhci->port_change_waiting);
             continue;
         }
@@ -1268,8 +1303,9 @@ static void bce_vhci_port_status_change_w(struct work_struct *ws)
             clear_bit(port, &vhci->port_change_pending);
             clear_bit(port, &vhci->port_resume_requested);
             clear_bit(port, &vhci->port_resume_pass1_done);
-            pr_info("bce-vhci: port worker ready port=%d waiting=%lx\n",
-                    port + 1, READ_ONCE(vhci->port_change_waiting));
+            pr_info("bce-vhci: port worker ready port=%d waiting=%lx real_elapsed_ms=%lld\n",
+                    port + 1, READ_ONCE(vhci->port_change_waiting),
+                    bce_vhci_resume_elapsed_ms(vhci));
         } else {
             retry = true;
         }

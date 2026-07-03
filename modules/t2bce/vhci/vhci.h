@@ -3,6 +3,7 @@
 
 #include "queue.h"
 #include "transfer.h"
+#include <linux/ktime.h>
 
 struct usb_hcd;
 struct bce_queue_cq;
@@ -46,6 +47,11 @@ struct bce_vhci {
     /* Pass-1 port resume was sent; pass 2 may resume queues after settle time. */
     unsigned long port_resume_pass1_done;
     unsigned long resume_reset_guard_until;
+    /* ktime_get_boottime() at the start of the current resume cycle; used
+     * to log real (suspend-inclusive) elapsed time, because ktime_get()
+     * deltas measured in the first seconds after a real ACPI resume on
+     * this hardware read back near-zero even when real time elapsed. */
+    ktime_t resume_start_boottime;
     u8 port_resume_tries[17];
     bool no_state_resume;
     bool hcd_registered;
