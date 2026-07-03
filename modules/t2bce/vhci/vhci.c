@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/version.h>
 #include <linux/jiffies.h>
+#include <linux/ktime.h>
 
 #define BCE_VHCI_RESUME_GATE_TIMEOUT_MS 5000
 #define BCE_VHCI_RESUME_RESET_GUARD_MS 10000
@@ -565,11 +566,16 @@ static int bce_vhci_reset_device(struct bce_vhci *vhci, int index, u16 timeout)
     int i;
     int status;
     enum dma_data_direction dir;
-    pr_info("bce_vhci_reset_device %i\n", index);
+    ktime_t t_total = ktime_get();
+    ktime_t t_phase;
+    pr_info("bce_vhci_reset_device port=%i timeout_param=%u (raw wValue passthrough, likely not a real ms value)\n",
+            index, timeout);
 
     devid = vhci->port_to_device[index];
     if (devid) {
         dev = vhci->devices[devid];
+        pr_info("bce_vhci_reset_device port=%i devid=%i: tearing down existing device before reset\n",
+                index, devid);
 
         for (i = 0; i < 32; i++) {
             if (dev->tq_mask & BIT(i)) {
@@ -582,16 +588,32 @@ static int bce_vhci_reset_device(struct bce_vhci *vhci, int index, u16 timeout)
         }
         vhci->devices[devid] = NULL;
         vhci->port_to_device[index] = 0;
+
+        t_phase = ktime_get();
         bce_vhci_cmd_device_destroy(&vhci->cq, devid);
+        pr_info("bce_vhci_reset_device port=%i devid=%i: DEVICE_DESTROY took %lld ms\n",
+                index, devid, ktime_ms_delta(ktime_get(), t_phase));
     }
+
+    t_phase = ktime_get();
     status = bce_vhci_cmd_port_reset(&vhci->cq, (u8) index, timeout);
+    pr_info("bce_vhci_reset_device port=%i: PORT_RESET took %lld ms status=%d\n",
+            index, ktime_ms_delta(ktime_get(), t_phase), status);
 
     if (dev) {
-        if ((status = bce_vhci_cmd_device_create(&vhci->cq, index, &devid)))
+        t_phase = ktime_get();
+        if ((status = bce_vhci_cmd_device_create(&vhci->cq, index, &devid))) {
+            pr_warn("bce_vhci_reset_device port=%i: DEVICE_CREATE failed status=%d after %lld ms, total %lld ms\n",
+                    index, status, ktime_ms_delta(ktime_get(), t_phase),
+                    ktime_ms_delta(ktime_get(), t_total));
             return status;
+        }
+        pr_info("bce_vhci_reset_device port=%i devid=%i: DEVICE_CREATE took %lld ms\n",
+                index, devid, ktime_ms_delta(ktime_get(), t_phase));
         vhci->devices[devid] = dev;
         vhci->port_to_device[index] = devid;
 
+        t_phase = ktime_get();
         for (i = 0; i < 32; i++) {
             if (dev->tq_mask & BIT(i)) {
                 dir = usb_endpoint_dir_in(&dev->tq[i].endp->desc) ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
@@ -602,8 +624,12 @@ static int bce_vhci_reset_device(struct bce_vhci *vhci, int index, u16 timeout)
                 bce_vhci_cmd_endpoint_create(&vhci->cq, devid, &dev->tq[i].endp->desc);
             }
         }
+        pr_info("bce_vhci_reset_device port=%i devid=%i: endpoint re-create loop took %lld ms\n",
+                index, devid, ktime_ms_delta(ktime_get(), t_phase));
     }
 
+    pr_info("bce_vhci_reset_device port=%i done: total %lld ms status=%d\n",
+            index, ktime_ms_delta(ktime_get(), t_total), status);
     return status;
 }
 
