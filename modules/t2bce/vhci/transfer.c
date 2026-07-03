@@ -95,6 +95,19 @@ static void bce_vhci_transfer_queue_giveback(struct bce_vhci_transfer_queue *q)
 
 static void bce_vhci_transfer_queue_init_pending_urbs(struct bce_vhci_transfer_queue *q);
 
+static int bce_vhci_transfer_queue_port(struct bce_vhci_transfer_queue *q)
+{
+    int port;
+
+    for (port = 1; port <= q->vhci->port_count &&
+                   port < ARRAY_SIZE(q->vhci->port_to_device); port++) {
+        if (q->vhci->port_to_device[port] == q->dev_addr)
+            return port;
+    }
+
+    return 0;
+}
+
 static void bce_vhci_transfer_queue_deliver_pending(struct bce_vhci_transfer_queue *q)
 {
     struct urb *urb;
@@ -404,8 +417,19 @@ int bce_vhci_urb_create(struct bce_vhci_transfer_queue *q, struct urb *urb)
     vurb->is_control = (usb_endpoint_num(&urb->ep->desc) == 0);
 
     spin_lock_irqsave(&q->urb_lock, flags);
+    if (vurb->is_control && (!q->active || q->stalled || q->paused_by))
+        pr_info("bce-vhci: EP0 enqueue dev=%u port=%d active=%u paused_by=%x stalled=%u state=%u remaining=%u urb_reject=%d\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q),
+                q->active, q->paused_by, q->stalled, q->state,
+                q->remaining_active_requests, atomic_read(&urb->reject));
+
     status = usb_hcd_link_urb_to_ep(q->vhci->hcd, urb);
     if (status) {
+        if (vurb->is_control)
+            pr_warn("bce-vhci: EP0 enqueue link failed dev=%u port=%d status=%d active=%u paused_by=%x stalled=%u state=%u remaining=%u urb_reject=%d\n",
+                    q->dev_addr, bce_vhci_transfer_queue_port(q), status,
+                    q->active, q->paused_by, q->stalled, q->state,
+                    q->remaining_active_requests, atomic_read(&urb->reject));
         spin_unlock_irqrestore(&q->urb_lock, flags);
         urb->hcpriv = NULL;
         kfree(vurb);
@@ -639,7 +663,7 @@ static int bce_vhci_urb_data_transfer_completion(struct bce_vhci_urb *urb, struc
 static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
 {
     struct bce_vhci_transfer_queue *q = urb->q;
-    int port;
+    int port = 0;
     if (urb->received_status == 0)
         return 0;
     if (urb->state == BCE_VHCI_URB_DATA_TRANSFER_COMPLETE ||
@@ -659,7 +683,18 @@ static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
                     break;
                 }
             }
-            if (urb->received_status == 3)
+            if (urb->received_status == BCE_VHCI_USB_PIPE_STALL && q->endp_addr == 0x00) {
+                q->active = true;
+                q->stalled = false;
+                pr_info("bce-vhci: EP0 status=3 dev=%u port=%d state=%x; completing urb but keeping queue active paused_by=%x remaining=%u waiting=%lx requested=%lx\n",
+                        q->dev_addr, port, urb->state, q->paused_by,
+                        q->remaining_active_requests,
+                        READ_ONCE(q->vhci->port_change_waiting),
+                        READ_ONCE(q->vhci->port_resume_requested));
+                bce_vhci_urb_complete(urb, -EPIPE);
+                return -ENOENT;
+            }
+            if (urb->received_status == BCE_VHCI_USB_PIPE_STALL)
                 pr_info("bce-vhci: [%02x] URB failed - expected behaviour when 3 but TODO: %x\n",
                         urb->q->endp_addr, urb->received_status);
             else
