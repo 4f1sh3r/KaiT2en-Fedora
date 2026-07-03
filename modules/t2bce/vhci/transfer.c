@@ -647,7 +647,7 @@ static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
         urb->state != BCE_VHCI_URB_CONTROL_WAITING_FOR_SETUP_COMPLETION)) {
         urb->state = BCE_VHCI_URB_CONTROL_COMPLETE;
         if (urb->received_status != BCE_VHCI_SUCCESS) {
-            if (urb->received_status == 3 && q->endp_addr == 0x00) {
+            if (urb->received_status == BCE_VHCI_USB_PIPE_STALL && q->endp_addr == 0x00) {
                 for (port = 1; port <= q->vhci->port_count; port++) {
                     if (q->vhci->port_to_device[port] != q->dev_addr)
                         continue;
@@ -659,7 +659,13 @@ static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
                     break;
                 }
             }
-            if (urb->received_status == 3)
+            if (urb->received_status == BCE_VHCI_USB_PIPE_STALL && q->endp_addr == 0x00) {
+                pr_info("bce-vhci: [%02x] EP0 control transfer stalled; keeping queue active\n",
+                        urb->q->endp_addr);
+                bce_vhci_urb_complete(urb, -EPIPE);
+                return -ENOENT;
+            }
+            if (urb->received_status == BCE_VHCI_USB_PIPE_STALL)
                 pr_info("bce-vhci: [%02x] URB failed - expected behaviour when 3 but TODO: %x\n",
                         urb->q->endp_addr, urb->received_status);
             else
