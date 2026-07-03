@@ -113,6 +113,54 @@ static bool bce_vhci_transfer_queue_is_ep0(struct bce_vhci_transfer_queue *q)
     return q->endp_addr == 0x00;
 }
 
+static size_t bce_vhci_transfer_queue_event_count(struct bce_vhci_transfer_queue *q)
+{
+    struct bce_vhci_list_message *lm;
+    size_t count = 0;
+
+    list_for_each_entry(lm, &q->evq, list)
+        count++;
+
+    return count;
+}
+
+static void bce_vhci_transfer_queue_log_event(struct bce_vhci_transfer_queue *q,
+        struct bce_vhci_message *msg, const char *stage)
+{
+    if (!bce_vhci_transfer_queue_is_ep0(q))
+        return;
+
+    pr_info("bce-vhci: EP0 event %s dev=%u port=%d cmd=%x msg_status=%x p1=%x p2=%llx active=%u paused_by=%x stalled=%u qstate=%u remaining=%u evq=%zu urb_empty=%d\n",
+            stage, q->dev_addr, bce_vhci_transfer_queue_port(q),
+            msg->cmd, msg->status, msg->param1, msg->param2,
+            q->active, q->paused_by, q->stalled, q->state,
+            q->remaining_active_requests,
+            bce_vhci_transfer_queue_event_count(q),
+            list_empty(&q->endp->urb_list));
+}
+
+static void bce_vhci_transfer_queue_log_completion(struct bce_vhci_transfer_queue *q,
+        struct bce_queue_sq *sq, struct bce_sq_completion_data *c, const char *stage)
+{
+    const char *sq_name = "unknown";
+
+    if (!bce_vhci_transfer_queue_is_ep0(q))
+        return;
+
+    if (sq == q->sq_in)
+        sq_name = "in";
+    else if (sq == q->sq_out)
+        sq_name = "out";
+
+    pr_info("bce-vhci: EP0 completion %s dev=%u port=%d sq=%s cstatus=%x data_size=%llu sq_out_pending=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u evq=%zu urb_empty=%d\n",
+            stage, q->dev_addr, bce_vhci_transfer_queue_port(q),
+            sq_name, c->status, c->data_size,
+            atomic_read(&q->sq_out_pending), q->active, q->paused_by,
+            q->stalled, q->state, q->remaining_active_requests,
+            bce_vhci_transfer_queue_event_count(q),
+            list_empty(&q->endp->urb_list));
+}
+
 static void bce_vhci_urb_log_control(struct bce_vhci_urb *urb, const char *stage)
 {
     struct bce_vhci_transfer_queue *q = urb->q;
@@ -154,8 +202,12 @@ static void bce_vhci_transfer_queue_deliver_pending(struct bce_vhci_transfer_que
         urb = list_first_entry(&q->endp->urb_list, struct urb, urb_list);
 
         lm = list_first_entry(&q->evq, struct bce_vhci_list_message, list);
-        if (bce_vhci_urb_update(urb->hcpriv, &lm->msg) == -EAGAIN)
+        bce_vhci_transfer_queue_log_event(q, &lm->msg, "deferred-deliver");
+        if (bce_vhci_urb_update(urb->hcpriv, &lm->msg) == -EAGAIN) {
+            bce_vhci_transfer_queue_log_event(q, &lm->msg, "deferred-still-waiting");
             break;
+        }
+        bce_vhci_transfer_queue_log_event(q, &lm->msg, "deferred-consumed");
         list_del(&lm->list);
         kfree(lm);
     }
@@ -169,6 +221,12 @@ static void bce_vhci_transfer_queue_remove_pending(struct bce_vhci_transfer_queu
     unsigned long flags;
     struct bce_vhci_list_message *lm;
     spin_lock_irqsave(&q->urb_lock, flags);
+    if (bce_vhci_transfer_queue_is_ep0(q) && !list_empty(&q->evq))
+        pr_info("bce-vhci: EP0 event remove-pending dev=%u port=%d evq=%zu active=%u paused_by=%x stalled=%u qstate=%u remaining=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q),
+                bce_vhci_transfer_queue_event_count(q), q->active,
+                q->paused_by, q->stalled, q->state,
+                q->remaining_active_requests);
     while (!list_empty(&q->evq)) {
         lm = list_first_entry(&q->evq, struct bce_vhci_list_message, list);
         list_del(&lm->list);
@@ -183,25 +241,32 @@ void bce_vhci_transfer_queue_event(struct bce_vhci_transfer_queue *q, struct bce
     struct bce_vhci_urb *turb;
     struct urb *urb;
     spin_lock_irqsave(&q->urb_lock, flags);
+    bce_vhci_transfer_queue_log_event(q, msg, "incoming");
     /* Paused queues may still complete in-flight work but must not deliver new work. */
-    if (!q->active)
+    if (!q->active) {
+        bce_vhci_transfer_queue_log_event(q, msg, "drop-inactive");
         goto complete;
+    }
     bce_vhci_transfer_queue_deliver_pending(q);
 
     if (msg->cmd == BCE_VHCI_CMD_TRANSFER_REQUEST &&
         (!list_empty(&q->evq) || list_empty(&q->endp->urb_list))) {
+        bce_vhci_transfer_queue_log_event(q, msg, "defer-no-urb-or-backlog");
         bce_vhci_transfer_queue_defer_event(q, msg);
         goto complete;
     }
     if (list_empty(&q->endp->urb_list)) {
+        bce_vhci_transfer_queue_log_event(q, msg, "unexpected-empty");
         pr_err("bce-vhci: [%02x] Unexpected transfer queue event\n", q->endp_addr);
         goto complete;
     }
     urb = list_first_entry(&q->endp->urb_list, struct urb, urb_list);
     turb = urb->hcpriv;
     if (bce_vhci_urb_update(turb, msg) == -EAGAIN) {
+        bce_vhci_transfer_queue_log_event(q, msg, "defer-eagain");
         bce_vhci_transfer_queue_defer_event(q, msg);
     } else {
+        bce_vhci_transfer_queue_log_event(q, msg, "consumed");
         bce_vhci_transfer_queue_init_pending_urbs(q);
     }
 
@@ -220,6 +285,7 @@ static void bce_vhci_transfer_queue_completion(struct bce_queue_sq *sq)
     spin_lock_irqsave(&q->urb_lock, flags);
     while ((c = bce_next_completion(sq))) {
         if (c->status == BCE_COMPLETION_ABORTED) { /* We flushed the queue */
+            bce_vhci_transfer_queue_log_completion(q, sq, c, "aborted");
             pr_debug("bce-vhci: [%02x] Got an abort completion\n", q->endp_addr);
             if (is_sq_out && atomic_dec_if_positive(&q->sq_out_pending) == 0)
                 wake_up(&q->sq_out_wait_queue);
@@ -227,11 +293,13 @@ static void bce_vhci_transfer_queue_completion(struct bce_queue_sq *sq)
             continue;
         }
         if (list_empty(&q->endp->urb_list)) {
+            bce_vhci_transfer_queue_log_completion(q, sq, c, "empty");
             pr_err("bce-vhci: [%02x] Got a completion while no requests are pending\n", q->endp_addr);
             if (is_sq_out && atomic_dec_if_positive(&q->sq_out_pending) == 0)
                 wake_up(&q->sq_out_wait_queue);
             continue;
         }
+        bce_vhci_transfer_queue_log_completion(q, sq, c, "incoming");
         pr_debug("bce-vhci: [%02x] Got a transfer queue completion\n", q->endp_addr);
         urb = list_first_entry(&q->endp->urb_list, struct urb, urb_list);
         bce_vhci_urb_transfer_completion(urb->hcpriv, c);
