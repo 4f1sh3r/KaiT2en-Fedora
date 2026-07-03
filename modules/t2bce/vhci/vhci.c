@@ -403,12 +403,20 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
                 status = bce_vhci_cmd_port_status(&vhci->cq, (u8) wIndex, 0, &port_status);
                 if (!status) {
                     bool needs_resume = bce_vhci_port_needs_resume(port_status);
-                    bool topcase_stuck = wIndex == 5 &&
-                                         needs_resume &&
+                    /*
+                     * Which internal device sits on which port is assigned by
+                     * T2 firmware and varies across Mac models (topcase,
+                     * Touch Bar, etc. are not on a fixed port number). Do not
+                     * key this off a specific port index: any port whose
+                     * local resume retries are exhausted is by definition
+                     * one the port worker has already given up gating, so
+                     * usbcore's real reset must be let through for it.
+                     */
+                    bool port_resume_exhausted = needs_resume &&
                                          vhci->port_resume_tries[wIndex] >=
                                              BCE_VHCI_PORT_RESUME_MAX_TRIES;
 
-                    if (!topcase_stuck) {
+                    if (!port_resume_exhausted) {
                         pr_warn("bce-vhci: hub RESET suppressed during resume guard port=%u raw=%x ready=%d needs_resume=%d tries=%u guard_left_ms=%lu waiting=%lx\n",
                                 wIndex, port_status,
                                 bce_vhci_port_ready_for_hub(port_status),
@@ -425,7 +433,7 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
                         return 0;
                     }
 
-                    pr_warn("bce-vhci: hub RESET allowed for stuck topcase during resume guard port=%u raw=%x tries=%u guard_left_ms=%lu waiting=%lx\n",
+                    pr_warn("bce-vhci: hub RESET allowed for resume-exhausted port during resume guard port=%u raw=%x tries=%u guard_left_ms=%lu waiting=%lx\n",
                             wIndex, port_status, vhci->port_resume_tries[wIndex],
                             guard_left, READ_ONCE(vhci->port_change_waiting));
                     set_bit(wIndex - 1, &vhci->port_change_waiting);
