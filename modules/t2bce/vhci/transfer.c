@@ -108,6 +108,11 @@ static int bce_vhci_transfer_queue_port(struct bce_vhci_transfer_queue *q)
     return 0;
 }
 
+static bool bce_vhci_transfer_queue_is_ep0(struct bce_vhci_transfer_queue *q)
+{
+    return q->endp_addr == 0x00;
+}
+
 static void bce_vhci_transfer_queue_deliver_pending(struct bce_vhci_transfer_queue *q)
 {
     struct urb *urb;
@@ -251,11 +256,24 @@ int bce_vhci_transfer_queue_do_resume(struct bce_vhci_transfer_queue *q)
     struct urb *urb, *urbt;
     struct bce_vhci_urb *vurb;
     u8 endp_addr = (u8) (q->endp->desc.bEndpointAddress & 0x8F);
+    if (bce_vhci_transfer_queue_is_ep0(q))
+        pr_info("bce-vhci: tq resume begin dev=%u port=%d ep=%02x active=%u paused_by=%x stalled=%u state=%u remaining=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+                q->active, q->paused_by, q->stalled, q->state,
+                q->remaining_active_requests);
     if ((status = bce_vhci_cmd_endpoint_set_state(
-            &q->vhci->cq, q->dev_addr, endp_addr, BCE_VHCI_ENDPOINT_ACTIVE, &q->state)))
+            &q->vhci->cq, q->dev_addr, endp_addr, BCE_VHCI_ENDPOINT_ACTIVE, &q->state))) {
+        pr_warn("bce-vhci: tq resume set-active failed dev=%u port=%d ep=%02x status=%d ret_state=%u active=%u paused_by=%x stalled=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+                status, q->state, q->active, q->paused_by, q->stalled);
         return status;
-    if (q->state != BCE_VHCI_ENDPOINT_ACTIVE)
+    }
+    if (q->state != BCE_VHCI_ENDPOINT_ACTIVE) {
+        pr_warn("bce-vhci: tq resume set-active returned non-active dev=%u port=%d ep=%02x ret_state=%u active=%u paused_by=%x stalled=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+                q->state, q->active, q->paused_by, q->stalled);
         return -EINVAL;
+    }
     spin_lock_irqsave(&q->urb_lock, flags);
     q->active = true;
     list_for_each_entry_safe(urb, urbt, &q->endp->urb_list, urb_list) {
@@ -270,19 +288,32 @@ int bce_vhci_transfer_queue_do_resume(struct bce_vhci_transfer_queue *q)
     }
     bce_vhci_transfer_queue_deliver_pending(q);
     spin_unlock_irqrestore(&q->urb_lock, flags);
+    if (bce_vhci_transfer_queue_is_ep0(q))
+        pr_info("bce-vhci: tq resume done dev=%u port=%d ep=%02x active=%u paused_by=%x stalled=%u state=%u remaining=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+                q->active, q->paused_by, q->stalled, q->state,
+                q->remaining_active_requests);
     return 0;
 }
 
 int bce_vhci_transfer_queue_pause(struct bce_vhci_transfer_queue *q, enum bce_vhci_pause_source src)
 {
     int ret = 0;
+    u32 old_paused_by;
+
     mutex_lock(&q->pause_lock);
+    old_paused_by = q->paused_by;
     if ((q->paused_by & src) != src) {
         if (!q->paused_by)
             ret = bce_vhci_transfer_queue_do_pause(q);
         if (!ret)
             q->paused_by |= src;
     }
+    if (bce_vhci_transfer_queue_is_ep0(q) || ret)
+        pr_info("bce-vhci: tq pause dev=%u port=%d ep=%02x src=%x ret=%d paused_by=%x->%x active=%u stalled=%u state=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+                src, ret, old_paused_by, q->paused_by, q->active,
+                q->stalled, q->state);
     mutex_unlock(&q->pause_lock);
     return ret;
 }
@@ -290,7 +321,10 @@ int bce_vhci_transfer_queue_pause(struct bce_vhci_transfer_queue *q, enum bce_vh
 int bce_vhci_transfer_queue_resume(struct bce_vhci_transfer_queue *q, enum bce_vhci_pause_source src)
 {
     int ret = 0;
+    u32 old_paused_by;
+
     mutex_lock(&q->pause_lock);
+    old_paused_by = q->paused_by;
     if (src == BCE_VHCI_PAUSE_SUSPEND &&
         q->endp_addr == 0x00 &&
         q->paused_by == (BCE_VHCI_PAUSE_SHUTDOWN | BCE_VHCI_PAUSE_SUSPEND))
@@ -301,6 +335,11 @@ int bce_vhci_transfer_queue_resume(struct bce_vhci_transfer_queue *q, enum bce_v
         if (!ret)
             q->paused_by &= ~src;
     }
+    if (bce_vhci_transfer_queue_is_ep0(q) || ret)
+        pr_info("bce-vhci: tq resume dev=%u port=%d ep=%02x src=%x ret=%d paused_by=%x->%x active=%u stalled=%u state=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+                src, ret, old_paused_by, q->paused_by, q->active,
+                q->stalled, q->state);
     mutex_unlock(&q->pause_lock);
     return ret;
 }
@@ -420,14 +459,30 @@ int bce_vhci_urb_create(struct bce_vhci_transfer_queue *q, struct urb *urb)
 {
     unsigned long flags;
     int status = 0;
+    int recovery_status;
     struct bce_vhci_urb *vurb;
+    bool is_control = (usb_endpoint_num(&urb->ep->desc) == 0);
+
+    if (is_control && q->endp_addr == 0x00 &&
+        !q->active && !q->stalled &&
+        q->paused_by == BCE_VHCI_PAUSE_INTERNAL_WQ) {
+        pr_warn("bce-vhci: EP0 enqueue recovering stale internal pause dev=%u port=%d state=%u remaining=%u urb_reject=%d\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), q->state,
+                q->remaining_active_requests, atomic_read(&urb->reject));
+        recovery_status = bce_vhci_transfer_queue_resume(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
+        pr_warn("bce-vhci: EP0 enqueue stale internal pause recovery dev=%u port=%d -> %d active=%u paused_by=%x stalled=%u state=%u remaining=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), recovery_status,
+                q->active, q->paused_by, q->stalled, q->state,
+                q->remaining_active_requests);
+    }
+
     vurb = kzalloc(sizeof(struct bce_vhci_urb), GFP_KERNEL);
     urb->hcpriv = vurb;
 
     vurb->q = q;
     vurb->urb = urb;
     vurb->dir = usb_urb_dir_in(urb) ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
-    vurb->is_control = (usb_endpoint_num(&urb->ep->desc) == 0);
+    vurb->is_control = is_control;
 
     spin_lock_irqsave(&q->urb_lock, flags);
     if (vurb->is_control && (!q->active || q->stalled || q->paused_by))
