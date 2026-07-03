@@ -2,6 +2,7 @@
 #include <linux/module.h>
 #include <linux/crc32.h>
 #include <linux/delay.h>
+#include <linux/pm_runtime.h>
 #include "audio/audio.h"
 #include <linux/version.h>
 
@@ -553,6 +554,23 @@ out_unlock:
     return status;
 }
 
+static int t2bce_prepare(struct device *dev)
+{
+    /*
+     * Without an explicit .prepare callback, PCI core's own pci_pm_prepare()
+     * falls back to pci_dev_keep_suspended(), which can decide the device is
+     * "already runtime suspended" and skip .suspend()/.resume() entirely,
+     * calling only .complete(). That silently skips our SAVE_STATE_AND_SLEEP /
+     * RESTORE_STATE_AND_WAKE mailbox handshake with the T2, leaving it to do
+     * an uncoordinated sleep/wake instead of a clean one. Returning 0
+     * unconditionally here forces PCI core to always run our real
+     * .suspend()/.resume() instead of taking that skip path.
+     */
+    pr_info("t2bce: prepare: entry runtime_suspended=%d usage_count=%d\n",
+            pm_runtime_status_suspended(dev), atomic_read(&dev->power.usage_count));
+    return 0;
+}
+
 static void t2bce_complete(struct device *dev)
 {
     struct t2bce_device *bce = pci_get_drvdata(to_pci_dev(dev));
@@ -578,6 +596,7 @@ static struct pci_device_id t2bce_ids[  ] = {
 MODULE_DEVICE_TABLE(pci, t2bce_ids);
 
 struct dev_pm_ops t2bce_pci_driver_pm = {
+        .prepare = t2bce_prepare,
         .suspend = t2bce_suspend,
         .resume = t2bce_resume,
         .complete = t2bce_complete
