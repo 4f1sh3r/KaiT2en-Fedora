@@ -39,23 +39,41 @@ static void bce_vhci_firmware_event_completion(struct bce_queue_sq *sq);
 static int bce_vhci_start_controller(struct bce_vhci *vhci);
 static void bce_vhci_forget_devices(struct bce_vhci *vhci);
 static int __bce_vhci_add_hcd(struct bce_vhci *vhci);
+static bool bce_vhci_port_ready_for_hub(u32 port_status);
+static bool bce_vhci_port_needs_resume(u32 port_status);
 
 static bool bce_vhci_resume_reset_guard_active(struct bce_vhci *vhci)
 {
     return time_before(jiffies, READ_ONCE(vhci->resume_reset_guard_until));
 }
 
+static unsigned long bce_vhci_resume_reset_guard_left_ms(struct bce_vhci *vhci)
+{
+    unsigned long guard_until = READ_ONCE(vhci->resume_reset_guard_until);
+
+    if (!time_before(jiffies, guard_until))
+        return 0;
+
+    return jiffies_to_msecs(guard_until - jiffies);
+}
+
 static unsigned long bce_vhci_all_port_bits(struct bce_vhci *vhci)
 {
     unsigned long bits = 0;
+    unsigned long fallback = 0;
     int port;
 
     for (port = 1; port <= vhci->port_count; port++) {
-        if (bce_vhci_port_mask & BIT(port))
+        if (!(bce_vhci_port_mask & BIT(port)))
+            continue;
+
+        fallback |= BIT(port - 1);
+
+        if (vhci->port_to_device[port])
             bits |= BIT(port - 1);
     }
 
-    return bits;
+    return bits ?: fallback;
 }
 
 static bool bce_vhci_port_connected(u32 port_status)
@@ -71,6 +89,9 @@ static bool bce_vhci_port_enabled(u32 port_status)
 static bool bce_vhci_port_suspended(u32 port_status)
 {
     u8 status_byte = (u8) port_status;
+
+    if (!bce_vhci_port_connected(port_status))
+        return false;
 
     return (status_byte & BCE_VHCI_PORT_STATUS_SUSPENDED) ||
            (status_byte & BCE_VHCI_PORT_STATUS_SUSPENDED_LEGACY);
@@ -360,9 +381,9 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
 
         if (port_status & BCE_VHCI_PORT_STATUS_C_CONNECTION)
             ps->wPortChange |= USB_PORT_STAT_C_CONNECTION;
-        pr_info("bce-vhci: hub GetPortStatus port=%u raw=%x status=%x change=%x guard=%d waiting=%lx\n",
+        pr_info("bce-vhci: hub GetPortStatus port=%u raw=%x status=%x change=%x guard_left_ms=%lu waiting=%lx\n",
                 wIndex, port_status, ps->wPortStatus, ps->wPortChange,
-                bce_vhci_resume_reset_guard_active(vhci),
+                bce_vhci_resume_reset_guard_left_ms(vhci),
                 READ_ONCE(vhci->port_change_waiting));
         return 0;
     } else if (typeReq == SetPortFeature) {
@@ -375,22 +396,46 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
         }
         if (wValue == USB_PORT_FEAT_RESET) {
             pr_info("bce-vhci: hub SetPortFeature RESET port=%u\n", wIndex);
-            if (bce_vhci_resume_reset_guard_active(vhci) &&
+            if (bce_vhci_resume_reset_guard_left_ms(vhci) &&
                 wIndex > 0 && wIndex <= vhci->port_count) {
+                unsigned long guard_left = bce_vhci_resume_reset_guard_left_ms(vhci);
+
                 status = bce_vhci_cmd_port_status(&vhci->cq, (u8) wIndex, 0, &port_status);
-                if (!status && bce_vhci_port_suspended(port_status)) {
-                    pr_warn("bce-vhci: hub RESET suppressed during resume guard port=%u raw=%x; issuing PORT_RESUME\n",
-                            wIndex, port_status);
-                    status = bce_vhci_cmd_port_resume(&vhci->cq, (u8) wIndex);
-                    pr_warn("bce-vhci: hub RESET-suppressed PORT_RESUME port=%u -> %d\n",
-                            wIndex, status);
+                if (!status) {
+                    bool needs_resume = bce_vhci_port_needs_resume(port_status);
+                    bool topcase_stuck = wIndex == 5 &&
+                                         needs_resume &&
+                                         vhci->port_resume_tries[wIndex] >=
+                                             BCE_VHCI_PORT_RESUME_MAX_TRIES;
+
+                    if (!topcase_stuck) {
+                        pr_warn("bce-vhci: hub RESET suppressed during resume guard port=%u raw=%x ready=%d needs_resume=%d tries=%u guard_left_ms=%lu waiting=%lx\n",
+                                wIndex, port_status,
+                                bce_vhci_port_ready_for_hub(port_status),
+                                needs_resume, vhci->port_resume_tries[wIndex],
+                                guard_left, READ_ONCE(vhci->port_change_waiting));
+                        if (needs_resume) {
+                            status = bce_vhci_cmd_port_resume(&vhci->cq, (u8) wIndex);
+                            pr_warn("bce-vhci: hub RESET-suppressed PORT_RESUME port=%u raw=%x -> %d\n",
+                                    wIndex, port_status, status);
+                            set_bit(wIndex - 1, &vhci->port_change_waiting);
+                            queue_delayed_work(vhci->tq_state_wq,
+                                               &vhci->w_port_status_change, 0);
+                        }
+                        return 0;
+                    }
+
+                    pr_warn("bce-vhci: hub RESET allowed for stuck topcase during resume guard port=%u raw=%x tries=%u guard_left_ms=%lu waiting=%lx\n",
+                            wIndex, port_status, vhci->port_resume_tries[wIndex],
+                            guard_left, READ_ONCE(vhci->port_change_waiting));
                     set_bit(wIndex - 1, &vhci->port_change_waiting);
                     queue_delayed_work(vhci->tq_state_wq,
                                        &vhci->w_port_status_change, 0);
-                    return 0;
+                } else {
+                    pr_warn("bce-vhci: hub RESET status query failed during resume guard port=%u status=%d guard_left_ms=%lu waiting=%lx\n",
+                            wIndex, status, guard_left,
+                            READ_ONCE(vhci->port_change_waiting));
                 }
-                pr_info("bce-vhci: hub RESET allowed during resume guard port=%u status=%d raw=%x\n",
-                        wIndex, status, status ? 0 : port_status);
             }
             return bce_vhci_reset_device(vhci, wIndex, wValue);
         }
@@ -742,8 +787,10 @@ static int bce_vhci_bus_resume(struct usb_hcd *hcd)
     vhci->system_suspending = false;
     WRITE_ONCE(vhci->resume_reset_guard_until,
                jiffies + msecs_to_jiffies(BCE_VHCI_RESUME_RESET_GUARD_MS));
-    pr_info("bce_vhci: resume started reset_guard_ms=%u\n",
-            BCE_VHCI_RESUME_RESET_GUARD_MS);
+    pr_info("bce_vhci: resume started reset_guard_ms=%u guard_left_ms=%lu active_ports=%lx\n",
+            BCE_VHCI_RESUME_RESET_GUARD_MS,
+            bce_vhci_resume_reset_guard_left_ms(vhci),
+            bce_vhci_all_port_bits(vhci));
 
     if (vhci->no_state_resume)
         status = bce_vhci_resume_no_state(hcd);
@@ -1090,10 +1137,10 @@ static void bce_vhci_port_status_change_w(struct work_struct *ws)
             continue;
         }
 
-        pr_info("bce-vhci: port worker poll port=%d raw=%x waiting=%lx tries=%u guard=%d\n",
+        pr_info("bce-vhci: port worker poll port=%d raw=%x waiting=%lx tries=%u guard_left_ms=%lu\n",
                 port + 1, port_status, READ_ONCE(vhci->port_change_waiting),
                 vhci->port_resume_tries[port + 1],
-                bce_vhci_resume_reset_guard_active(vhci));
+                bce_vhci_resume_reset_guard_left_ms(vhci));
 
         if (!bce_vhci_port_connected(port_status)) {
             clear_bit(port, &vhci->port_change_waiting);
