@@ -181,7 +181,7 @@ static void bce_vhci_urb_log_control(struct bce_vhci_urb *urb, const char *stage
 
     ctrl = (struct usb_ctrlrequest *) urb->urb->setup_packet;
     if (!ctrl) {
-        pr_debug("bce-vhci: EP0 control %s dev=%u port=%d urb_state=%u no-setup xfer_len=%u actual=%u send=%u recv=%u status=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u urb_reject=%d\n",
+        pr_info("bce-vhci: EP0 control %s dev=%u port=%d urb_state=%u no-setup xfer_len=%u actual=%u send=%u recv=%u status=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u urb_reject=%d\n",
                 stage, q->dev_addr, bce_vhci_transfer_queue_port(q),
                 urb->state, urb->urb->transfer_buffer_length,
                 urb->urb->actual_length, urb->send_offset,
@@ -191,7 +191,13 @@ static void bce_vhci_urb_log_control(struct bce_vhci_urb *urb, const char *stage
         return;
     }
 
-    pr_debug("bce-vhci: EP0 control %s dev=%u port=%d urb_state=%u dir=%s reqtype=%02x req=%02x value=%04x index=%04x wlen=%u xfer_len=%u actual=%u send=%u recv=%u status=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u urb_reject=%d\n",
+    /* Promoted from pr_debug: this is the only per-stage trace of EP0
+     * control transfers (setup/data/status), and it was invisible by
+     * default -- the ~5s-per-port usb_get_status() stall found via
+     * ftrace (usb_port_resume -> ... -> hub_port_init -> usb_get_status
+     * -> usb_control_msg) routes through exactly this path, but left no
+     * trace in the log at pr_debug level. */
+    pr_info("bce-vhci: EP0 control %s dev=%u port=%d urb_state=%u dir=%s reqtype=%02x req=%02x value=%04x index=%04x wlen=%u xfer_len=%u actual=%u send=%u recv=%u status=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u urb_reject=%d\n",
             stage, q->dev_addr, bce_vhci_transfer_queue_port(q),
             urb->state, usb_urb_dir_in(urb->urb) ? "in" : "out",
             ctrl->bRequestType, ctrl->bRequest,
