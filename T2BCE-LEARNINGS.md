@@ -350,3 +350,27 @@ Neuer Test-Patch:
     sollten `tq reset start/command/done ... ep=00 ... state=0 active=1`
     folgen. Danach sollten Fn-Mode-Reports nicht mehr auf
     `active=0 state=2` laufen.
+
+Folgeanalyse:
+
+- Der EP0-Reset lief tatsaechlich durch und setzte EP0 kurzzeitig auf
+  `active=1 paused_by=0 state=0`.
+- Spaetere Fn-Mode-Reports trafen aber auf
+  `active=0 paused_by=1 stalled=0 state=1`.
+- `paused_by=1` ist `BCE_VHCI_PAUSE_INTERNAL_WQ`, `state=1` ist
+  `BCE_VHCI_ENDPOINT_PAUSED`. Damit bleibt nicht mehr der STALLED-Zustand
+  haengen, sondern ein interner Cancel-/Reset-Pausepfad kommt nicht sauber
+  nach ACTIVE zurueck.
+
+Neuer Test-Patch:
+
+- `ea6da09 t2bce: recover stale ep0 internal pause`
+  - EP0-Pause/Resume-Transitions werden fuer `pause_lock`-Pfade geloggt:
+    `tq pause ... src=...`, `tq resume begin/done ...`,
+    `tq resume set-active failed/returned non-active ...`.
+  - Wenn ein neuer EP0-Control-URB auf
+    `active=0 paused_by=1 stalled=0 state=1` trifft, versucht t2bce vor dem
+    Linken des URB `resume(INTERNAL_WQ)`.
+  - Erwartete gute Signatur:
+    `EP0 enqueue recovering stale internal pause ...` gefolgt von
+    `tq resume ... ret=0 ... active=1 paused_by=0 state=0`.
