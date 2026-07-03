@@ -56,7 +56,7 @@ static int t2bce_probe(struct pci_dev *dev, const struct pci_device_id *id)
     int status = 0;
     int nvec;
 
-    pr_info("t2bce: capturing our device\n");
+    pr_debug("t2bce: capturing our device\n");
 
     if (pci_enable_device(dev))
         return -ENODEV;
@@ -132,10 +132,10 @@ static int t2bce_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
     if ((status = bce_fw_version_handshake(bce)))
         goto fail_ts;
-    pr_info("t2bce: handshake done\n");
+    pr_debug("t2bce: handshake done\n");
 
     if ((status = bce_create_command_queues(bce))) {
-        pr_info("t2bce: Creating command queues failed\n");
+        pr_err("t2bce: Creating command queues failed\n");
         goto fail_ts;
     }
 
@@ -384,7 +384,7 @@ static void t2bce_remove(struct pci_dev *dev)
 
 static int bce_pm_suspend_fallback_no_state(struct t2bce_device *bce)
 {
-    pr_info("t2bce: suspend: forcing SLEEP_NO_STATE (no reply expected)\n");
+    pr_debug("t2bce: suspend: forcing SLEEP_NO_STATE (no reply expected)\n");
     if (bce_mailbox_send_no_reply_locked(&bce->mbox, BCE_MB_MSG(BCE_MB_SLEEP_NO_STATE, 0))) {
         pr_err("t2bce: suspend: SLEEP_NO_STATE send failed\n");
         return -EIO;
@@ -416,7 +416,7 @@ static int bce_pm_suspend_try_state(struct t2bce_device *bce)
     }
 
     if (BCE_MB_TYPE(resp) == BCE_MB_SAVE_RESTORE_STATE_COMPLETE) {
-        pr_info("t2bce: suspend: remote response: restore state saved  \n");
+        pr_debug("t2bce: suspend: remote response: restore state saved\n");
         bce->stateful_suspend_valid = true;
         return 0;
     }
@@ -467,7 +467,7 @@ static int t2bce_suspend(struct device *dev)
     struct t2bce_device *bce = pci_get_drvdata(to_pci_dev(dev));
     int status;
 
-    pr_info("t2bce: suspend: entry\n");
+    pr_debug("t2bce: suspend: entry\n");
     mutex_lock(&bce->pm_lock);
 
     bce->stateful_suspend_valid = false;
@@ -501,7 +501,7 @@ static int t2bce_suspend(struct device *dev)
     }
 
     /* Current Linux path treats the traced 0x19 not-ready reply as stateful reject. */
-    pr_info("t2bce: suspend: stateful path not ready, falling back to no-state\n");
+    pr_debug("t2bce: suspend: stateful path not ready, falling back to no-state\n");
     bce_vhci_remove_hcd(&bce->vhci);
     status = bce_pm_suspend_fallback_no_state(bce);
     if (!status) {
@@ -513,7 +513,7 @@ static int t2bce_suspend(struct device *dev)
 
 out_unlock:
     mutex_unlock(&bce->pm_lock);
-    pr_info("t2bce: suspend: exit status=%d stateful_valid=%d no_state_resume=%d no_state_fallback=%d\n",
+    pr_debug("t2bce: suspend: exit status=%d stateful_valid=%d no_state_resume=%d no_state_fallback=%d\n",
             status, bce->stateful_suspend_valid, bce->vhci.no_state_resume, bce->no_state_fallback);
     return status;
 }
@@ -524,7 +524,7 @@ static int t2bce_resume(struct device *dev)
     int status;
     bool used_stateful;
 
-    pr_info("t2bce: resume: entry\n");
+    pr_debug("t2bce: resume: entry\n");
     mutex_lock(&bce->pm_lock);
 
     pci_set_master(bce->pci);
@@ -532,7 +532,7 @@ static int t2bce_resume(struct device *dev)
 
     /* Windows resumes from the suspend result, not a preselected mode. */
     used_stateful = bce_stateful_supported(bce) && bce->stateful_suspend_valid;
-    pr_info("t2bce: resume path: %s\n", used_stateful ? "stateful" : "no-state");
+    pr_debug("t2bce: resume path: %s\n", used_stateful ? "stateful" : "no-state");
     if (used_stateful)
         status = bce_pm_resume_stateful(bce);
     else
@@ -547,7 +547,7 @@ static int t2bce_resume(struct device *dev)
 
 out_unlock:
     mutex_unlock(&bce->pm_lock);
-    pr_info("t2bce: resume: exit status=%d path=%s stateful_valid=%d no_state_resume=%d no_state_fallback=%d\n",
+    pr_debug("t2bce: resume: exit status=%d path=%s stateful_valid=%d no_state_resume=%d no_state_fallback=%d\n",
             status, used_stateful ? "stateful" : "no-state",
             bce->stateful_suspend_valid, bce->vhci.no_state_resume, bce->no_state_fallback);
     return status;
@@ -557,17 +557,17 @@ static void t2bce_complete(struct device *dev)
 {
     struct t2bce_device *bce = pci_get_drvdata(to_pci_dev(dev));
 
-    pr_info("t2bce: complete: entry no_state_fallback=%d no_state_resume=%d\n",
+    pr_debug("t2bce: complete: entry no_state_fallback=%d no_state_resume=%d\n",
             bce->no_state_fallback, bce->vhci.no_state_resume);
     if (bce->no_state_fallback && bce->vhci.no_state_resume) {
         /* Re-add the VHCI HCD after the PM core completed resume ordering. */
-        pr_info("t2bce: complete: scheduling VHCI HCD re-add after no-state wake\n");
+        pr_debug("t2bce: complete: scheduling VHCI HCD re-add after no-state wake\n");
         queue_work(bce->vhci.tq_state_wq, &bce->vhci.w_add_hcd);
         bce->no_state_fallback = false;
     }
 
     aaudio_resume_post_vhci(bce->aaudio);
-    pr_info("t2bce: complete: exit\n");
+    pr_debug("t2bce: complete: exit\n");
 }
 
 static struct pci_device_id t2bce_ids[  ] = {

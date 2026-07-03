@@ -4,6 +4,16 @@
 #include "../t2bce.h"
 #include <linux/usb/hcd.h>
 
+#define BCE_VHCI_EP0_STATUS3_RETRY_MS 100
+#define BCE_VHCI_EP0_STATUS3_TIMEOUT_MS 3000
+
+/*
+ * BCE status 3 on EP0 is observable outside system resume, for example with
+ * lsusb -v reading device status. Keep usbcore from immediately seeing EPIPE
+ * and tearing down the device, but do not treat this as the port-status 0x285
+ * reset fix. The 0x285 path is driven by hub status translation/resume policy.
+ */
+
 static void bce_vhci_transfer_queue_completion(struct bce_queue_sq *sq);
 static void bce_vhci_transfer_queue_giveback(struct bce_vhci_transfer_queue *q);
 static void bce_vhci_transfer_queue_remove_pending(struct bce_vhci_transfer_queue *q);
@@ -11,8 +21,10 @@ static void bce_vhci_transfer_queue_remove_pending(struct bce_vhci_transfer_queu
 static int bce_vhci_urb_init(struct bce_vhci_urb *vurb);
 static int bce_vhci_urb_update(struct bce_vhci_urb *urb, struct bce_vhci_message *msg);
 static int bce_vhci_urb_transfer_completion(struct bce_vhci_urb *urb, struct bce_sq_completion_data *c);
+static void bce_vhci_urb_complete(struct bce_vhci_urb *urb, int status);
 
 static void bce_vhci_transfer_queue_reset_w(struct work_struct *work);
+static void bce_vhci_transfer_queue_ep0_retry_w(struct work_struct *work);
 
 void bce_vhci_create_transfer_queue(struct bce_vhci *vhci, struct bce_vhci_transfer_queue *q,
         struct usb_host_endpoint *endp, bce_vhci_device_t dev_addr, enum dma_data_direction dir)
@@ -37,6 +49,7 @@ void bce_vhci_create_transfer_queue(struct bce_vhci *vhci, struct bce_vhci_trans
     q->remaining_active_requests = q->max_active_requests;
     q->cq = bce_create_cq(vhci->dev, 0x100);
     INIT_WORK(&q->w_reset, bce_vhci_transfer_queue_reset_w);
+    INIT_DELAYED_WORK(&q->w_ep0_retry, bce_vhci_transfer_queue_ep0_retry_w);
     q->sq_in = NULL;
     if (dir == DMA_FROM_DEVICE || dir == DMA_BIDIRECTIONAL) {
         snprintf(name, sizeof(name), "VHC1-%i-%02x", dev_addr, 0x80 | usb_endpoint_num(&endp->desc));
@@ -53,6 +66,7 @@ void bce_vhci_create_transfer_queue(struct bce_vhci *vhci, struct bce_vhci_trans
 
 void bce_vhci_destroy_transfer_queue(struct bce_vhci *vhci, struct bce_vhci_transfer_queue *q)
 {
+    cancel_delayed_work_sync(&q->w_ep0_retry);
     bce_vhci_transfer_queue_giveback(q);
     bce_vhci_transfer_queue_remove_pending(q);
     if (q->sq_in)
@@ -276,17 +290,39 @@ int bce_vhci_transfer_queue_pause(struct bce_vhci_transfer_queue *q, enum bce_vh
 int bce_vhci_transfer_queue_resume(struct bce_vhci_transfer_queue *q, enum bce_vhci_pause_source src)
 {
     int ret = 0;
+    u32 old_paused_by;
+    bool did_resume = false;
+    bool cleared_shutdown = false;
+
     mutex_lock(&q->pause_lock);
+    old_paused_by = q->paused_by;
+    /*
+     * EP0 queues can carry the old shutdown pause across preserved-state
+     * resume. System resume owns that transition, so clear the shutdown owner
+     * here before deciding whether the queue needs a firmware resume.
+     */
     if (src == BCE_VHCI_PAUSE_SUSPEND &&
         q->endp_addr == 0x00 &&
-        q->paused_by == (BCE_VHCI_PAUSE_SHUTDOWN | BCE_VHCI_PAUSE_SUSPEND))
+        q->paused_by == (BCE_VHCI_PAUSE_SHUTDOWN | BCE_VHCI_PAUSE_SUSPEND)) {
         q->paused_by &= ~BCE_VHCI_PAUSE_SHUTDOWN;
+        cleared_shutdown = true;
+    }
     if (q->paused_by & src) {
-        if (!(q->paused_by & ~src))
+        if (!(q->paused_by & ~src)) {
             ret = bce_vhci_transfer_queue_do_resume(q);
+            did_resume = true;
+        }
         if (!ret)
             q->paused_by &= ~src;
     }
+    if (src == BCE_VHCI_PAUSE_SUSPEND)
+        pr_debug("bce-vhci: system resume dev=%u ep=%02x src=%x paused_by=%x->%x firmware_resume=%u cleared_shutdown=%u ret=%d state=%x active=%u\n",
+                q->dev_addr, q->endp_addr, src, old_paused_by, q->paused_by,
+                did_resume, cleared_shutdown, ret, q->state, q->active);
+    else if (q->endp_addr == 0x00)
+        pr_debug("bce-vhci: EP0 resume dev=%u src=%x paused_by=%x->%x did_resume=%u ret=%d state=%x active=%u\n",
+                q->dev_addr, src, old_paused_by, q->paused_by, did_resume,
+                ret, q->state, q->active);
     mutex_unlock(&q->pause_lock);
     return ret;
 }
@@ -299,12 +335,25 @@ int bce_vhci_transfer_queue_suspend_pause(struct bce_vhci_transfer_queue *q)
     int pending;
     long timeout;
     int ret = 0;
+    u32 old_paused_by;
 
     mutex_lock(&q->pause_lock);
-    if ((q->paused_by & BCE_VHCI_PAUSE_SUSPEND) == BCE_VHCI_PAUSE_SUSPEND)
+    old_paused_by = q->paused_by;
+    if ((q->paused_by & BCE_VHCI_PAUSE_SUSPEND) == BCE_VHCI_PAUSE_SUSPEND) {
+        pr_debug("bce-vhci: system suspend dev=%u ep=%02x path=already-suspend paused_by=%x state=%x active=%u\n",
+                q->dev_addr, q->endp_addr, q->paused_by, q->state, q->active);
         goto out;
+    }
     if (q->paused_by) {
+        /*
+         * Another owner already paused the endpoint. In that case system
+         * suspend only records its own ownership bit and must not send a
+         * second firmware pause for the same queue.
+         */
         q->paused_by |= BCE_VHCI_PAUSE_SUSPEND;
+        pr_debug("bce-vhci: system suspend dev=%u ep=%02x path=mark-only paused_by=%x->%x state=%x active=%u\n",
+                q->dev_addr, q->endp_addr, old_paused_by, q->paused_by,
+                q->state, q->active);
         goto out;
     }
 
@@ -333,6 +382,9 @@ int bce_vhci_transfer_queue_suspend_pause(struct bce_vhci_transfer_queue *q)
         goto out;
     }
     q->paused_by |= BCE_VHCI_PAUSE_SUSPEND;
+    pr_debug("bce-vhci: system suspend dev=%u ep=%02x path=firmware-pause paused_by=%x->%x ret=%d state=%x active=%u\n",
+            q->dev_addr, q->endp_addr, old_paused_by, q->paused_by,
+            ret, q->state, q->active);
 
 out:
     mutex_unlock(&q->pause_lock);
@@ -370,6 +422,60 @@ static void bce_vhci_transfer_queue_reset_w(struct work_struct *work)
 void bce_vhci_transfer_queue_request_reset(struct bce_vhci_transfer_queue *q)
 {
     queue_work(q->vhci->tq_state_wq, &q->w_reset);
+}
+
+static void bce_vhci_transfer_queue_ep0_retry_w(struct work_struct *work)
+{
+    struct bce_vhci_transfer_queue *q =
+        container_of(to_delayed_work(work), struct bce_vhci_transfer_queue, w_ep0_retry);
+    struct urb *urb;
+    struct bce_vhci_urb *vurb;
+    unsigned long flags;
+
+    spin_lock_irqsave(&q->urb_lock, flags);
+    if (list_empty(&q->endp->urb_list))
+        goto out_unlock;
+
+    urb = list_first_entry(&q->endp->urb_list, struct urb, urb_list);
+    vurb = urb->hcpriv;
+    if (!vurb || !vurb->status3_retrying)
+        goto out_unlock;
+
+    if (time_after_eq(jiffies, vurb->status3_deadline)) {
+        pr_debug("bce-vhci: [00] EP0 status=3 retry timeout dev=%u, completing -EPIPE\n",
+                q->dev_addr);
+        vurb->status3_retrying = false;
+        bce_vhci_urb_complete(vurb, -EPIPE);
+        goto out_unlock;
+    }
+
+    if (vurb->state != BCE_VHCI_URB_CONTROL_STATUS3_RETRY_WAIT) {
+        queue_delayed_work(q->vhci->tq_state_wq, &q->w_ep0_retry,
+                msecs_to_jiffies(BCE_VHCI_EP0_STATUS3_RETRY_MS));
+        goto out_unlock;
+    }
+
+    if (!q->active) {
+        queue_delayed_work(q->vhci->tq_state_wq, &q->w_ep0_retry,
+                msecs_to_jiffies(BCE_VHCI_EP0_STATUS3_RETRY_MS));
+        goto out_unlock;
+    }
+
+    if (bce_vhci_transfer_queue_can_init_urb(q)) {
+        pr_debug("bce-vhci: [00] EP0 status=3 retry submit dev=%u remaining=%u\n",
+                q->dev_addr, q->remaining_active_requests);
+        vurb->state = BCE_VHCI_URB_INIT_PENDING;
+        bce_vhci_urb_init(vurb);
+        queue_delayed_work(q->vhci->tq_state_wq, &q->w_ep0_retry,
+                msecs_to_jiffies(BCE_VHCI_EP0_STATUS3_RETRY_MS));
+    } else {
+        queue_delayed_work(q->vhci->tq_state_wq, &q->w_ep0_retry,
+                msecs_to_jiffies(BCE_VHCI_EP0_STATUS3_RETRY_MS));
+    }
+
+out_unlock:
+    spin_unlock_irqrestore(&q->urb_lock, flags);
+    bce_vhci_transfer_queue_giveback(q);
 }
 
 static void bce_vhci_transfer_queue_init_pending_urbs(struct bce_vhci_transfer_queue *q)
@@ -496,7 +602,8 @@ int bce_vhci_urb_request_cancel(struct bce_vhci_transfer_queue *q, struct urb *u
     vurb->state = BCE_VHCI_URB_CANCELLED;
 
     /* If the URB wasn't posted to the device yet, we can still remove it on the host without pausing the queue. */
-    if (old_state != BCE_VHCI_URB_INIT_PENDING) {
+    if (old_state != BCE_VHCI_URB_INIT_PENDING &&
+        old_state != BCE_VHCI_URB_CONTROL_STATUS3_RETRY_WAIT) {
         pr_debug("bce-vhci: [%02x] Cancelling URB\n", q->endp_addr);
 
         spin_unlock_irqrestore(&q->urb_lock, flags);
@@ -512,7 +619,8 @@ int bce_vhci_urb_request_cancel(struct bce_vhci_transfer_queue *q, struct urb *u
 
     usb_hcd_giveback_urb(q->vhci->hcd, urb, status);
 
-    if (old_state != BCE_VHCI_URB_INIT_PENDING)
+    if (old_state != BCE_VHCI_URB_INIT_PENDING &&
+        old_state != BCE_VHCI_URB_CONTROL_STATUS3_RETRY_WAIT)
         bce_vhci_transfer_queue_resume(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
 
     kfree(vurb);
@@ -638,7 +746,6 @@ static int bce_vhci_urb_data_transfer_completion(struct bce_vhci_urb *urb, struc
 static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
 {
     struct bce_vhci_transfer_queue *q = urb->q;
-    int port;
     if (urb->received_status == 0)
         return 0;
     if (urb->state == BCE_VHCI_URB_DATA_TRANSFER_COMPLETE ||
@@ -646,24 +753,33 @@ static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
         urb->state != BCE_VHCI_URB_CONTROL_WAITING_FOR_SETUP_COMPLETION)) {
         urb->state = BCE_VHCI_URB_CONTROL_COMPLETE;
         if (urb->received_status != BCE_VHCI_SUCCESS) {
-            if (urb->received_status == 3 && q->endp_addr == 0x00) {
-                for (port = 1; port <= q->vhci->port_count; port++) {
-                    if (q->vhci->port_to_device[port] != q->dev_addr)
-                        continue;
-                    set_bit(port - 1, &q->vhci->port_resume_requested);
-                    set_bit(port - 1, &q->vhci->port_change_waiting);
-                    q->vhci->stateful_resume_gating = true;
-                    queue_delayed_work(q->vhci->tq_state_wq,
-                                       &q->vhci->w_port_status_change, 0);
-                    break;
+            if (urb->received_status == 3 && urb->q->endp_addr == 0x00) {
+                /*
+                 * Keeps an EP0 status=3 control URB pending briefly, so transient T2
+                 * not-ready replies do not immediately force usbcore into a
+                 * reset/re-enumeration path on lsusb -v.
+                 */
+                if (!urb->status3_retrying) {
+                    urb->status3_retrying = true;
+                    urb->status3_deadline = jiffies +
+                            msecs_to_jiffies(BCE_VHCI_EP0_STATUS3_TIMEOUT_MS);
+                    pr_debug("bce-vhci: [00] EP0 status=3 dev=%u, retrying for up to %u ms\n",
+                            q->dev_addr, BCE_VHCI_EP0_STATUS3_TIMEOUT_MS);
                 }
+                urb->received_status = 0;
+                urb->send_offset = 0;
+                urb->receive_offset = 0;
+                urb->urb->actual_length = 0;
+                urb->state = BCE_VHCI_URB_CONTROL_STATUS3_RETRY_WAIT;
+                if (q->remaining_active_requests < q->max_active_requests)
+                    q->remaining_active_requests++;
+                queue_delayed_work(q->vhci->tq_state_wq, &q->w_ep0_retry,
+                        msecs_to_jiffies(BCE_VHCI_EP0_STATUS3_RETRY_MS));
+                return 0;
             }
-            if (urb->received_status == 3)
-                pr_info("bce-vhci: [%02x] URB failed - expected behaviour when 3 but TODO: %x\n",
-                        urb->q->endp_addr, urb->received_status);
-            else
-                pr_err("bce-vhci: [%02x] URB failed: %x\n",
-                       urb->q->endp_addr, urb->received_status);
+
+            pr_err("bce-vhci: [%02x] URB failed: %x\n",
+                   urb->q->endp_addr, urb->received_status);
             urb->q->active = false;
             urb->q->stalled = true;
             bce_vhci_urb_complete(urb, -EPIPE);
@@ -671,6 +787,7 @@ static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
                 bce_vhci_transfer_queue_request_reset(q);
             return -ENOENT;
         }
+        urb->status3_retrying = false;
         bce_vhci_urb_complete(urb, 0);
         return -ENOENT;
     }
