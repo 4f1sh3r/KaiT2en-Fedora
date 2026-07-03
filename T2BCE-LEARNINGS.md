@@ -520,3 +520,91 @@ wichtig:
 - `tq async resume done` liefert `ret!=0` oder bleibt bei `active=0`.
 - Danach kommt wieder `EP0 status=3`.
 - Es gibt weiterhin `scheduling while atomic`.
+
+Meilenstein:
+
+- Teststand: `t2bce` `srcversion=D975F4A2DA35CC283AC039A`.
+- Nach einem normalen Boot funktioniert die native Touch-Bar-Anzeige erstmals
+  zuverlaessig:
+  - Die Touch Bar ist sichtbar.
+  - Fn schaltet grafisch zwischen F-Keys und der Standardansicht
+    (Brightness/Media/Volume) um.
+  - Mehrere schnelle Umschaltungen funktionieren stabil.
+- Die entscheidende Log-Signatur ist jetzt gesund:
+
+```text
+bce-vhci: EP0 event defer-inactive-internal-pause ...
+bce-vhci: EP0 event deferred-deliver ...
+bce-vhci: EP0 event deferred-consumed ...
+bce-vhci: EP0 control setup-request ...
+bce-vhci: EP0 control data-complete ...
+bce-vhci: EP0 control complete ...
+t2touchbar_kbd ... touchbar mode request sent: mode=...
+```
+
+- Damit ist der vorherige Hauptfehler im Fn-/Mode-Report-Pfad bestaetigt:
+  t2bce hatte einen EP0-`TRANSFER_REQUEST` im internen Pausefenster verloren.
+  Das Deferring dieses Events ist nicht nur ein Workaround, sondern passt zum
+  beobachteten Protokollverhalten: Der T2 hatte den Request bereits geschickt,
+  Linux hatte aber noch keinen passenden aktiven URB.
+- Die vorherige Regression `BUG: scheduling while atomic` ist in diesem Test
+  nicht mehr aufgetreten. Die async Workqueue-Recovery ist damit die richtige
+  Richtung.
+
+Noch offen nach Suspend/Resume:
+
+- Suspend funktioniert und der Rechner kommt wieder zurueck.
+- Resume dauert weiterhin sehr lange. Im Testlog:
+
+```text
+PM: resume devices took 34.349 seconds
+WARNING: kernel/power/suspend_test.c:53 at suspend_test_finish+0x55/0x70
+```
+
+- Diese Warning wirkt wie eine Folge der langen Resume-Phase, nicht wie der
+  urspruengliche Touch-Bar-EP0-Bug.
+- Direkt nach Resume ist die Touch Bar zunaechst schwarz und funktionslos.
+- Ein Druck auf Fn sendet einen neuen Mode-Report; dadurch wird die Touch Bar
+  sofort wieder sichtbar und schaltet danach wieder korrekt zwischen F-Keys
+  und Standardansicht.
+- Der Resume-Pfad sieht weiterhin unschoen aus:
+  - `EP0 status=3` auf Port 6 tritt weiterhin rund um Resume auf.
+  - Der EP0-Reset-Pfad erholt sich davon.
+  - Port 5 meldet `raw=40285` und `resume retries exhausted`.
+  - Mehrere interne USB-Geraete werden nach Resume reset/re-enumeriert.
+  - Das passt zur langen Resume-Zeit und ist wahrscheinlich ein separater,
+    tieferer Port-/Endpoint-Readiness-Fall.
+
+Naechste sinnvolle Schritte:
+
+1. Touch-Bar-Wakeup nach Resume gezielt fixen.
+
+   Weil ein manueller Fn-Druck die Touch Bar sicher wiederbelebt, ist der
+   naechste kleine, gut testbare Fix ein automatischer Mode-Refresh nach
+   Resume. Der sollte nicht in t2bce blind HID-Reports erfinden, sondern im
+   Touch-Bar-HID-Treiber den bereits bekannten aktuellen Modus erneut senden,
+   sobald das HID-Device nach Resume wieder nutzbar ist. Wahrscheinlich als
+   delayed work, damit der Report nicht zu frueh in die Port-Ready-Phase faellt.
+
+2. Resume-Latenz separat analysieren.
+
+   Die 34 Sekunden kommen nicht mehr vom Fn-Mode-Report-Bug. Hier sollten wir
+   die Port-Worker-/Hub-Logs fokussieren, insbesondere:
+
+```text
+bce-vhci: port worker resume retries exhausted port=5 raw=40285 ...
+usb 5-x: reset high-speed USB device ...
+bce_vhci_reset_device ...
+PM: resume devices took ...
+```
+
+   Ziel ist herauszufinden, ob wir beim Resume zu breit resetten, ob Port 5
+   die anderen Ports blockiert, oder ob `0x285/0x40285` eine eigene
+   Readiness-Behandlung braucht.
+
+3. Logging spaeter wieder ausduennen.
+
+   Das aktuelle EP0-Logging ist fuer Diagnose gut, aber fuer einen spaeteren
+   Upstream-Patch zu laut. Sobald der Touch-Bar-Wakeup-Fix und die
+   Resume-Latenz verstanden sind, sollten wir die Logs auf gezielte
+   `pr_debug()`/Fehlerfaelle reduzieren.
