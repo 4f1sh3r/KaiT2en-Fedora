@@ -45,6 +45,7 @@ struct bce_vhci {
     unsigned long port_resume_requested;
     /* Pass-1 port resume was sent; pass 2 may resume queues after settle time. */
     unsigned long port_resume_pass1_done;
+    unsigned long resume_reset_guard_until;
     u8 port_resume_tries[17];
     bool no_state_resume;
     bool hcd_registered;
