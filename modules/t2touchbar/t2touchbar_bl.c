@@ -36,6 +36,7 @@ struct appletb_bl {
 	struct backlight_device *bdev;
 
 	bool full_on;
+	u8 last_requested_brightness;
 };
 
 static const u8 appletb_bl_brightness_map[] = {
@@ -49,6 +50,9 @@ static int appletb_bl_set_brightness(struct appletb_bl *bl, u8 brightness)
 	struct hid_report *report = bl->brightness_field->report;
 	struct hid_device *hdev = report->device;
 	int ret;
+
+	pr_info("appletb_bl_set_brightness: entry brightness=%u full_on=%d\n",
+		brightness, bl->full_on);
 
 	ret = hid_set_field(bl->aux1_field, 0, 1);
 	if (ret) {
@@ -73,6 +77,9 @@ static int appletb_bl_set_brightness(struct appletb_bl *bl, u8 brightness)
 	}
 
 	hid_hw_request(hdev, report, HID_REQ_SET_REPORT);
+	bl->last_requested_brightness = brightness;
+	pr_info("appletb_bl_set_brightness: hid_hw_request issued brightness=%u\n",
+		brightness);
 
 	if (brightness == APPLETB_BL_OFF) {
 		hid_hw_power(hdev, PM_HINT_NORMAL);
@@ -183,6 +190,39 @@ static void appletb_bl_remove(struct hid_device *hdev)
 	hid_hw_stop(hdev);
 }
 
+static int appletb_bl_suspend(struct hid_device *hdev, pm_message_t msg)
+{
+	struct appletb_bl *bl = hid_get_drvdata(hdev);
+
+	pr_info("appletb_bl_suspend: entry last_requested_brightness=%u full_on=%d bdev_brightness=%d bdev_blank=%d\n",
+		bl->last_requested_brightness, bl->full_on,
+		bl->bdev ? backlight_get_brightness(bl->bdev) : -1,
+		bl->bdev ? backlight_is_blank(bl->bdev) : -1);
+
+	return 0;
+}
+
+static int appletb_bl_resume(struct hid_device *hdev)
+{
+	struct appletb_bl *bl = hid_get_drvdata(hdev);
+	int ret;
+
+	pr_info("appletb_bl_resume: entry last_requested_brightness=%u full_on=%d bdev_brightness=%d bdev_blank=%d\n",
+		bl->last_requested_brightness, bl->full_on,
+		bl->bdev ? backlight_get_brightness(bl->bdev) : -1,
+		bl->bdev ? backlight_is_blank(bl->bdev) : -1);
+
+	if (!bl->bdev) {
+		pr_warn("appletb_bl_resume: no backlight device, nothing to restore\n");
+		return 0;
+	}
+
+	ret = appletb_bl_update_status(bl->bdev);
+	pr_info("appletb_bl_resume: appletb_bl_update_status returned %d\n", ret);
+
+	return ret;
+}
+
 static const struct hid_device_id appletb_bl_hid_ids[] = {
 	/* MacBook Pro's 2018, 2019, with T2 chip: iBridge DFR Brightness */
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) },
@@ -195,6 +235,9 @@ static struct hid_driver appletb_bl_hid_driver = {
 	.id_table = appletb_bl_hid_ids,
 	.probe = appletb_bl_probe,
 	.remove = appletb_bl_remove,
+	.suspend = pm_ptr(appletb_bl_suspend),
+	.resume = pm_ptr(appletb_bl_resume),
+	.reset_resume = pm_ptr(appletb_bl_resume),
 };
 module_hid_driver(appletb_bl_hid_driver);
 
