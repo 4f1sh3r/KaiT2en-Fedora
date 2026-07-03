@@ -326,3 +326,27 @@ Neuer Test-Patch:
   - Neue EP0-Logs zeigen, ob spaetere Control-URBs auf einer inaktiven,
     pausierten oder gestallten Queue landen:
     `EP0 enqueue ... active=... paused_by=... stalled=...`.
+
+Folgeanalyse:
+
+- Der `keep ep0 active`-Patch reichte nicht. Nach dem naechsten Test blieb die
+  Touch-Bar-Grafik weiterhin stale.
+- Entscheidend war das neue Log:
+  `EP0 enqueue dev=2 port=6 active=0 paused_by=0 stalled=0 state=2`.
+- `state=2` ist `BCE_VHCI_ENDPOINT_STALLED`. Damit war die lokale
+  `stalled`-Boolean zwar geloescht, der Firmware-Endpunktzustand stand aber
+  weiterhin auf STALLED. Ergebnis: keine Pause, kein lokaler Stall, aber auch
+  kein aktiver Endpunkt. Das ist ein Zombie-Zustand.
+
+Neuer Test-Patch:
+
+- `d2555d9 t2bce: reset ep0 after status3 stalls`
+  - EP0-Status `3` setzt EP0 bewusst auf stalled/inactive und startet immer
+    den vorhandenen Endpoint-Reset-Worker.
+  - Der Worker sendet `ENDPOINT_RESET` und danach `ENDPOINT_SET_STATE ACTIVE`.
+  - Firmware-Events, die EP0 explizit auf STALLED setzen, werden nun geloggt
+    und triggern ebenfalls den EP0-Reset-Worker.
+  - Erwartete gute Signatur: nach `EP0 status=3 ... scheduling endpoint reset`
+    sollten `tq reset start/command/done ... ep=00 ... state=0 active=1`
+    folgen. Danach sollten Fn-Mode-Reports nicht mehr auf
+    `active=0 state=2` laufen.
