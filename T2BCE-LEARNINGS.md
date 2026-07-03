@@ -296,3 +296,33 @@ Neue Test-Patches:
   - Der logische `current_mode` wird sofort aktualisiert, damit die F-Key-
     Funktion nicht auf den asynchronen Report warten muss.
   - Ziel: keine `scheduling while atomic`-Warnings mehr beim Fn-Umschalten.
+
+Folgeanalyse desselben Teststands:
+
+- Der Workqueue-Patch wirkt gegen die Kernel-Warning: Beim Fn-Test tauchte keine
+  neue `scheduling while atomic`-Warnung mehr auf.
+- Der Grafikwechsel blieb trotzdem kaputt. Logs zeigten vor und nach Suspend:
+  `touchbar mode queued from input path: mode=1`, direkt gefolgt von
+  `usb_submit_urb(ctrl) failed: -1`.
+- Damit ist klar: der Fn-Pfad feuert, aber der Control-URB fuer den HID-
+  Output-Report kommt nicht sauber durch.
+- Kurz nach der Enumeration von `usb 5-6` (`05ac:8302`, Touch Bar Display)
+  trat bereits beim Boot ein EP0-Status `3` auf:
+  `bce-vhci: [00] URB failed - expected behaviour when 3 but TODO: 3`.
+- Der alte Code setzte bei diesem Status die EP0-Queue auf
+  `active=false/stalled=true`. Danach kann die Touch Bar zwar das zuletzt
+  angezeigte Bild weiter darstellen und logisch Eingaben liefern, neue
+  Mode-Reports bleiben aber im Control-Pfad stecken oder werden von usbcore/
+  usbhid abgewiesen.
+
+Neuer Test-Patch:
+
+- `26cd2bc t2bce: keep ep0 active after status3`
+  - EP0-Status `3` wird weiterhin als fehlgeschlagener Control-URB an usbcore
+    abgeschlossen, aber die EP0-Queue wird nicht mehr dauerhaft auf
+    `stalled/inactive` gesetzt.
+  - Der Port-Recovery-Pfad (`port_resume_requested` /
+    `port_change_waiting`) wird weiter aktiviert.
+  - Neue EP0-Logs zeigen, ob spaetere Control-URBs auf einer inaktiven,
+    pausierten oder gestallten Queue landen:
+    `EP0 enqueue ... active=... paused_by=... stalled=...`.
