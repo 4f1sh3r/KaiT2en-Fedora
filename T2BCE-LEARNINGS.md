@@ -636,15 +636,15 @@ Interpretation:
   die Touch Bar nach Resume erst durch einen spaeteren EP0-Transfer wieder
   sichtbar wird.
 
-Neuer gezielter Test:
+Getesteter Ansatz:
 
 - Wenn ein Port nach den lokalen Resume-Versuchen weiter `needs_resume` bleibt,
-  fuehrt t2bce nun einmal pro Port/Resume-Zyklus intern
+  fuehrte t2bce testweise einmal pro Port/Resume-Zyklus intern
   `bce_vhci_reset_device()` aus.
-- Wichtig: Das passiert im t2bce-Port-Worker, waehrend usbcore weiter gegatet
-  bleibt. Ziel ist, den BCE-internen Device-/Endpoint-Zustand zu erneuern,
-  ohne usbcore einen Root-Hub-Port-Reset und Re-enumeration ausloesen zu lassen.
-- Neues Logging:
+- Das passierte im t2bce-Port-Worker, waehrend usbcore weiter gegatet blieb.
+  Ziel war, den BCE-internen Device-/Endpoint-Zustand zu erneuern, ohne usbcore
+  einen Root-Hub-Port-Reset und Re-enumeration ausloesen zu lassen.
+- Log-Signatur:
 
 ```text
 bce-vhci: port worker internal reset for resume-stuck port=...
@@ -652,11 +652,57 @@ bce-vhci: port worker internal reset done port=... status=...
 bce-vhci: port worker resume retries exhausted after internal reset ...
 ```
 
-Bewertungskriterien fuer den naechsten Test:
+Testergebnis:
 
-- Idealfall: Port 5 wird nach dem internen Reset `ready`, usbcore sieht keinen
-  suspendierten `status=505` mehr, `usb 5-x: reset high-speed` verschwindet
-  oder wird deutlich weniger, `PM: resume devices took ...` sinkt deutlich.
-- Falls es scheitert: Die neuen Logs zeigen, ob `bce_vhci_reset_device()` selbst
-  fehlschlaegt, ob der Port danach weiter `0x285` meldet, oder ob usbcore trotz
-  internem Reset weiterhin den Root-Hub-Reset-Pfad startet.
+- Dieser Ansatz wurde mit `t2bce`-Srcversion `15744D4CA7C1B8A832FEAD4`
+  getestet und wieder zurueckgenommen.
+- Nach Resume blieb Port 5 zunaechst auf `0x40285`.
+- Der interne Reset lief formal erfolgreich:
+
+```text
+bce-vhci: port worker internal reset for resume-stuck port=5 raw=40285 tries=10 waiting=10
+bce-vhci: port worker internal reset done port=5 raw=40285 status=0 waiting=10
+```
+
+- Danach meldete Port 5 aber `raw=40215`, also ready plus Connection-Change:
+
+```text
+bce-vhci: port worker poll port=5 raw=40215 waiting=10 ...
+bce-vhci: port worker ready port=5 waiting=0
+bce-vhci: hub GetPortStatus port=5 raw=40215 status=503 change=1 ...
+```
+
+- usbcore startete danach trotzdem Root-Hub-Reset-/Re-enumeration-Pfade ueber
+  mehrere BCE-Geraete:
+
+```text
+usb 5-1: reset high-speed USB device ...
+usb 5-2: reset high-speed USB device ...
+usb 5-3: reset high-speed USB device ...
+usb 5-4: reset high-speed USB device ...
+usb 5-6: reset high-speed USB device ...
+usb 5-7: reset high-speed USB device ...
+```
+
+- Resume dauerte weiterhin ca. 34 Sekunden und erzeugte wieder die bekannte
+  Suspend-Test-Warning:
+
+```text
+PM: resume devices took 34.369 seconds
+WARNING: kernel/power/suspend_test.c:53 ...
+```
+
+- Schlimmer: Nach Resume waren Tastatur, Trackpad und Touch Bar nicht mehr
+  bedienbar; ein Neustart per SSH war noetig.
+
+Schlussfolgerung:
+
+- `bce_vhci_reset_device()` aus dem Port-Worker ist kein sauberer Fix fuer
+  `0x40285`/`0x285` auf Port 5.
+- Der interne Reset verbessert die sichtbaren Portbits, erzeugt aber offenbar
+  einen Connection-Change-/Rebind-Zustand, den usbcore trotzdem als Resetbedarf
+  interpretiert. Damit wird die Re-enumeration nicht verhindert, sondern der
+  HID-Zustand nach Resume eher schlechter.
+- Diesen Ansatz nicht weiter ausbauen. Der naechste sinnvolle Versuch sollte
+  wieder vor dem Reset ansetzen: Port-5-Readiness/Endpoint-State verstehen,
+  ohne `bce_vhci_reset_device()` als interne Abkuerzung zu benutzen.

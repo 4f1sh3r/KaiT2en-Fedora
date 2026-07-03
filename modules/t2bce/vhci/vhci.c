@@ -125,7 +125,6 @@ int bce_vhci_create(struct t2bce_device *dev, struct bce_vhci *vhci)
     vhci->port_change_waiting = 0;
     vhci->port_resume_requested = 0;
     vhci->port_resume_pass1_done = 0;
-    vhci->port_internal_reset_done = 0;
     vhci->resume_reset_guard_until = 0;
     memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
     vhci->stateful_resume_gating = false;
@@ -697,7 +696,6 @@ static int bce_vhci_bus_suspend(struct usb_hcd *hcd)
     vhci->port_change_pending = 0;
     vhci->port_resume_requested = 0;
     vhci->port_resume_pass1_done = 0;
-    vhci->port_internal_reset_done = 0;
     memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
     vhci->system_suspending = true;
     vhci->stateful_resume_gating = false;
@@ -758,7 +756,6 @@ static int bce_vhci_resume_stateful(struct usb_hcd *hcd)
     vhci->port_change_waiting = bce_vhci_all_port_bits(vhci);
     vhci->port_resume_requested = 0;
     vhci->port_resume_pass1_done = 0;
-    vhci->port_internal_reset_done = 0;
     memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
     vhci->stateful_resume_gating = true;
 
@@ -786,7 +783,6 @@ static int bce_vhci_bus_resume(struct usb_hcd *hcd)
     vhci->port_change_pending = 0;
     vhci->port_resume_requested = 0;
     vhci->port_resume_pass1_done = 0;
-    vhci->port_internal_reset_done = 0;
     memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
     vhci->system_suspending = false;
     WRITE_ONCE(vhci->resume_reset_guard_until,
@@ -1160,7 +1156,6 @@ static void bce_vhci_port_status_change_w(struct work_struct *ws)
             clear_bit(port, &vhci->port_change_pending);
             clear_bit(port, &vhci->port_resume_requested);
             clear_bit(port, &vhci->port_resume_pass1_done);
-            clear_bit(port, &vhci->port_internal_reset_done);
             pr_info("bce-vhci: port worker disconnected port=%d raw=%x waiting=%lx\n",
                     port + 1, port_status, READ_ONCE(vhci->port_change_waiting));
             continue;
@@ -1188,25 +1183,8 @@ static void bce_vhci_port_status_change_w(struct work_struct *ws)
                 continue;
             }
 
-            if (!test_bit(port, &vhci->port_internal_reset_done)) {
-                int reset_status;
-
-                set_bit(port, &vhci->port_internal_reset_done);
-                pr_warn("bce-vhci: port worker internal reset for resume-stuck port=%d raw=%x tries=%u waiting=%lx\n",
-                        port + 1, port_status, vhci->port_resume_tries[port + 1],
-                        READ_ONCE(vhci->port_change_waiting));
-                reset_status = bce_vhci_reset_device(vhci, port + 1, 20);
-                pr_warn("bce-vhci: port worker internal reset done port=%d raw=%x status=%d waiting=%lx\n",
-                        port + 1, port_status, reset_status,
-                        READ_ONCE(vhci->port_change_waiting));
-                vhci->port_resume_tries[port + 1] = 0;
-                retry = true;
-                retry_delay = msecs_to_jiffies(50);
-                continue;
-            }
-
             /* Stop local retrying; only real firmware change bits should wake usbcore. */
-            pr_warn("bce-vhci: port worker resume retries exhausted after internal reset port=%d raw=%x waiting=%lx\n",
+            pr_warn("bce-vhci: port worker resume retries exhausted port=%d raw=%x waiting=%lx\n",
                     port + 1, port_status, READ_ONCE(vhci->port_change_waiting));
             clear_bit(port, &vhci->port_change_waiting);
             continue;
@@ -1243,7 +1221,6 @@ static void bce_vhci_port_status_change_w(struct work_struct *ws)
             clear_bit(port, &vhci->port_change_pending);
             clear_bit(port, &vhci->port_resume_requested);
             clear_bit(port, &vhci->port_resume_pass1_done);
-            clear_bit(port, &vhci->port_internal_reset_done);
             pr_info("bce-vhci: port worker ready port=%d waiting=%lx\n",
                     port + 1, READ_ONCE(vhci->port_change_waiting));
         } else {
