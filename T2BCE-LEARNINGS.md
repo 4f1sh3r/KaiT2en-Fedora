@@ -447,3 +447,17 @@ Naechster Test-Patch:
 - Ziel: Beim naechsten Test sehen, ob der Touch-Bar-SET_REPORT nach dem
   `EP0 status=3` schon beim Setup haengt, ob der T2 die Datenphase nicht
   anfordert, ob ein Status fehlt, oder ob usbcore/usbhid den URB cancelt.
+
+Erweiterter Logging-Patch:
+
+- Das Logging wurde gezielt um EP0-Events und EP0-Completions erweitert, ohne
+  Nicht-EP0-Datenpfade zu fluten.
+- Neue Signaturen:
+  - `EP0 event incoming/defer-.../drop-inactive/consumed`
+  - `EP0 event deferred-deliver/deferred-still-waiting/deferred-consumed`
+  - `EP0 event remove-pending`
+  - `EP0 completion incoming/aborted/empty`
+- Ziel: Erkennen, ob der T2 eine passende `TRANSFER_REQUEST`- oder
+  `CONTROL_TRANSFER_STATUS`-Nachricht schickt, ob diese in t2bce deferred wird,
+  ob sie wegen inaktiver Queue verworfen wird, oder ob eine SQ-Completion ohne
+  passenden URB auftaucht.
