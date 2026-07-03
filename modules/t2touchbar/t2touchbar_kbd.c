@@ -15,7 +15,6 @@
 #include <linux/sysfs.h>
 #include <linux/bitops.h>
 #include <linux/module.h>
-#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/backlight.h>
 #include <linux/mutex.h>
@@ -96,8 +95,6 @@ static int appletb_kbd_set_mode(struct appletb_kbd *kbd, u8 mode)
 {
 	struct hid_report *report = kbd->mode_field->report;
 	struct hid_device *hdev = report->device;
-	u8 *buf;
-	u32 len;
 	int ret;
 
 	ret = hid_hw_power(hdev, PM_HINT_FULLON);
@@ -112,42 +109,10 @@ static int appletb_kbd_set_mode(struct appletb_kbd *kbd, u8 mode)
 		goto power_normal;
 	}
 
-	len = hid_report_len(report);
-	buf = hid_alloc_report_buf(report, GFP_KERNEL);
-	if (!buf) {
-		ret = -ENOMEM;
-		hid_err(hdev, "Failed to allocate mode report buffer\n");
-		goto power_normal;
-	}
-
-	hid_output_report(report, buf);
-	hid_info(hdev,
-		 "touchbar mode raw request start: mode=%u report_id=%u report_type=%u len=%u\n",
-		 mode, report->id, report->type, len);
-
-	ret = hid_hw_raw_request(hdev, report->id, buf, len, report->type,
-				 HID_REQ_SET_REPORT);
-	if (ret < 0) {
-		hid_err(hdev,
-			"touchbar mode raw request failed: mode=%u report_id=%u len=%u ret=%pe\n",
-			mode, report->id, len, ERR_PTR(ret));
-		kfree(buf);
-		goto power_normal;
-	}
-
-	if (ret != len)
-		hid_warn(hdev,
-			 "touchbar mode raw request short transfer: mode=%u report_id=%u len=%u ret=%d\n",
-			 mode, report->id, len, ret);
-	else
-		hid_info(hdev,
-			 "touchbar mode raw request done: mode=%u report_id=%u len=%u ret=%d\n",
-			 mode, report->id, len, ret);
-
-	kfree(buf);
+	hid_hw_request(hdev, report, HID_REQ_SET_REPORT);
 
 	kbd->current_mode = mode;
-	ret = 0;
+	hid_info(hdev, "touchbar mode request sent: mode=%u\n", mode);
 
 power_normal:
 	hid_hw_power(hdev, PM_HINT_NORMAL);
