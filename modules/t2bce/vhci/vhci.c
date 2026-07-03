@@ -324,24 +324,37 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
         hs->wHubChange = 0;
         return 0;
     } else if (typeReq == GetPortStatus && wLength >= 4 /* usb 2.0 */) {
+        unsigned long port_bit = (wIndex > 0 && wIndex <= vhci->port_count) ?
+                                  BIT(wIndex - 1) : 0;
+
         ps = (struct usb_port_status *) buf;
         ps->wPortStatus = 0;
         ps->wPortChange = 0;
 
-        if (vhci->stateful_resume_gating && READ_ONCE(vhci->port_change_waiting))
+        /*
+         * Gate on THIS port's bit only. port_change_waiting is a shared
+         * bitmask across all ports; gating on the whole mask meant a
+         * GetPortStatus for an already-ready port kept busy-waiting for
+         * up to BCE_VHCI_RESUME_GATE_TIMEOUT_MS as long as ANY other port
+         * was still not ready. usbcore polls several ports in sequence
+         * during resume, so that compounded into tens of real seconds of
+         * stall (observed ~30-50s) instead of the intended <=5s per port.
+         */
+        if (vhci->stateful_resume_gating && (READ_ONCE(vhci->port_change_waiting) & port_bit))
             pr_info("bce-vhci: hub GetPortStatus gate enter port=%u waiting=%lx\n",
                     wIndex, READ_ONCE(vhci->port_change_waiting));
 
         for (retries = 0; vhci->stateful_resume_gating &&
-                         READ_ONCE(vhci->port_change_waiting) &&
+                         (READ_ONCE(vhci->port_change_waiting) & port_bit) &&
                          retries < BCE_VHCI_RESUME_GATE_TIMEOUT_MS / 20;
              retries++)
             msleep(20);
 
-        if (vhci->stateful_resume_gating && READ_ONCE(vhci->port_change_waiting)) {
+        if (vhci->stateful_resume_gating && (READ_ONCE(vhci->port_change_waiting) & port_bit)) {
             pr_warn("bce-vhci: hub GetPortStatus gate timeout port=%u waiting=%lx\n",
                     wIndex, READ_ONCE(vhci->port_change_waiting));
-            vhci->stateful_resume_gating = false;
+            if (port_bit)
+                clear_bit(wIndex - 1, &vhci->port_change_waiting);
         }
 
         if (retries)
