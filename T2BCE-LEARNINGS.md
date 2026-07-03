@@ -374,3 +374,34 @@ Neuer Test-Patch:
   - Erwartete gute Signatur:
     `EP0 enqueue recovering stale internal pause ...` gefolgt von
     `tq resume ... ret=0 ... active=1 paused_by=0 state=0`.
+
+Folgeanalyse:
+
+- Der Recovery-Pfad funktioniert technisch: Beim naechsten Fn-Test setzte t2bce
+  EP0 vor dem Linken des Control-URB wieder auf
+  `active=1 paused_by=0 state=0`.
+- Der direkt folgende Mode-Transfer scheiterte aber weiterhin mit
+  `urb_reject=1` und `usb_submit_urb(ctrl) failed: -1`.
+- Damit ist der naechste sichtbare Fehler nicht mehr, dass EP0 lokal haengen
+  bleibt, sondern dass der asynchrone usbhid-Control-URB fuer den HID-
+  Output-Report in einem abgewiesenen/zuvor gekillten Zustand steckt.
+- Spaetere Mode-Umschaltungen wurden von `t2touchbar_kbd` als `request sent`
+  geloggt, ohne dass die Touch-Bar-Grafik wechselte. Dieser Pfad gibt ueber
+  `hid_hw_request()` keinen echten Transferstatus an den Treiber zurueck.
+
+Neuer Test-Patch:
+
+- `t2touchbar_kbd` schickt den Mode-Output-Report testweise nicht mehr ueber
+  `hid_hw_request()`, sondern serialisiert den HID-Report mit
+  `hid_output_report()` und sendet ihn synchron per `hid_hw_raw_request()`.
+- Die Fn-Input-Seite bleibt weiter in der Workqueue und setzt `current_mode`
+  sofort, damit die F-Key-Funktion logisch erhalten bleibt.
+- Neue Logs:
+  - `touchbar mode raw request start: mode=... report_id=... report_type=... len=...`
+  - `touchbar mode raw request done/failed/short transfer: ...`
+- Erwartete Erkenntnis:
+  - Wenn die Grafik danach umschaltet, war der alte asynchrone usbhid-
+    Control-URB-Pfad der unmittelbare Ausloeser.
+  - Wenn nicht, liefern die Raw-Request-Return-Codes erstmals harte Hinweise,
+    ob der Report den HCD erreicht, vom T2 abgelehnt wird, oder nur scheinbar
+    erfolgreich ist.
