@@ -4,6 +4,7 @@
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
 #include <linux/suspend.h>
+#include <linux/ktime.h>
 #include "audio/audio.h"
 #include <linux/version.h>
 
@@ -581,14 +582,29 @@ static void t2bce_log_pci_pm_state(const char *tag)
             dev->power.disable_depth);
 }
 
+/*
+ * Kernel log timestamps (both raw monotonic and journald's wall-clock
+ * conversion) are useless for measuring real suspend/resume duration on this
+ * hardware: CLOCK_MONOTONIC freezes for the entire time the CPU is actually
+ * asleep, so any two printk lines straddling a real S3 sleep appear only
+ * milliseconds apart regardless of how many real seconds were spent asleep.
+ * ktime_get_boottime() explicitly includes suspended time, so the delta
+ * computed from it is immune to that artifact and tells us the real elapsed
+ * wall-clock duration of one suspend/resume round trip.
+ */
+static ktime_t t2bce_suspend_prepare_boottime;
+
 static int t2bce_pm_notify(struct notifier_block *nb, unsigned long action, void *data)
 {
     switch (action) {
     case PM_SUSPEND_PREPARE:
+        t2bce_suspend_prepare_boottime = ktime_get_boottime();
         t2bce_log_pci_pm_state("PM_SUSPEND_PREPARE");
         break;
     case PM_POST_SUSPEND:
         t2bce_log_pci_pm_state("PM_POST_SUSPEND");
+        pr_info("t2bce: pm_notify: PM_SUSPEND_PREPARE->PM_POST_SUSPEND real boottime_elapsed_ms=%lld\n",
+                ktime_to_ms(ktime_sub(ktime_get_boottime(), t2bce_suspend_prepare_boottime)));
         break;
     case PM_HIBERNATION_PREPARE:
         t2bce_log_pci_pm_state("PM_HIBERNATION_PREPARE");
