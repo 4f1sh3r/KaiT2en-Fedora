@@ -140,7 +140,7 @@ static void bce_vhci_transfer_queue_log_event(struct bce_vhci_transfer_queue *q,
     if (!bce_vhci_transfer_queue_is_ep0(q))
         return;
 
-    pr_info("bce-vhci: EP0 event %s dev=%u port=%d cmd=%x msg_status=%x p1=%x p2=%llx active=%u paused_by=%x stalled=%u qstate=%u remaining=%u evq=%zu urb_empty=%d\n",
+    pr_debug("bce-vhci: EP0 event %s dev=%u port=%d cmd=%x msg_status=%x p1=%x p2=%llx active=%u paused_by=%x stalled=%u qstate=%u remaining=%u evq=%zu urb_empty=%d\n",
             stage, q->dev_addr, bce_vhci_transfer_queue_port(q),
             msg->cmd, msg->status, msg->param1, msg->param2,
             q->active, q->paused_by, q->stalled, q->state,
@@ -162,7 +162,7 @@ static void bce_vhci_transfer_queue_log_completion(struct bce_vhci_transfer_queu
     else if (sq == q->sq_out)
         sq_name = "out";
 
-    pr_info("bce-vhci: EP0 completion %s dev=%u port=%d sq=%s cstatus=%x data_size=%llu sq_out_pending=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u evq=%zu urb_empty=%d\n",
+    pr_debug("bce-vhci: EP0 completion %s dev=%u port=%d sq=%s cstatus=%x data_size=%llu sq_out_pending=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u evq=%zu urb_empty=%d\n",
             stage, q->dev_addr, bce_vhci_transfer_queue_port(q),
             sq_name, c->status, c->data_size,
             atomic_read(&q->sq_out_pending), q->active, q->paused_by,
@@ -181,7 +181,7 @@ static void bce_vhci_urb_log_control(struct bce_vhci_urb *urb, const char *stage
 
     ctrl = (struct usb_ctrlrequest *) urb->urb->setup_packet;
     if (!ctrl) {
-        pr_info("bce-vhci: EP0 control %s dev=%u port=%d urb_state=%u no-setup xfer_len=%u actual=%u send=%u recv=%u status=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u urb_reject=%d\n",
+        pr_debug("bce-vhci: EP0 control %s dev=%u port=%d urb_state=%u no-setup xfer_len=%u actual=%u send=%u recv=%u status=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u urb_reject=%d\n",
                 stage, q->dev_addr, bce_vhci_transfer_queue_port(q),
                 urb->state, urb->urb->transfer_buffer_length,
                 urb->urb->actual_length, urb->send_offset,
@@ -191,7 +191,7 @@ static void bce_vhci_urb_log_control(struct bce_vhci_urb *urb, const char *stage
         return;
     }
 
-    pr_info("bce-vhci: EP0 control %s dev=%u port=%d urb_state=%u dir=%s reqtype=%02x req=%02x value=%04x index=%04x wlen=%u xfer_len=%u actual=%u send=%u recv=%u status=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u urb_reject=%d\n",
+    pr_debug("bce-vhci: EP0 control %s dev=%u port=%d urb_state=%u dir=%s reqtype=%02x req=%02x value=%04x index=%04x wlen=%u xfer_len=%u actual=%u send=%u recv=%u status=%d active=%u paused_by=%x stalled=%u qstate=%u remaining=%u urb_reject=%d\n",
             stage, q->dev_addr, bce_vhci_transfer_queue_port(q),
             urb->state, usb_urb_dir_in(urb->urb) ? "in" : "out",
             ctrl->bRequestType, ctrl->bRequest,

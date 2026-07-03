@@ -382,7 +382,7 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
 
         if (port_status & BCE_VHCI_PORT_STATUS_C_CONNECTION)
             ps->wPortChange |= USB_PORT_STAT_C_CONNECTION;
-        pr_info("bce-vhci: hub GetPortStatus port=%u raw=%x status=%x change=%x guard_left_ms=%lu waiting=%lx\n",
+        pr_debug("bce-vhci: hub GetPortStatus port=%u raw=%x status=%x change=%x guard_left_ms=%lu waiting=%lx\n",
                 wIndex, port_status, ps->wPortStatus, ps->wPortChange,
                 bce_vhci_resume_reset_guard_left_ms(vhci),
                 READ_ONCE(vhci->port_change_waiting));
