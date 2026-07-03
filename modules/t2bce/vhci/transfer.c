@@ -360,9 +360,16 @@ static void bce_vhci_transfer_queue_reset_w(struct work_struct *work)
 
     mutex_lock(&q->pause_lock);
     spin_lock_irqsave(&q->urb_lock, flags);
+    pr_info("bce-vhci: tq reset start dev=%u port=%d ep=%02x active=%u paused_by=%x stalled=%u state=%u remaining=%u\n",
+            q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+            q->active, q->paused_by, q->stalled, q->state,
+            q->remaining_active_requests);
     if (!q->stalled) {
         spin_unlock_irqrestore(&q->urb_lock, flags);
         mutex_unlock(&q->pause_lock);
+        pr_info("bce-vhci: tq reset skipped dev=%u port=%d ep=%02x stalled=0 active=%u paused_by=%x state=%u\n",
+                q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+                q->active, q->paused_by, q->state);
         return;
     }
     q->active = false;
@@ -373,12 +380,18 @@ static void bce_vhci_transfer_queue_reset_w(struct work_struct *work)
         bce_cmd_flush_memory_queue(q->vhci->dev->cmd_cmdq, (u16) q->sq_in->qid);
     if (q->sq_out)
         bce_cmd_flush_memory_queue(q->vhci->dev->cmd_cmdq, (u16) q->sq_out->qid);
+    pr_info("bce-vhci: tq reset command dev=%u port=%d ep=%02x\n",
+            q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr);
     bce_vhci_cmd_endpoint_reset(&q->vhci->cq, q->dev_addr, (u8) (q->endp->desc.bEndpointAddress & 0x8F));
     spin_lock_irqsave(&q->urb_lock, flags);
     q->stalled = false;
     spin_unlock_irqrestore(&q->urb_lock, flags);
     mutex_unlock(&q->pause_lock);
     bce_vhci_transfer_queue_resume(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
+    pr_info("bce-vhci: tq reset done dev=%u port=%d ep=%02x active=%u paused_by=%x stalled=%u state=%u remaining=%u\n",
+            q->dev_addr, bce_vhci_transfer_queue_port(q), q->endp_addr,
+            q->active, q->paused_by, q->stalled, q->state,
+            q->remaining_active_requests);
 }
 
 void bce_vhci_transfer_queue_request_reset(struct bce_vhci_transfer_queue *q)
@@ -684,14 +697,16 @@ static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
                 }
             }
             if (urb->received_status == BCE_VHCI_USB_PIPE_STALL && q->endp_addr == 0x00) {
-                q->active = true;
-                q->stalled = false;
-                pr_info("bce-vhci: EP0 status=3 dev=%u port=%d state=%x; completing urb but keeping queue active paused_by=%x remaining=%u waiting=%lx requested=%lx\n",
+                q->active = false;
+                q->stalled = true;
+                q->state = BCE_VHCI_ENDPOINT_STALLED;
+                pr_info("bce-vhci: EP0 status=3 dev=%u port=%d state=%x; completing urb and scheduling endpoint reset paused_by=%x remaining=%u waiting=%lx requested=%lx\n",
                         q->dev_addr, port, urb->state, q->paused_by,
                         q->remaining_active_requests,
                         READ_ONCE(q->vhci->port_change_waiting),
                         READ_ONCE(q->vhci->port_resume_requested));
                 bce_vhci_urb_complete(urb, -EPIPE);
+                bce_vhci_transfer_queue_request_reset(q);
                 return -ENOENT;
             }
             if (urb->received_status == BCE_VHCI_USB_PIPE_STALL)
