@@ -461,3 +461,62 @@ Erweiterter Logging-Patch:
   `CONTROL_TRANSFER_STATUS`-Nachricht schickt, ob diese in t2bce deferred wird,
   ob sie wegen inaktiver Queue verworfen wird, oder ob eine SQ-Completion ohne
   passenden URB auftaucht.
+
+Folgeanalyse:
+
+- Das erweiterte EP0-Event-Logging zeigte den konkreten Fehler im
+  Touch-Bar-Mode-Pfad:
+  - Beim Fn-Mode-Report wird der alte Control-URB zuerst gecancelt.
+  - Dieser Cancel pausiert EP0 intern (`paused_by=1`,
+    `BCE_VHCI_PAUSE_INTERNAL_WQ`).
+  - Genau in diesem Fenster schickt der T2 einen neuen EP0
+    `TRANSFER_REQUEST` (`cmd=1000`, `p2=8`).
+  - Weil die Queue zu diesem Zeitpunkt `active=0` ist, wurde dieses Event
+    bisher als `drop-inactive` verworfen.
+  - Danach wartet der neu gelinkte Control-URB auf genau diesen
+    Setup-/Transfer-Request, der aber bereits weg ist. Das erklaert, warum
+    `t2touchbar_kbd` `request sent` loggt, die Grafik aber nicht umschaltet.
+- Derselbe Log zeigte ausserdem eine echte Regression in unserem
+  Recovery-Patch:
+  - `EP0 enqueue recovering stale internal pause` rief
+    `bce_vhci_transfer_queue_resume()` synchron aus dem URB-Enqueue-Pfad auf.
+  - Dieser Pfad kann rekursiv aus `usb_hcd_giveback_urb()` /
+    `usbhid`-Control-Callbacks kommen.
+  - Dadurch entstand `BUG: scheduling while atomic`.
+
+Neuer Test-Patch:
+
+- EP0-`TRANSFER_REQUEST`-Events werden waehrend einer internen EP0-Pause nicht
+  mehr verworfen, sondern als deferred Event behalten:
+  `EP0 event defer-inactive-internal-pause ...`.
+- Sobald EP0 wieder aktiv ist, sollte der normale Pending-Pfad das Event mit
+  `deferred-deliver` / `deferred-consumed` an den wartenden Control-URB
+  zustellen.
+- Die stale-internal-pause-Recovery aus `bce_vhci_urb_create()` wurde auf eine
+  Workqueue verlegt:
+  - `EP0 enqueue scheduling async stale internal pause recovery ...`
+  - `tq async resume start ...`
+  - `tq async resume done ...`
+- Damit darf im naechsten Test keine `scheduling while atomic`-Warnung mehr
+  entstehen.
+- Die Event-Deferral-Allocation nutzt nun `GFP_ATOMIC`, weil alle
+  Deferral-Aufrufe unter `urb_lock` laufen.
+
+Erwartete gute Signatur:
+
+```text
+bce-vhci: EP0 event defer-inactive-internal-pause ...
+bce-vhci: tq async resume start ...
+bce-vhci: tq async resume done ... ret=0 ... active=1 ...
+bce-vhci: EP0 event deferred-deliver ...
+bce-vhci: EP0 event deferred-consumed ...
+t2touchbar_kbd ... touchbar mode request sent: mode=1
+```
+
+Wenn die Grafik trotzdem nicht umschaltet, sind besonders diese Faelle
+wichtig:
+
+- Deferred Event bleibt liegen und wird nie `deferred-consumed`.
+- `tq async resume done` liefert `ret!=0` oder bleibt bei `active=0`.
+- Danach kommt wieder `EP0 status=3`.
+- Es gibt weiterhin `scheduling while atomic`.
