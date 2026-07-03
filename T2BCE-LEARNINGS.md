@@ -405,3 +405,45 @@ Neuer Test-Patch:
   - Wenn nicht, liefern die Raw-Request-Return-Codes erstmals harte Hinweise,
     ob der Report den HCD erreicht, vom T2 abgelehnt wird, oder nur scheinbar
     erfolgreich ist.
+
+Testergebnis:
+
+- Der Raw-Request ist kein Fix und wurde wieder reverted.
+- Beim Probe von `t2touchbar_kbd` kam:
+
+```text
+touchbar mode raw request start: mode=2 report_id=2 report_type=1 len=2
+touchbar mode raw request failed: mode=2 report_id=2 len=2 ret=-ETIMEDOUT
+Failed to set touchbar mode
+probe with driver t2touchbar_kbd failed with error -110
+```
+
+- Danach war `0003:05AC:8302.*` an keinen HID-Treiber mehr gebunden
+  (`driver=none`). Deshalb kamen beim Fn-Druecken keine weiteren
+  `touchbar mode ...`-Logs.
+- Das weiterhin sichtbare Touch-Bar-Bild ist sehr wahrscheinlich nur der letzte
+  vom Panel gehaltene/cached Frame. Ohne gebundenen `t2touchbar_kbd` ist das
+  kein Zeichen fuer einen gesunden Grafik-Update-Pfad.
+- Wichtige Erkenntnis: Auch ein synchroner SET_REPORT ueber EP0 landet in
+  `-ETIMEDOUT`. Der alte asynchrone `hid_hw_request()`-Pfad ist also nicht die
+  Root Cause; er versteckt den Fehler nur besser, weil er keinen direkten
+  Transferstatus an `t2touchbar_kbd` zurueckgibt.
+- Kurz vor dem Touch-Bar-Probe trat weiterhin `EP0 status=3 dev=2 port=6` auf.
+  Der naechste sinnvolle Ansatz bleibt damit im t2bce-EP0/Port-6-
+  Bereitschaftspfad, nicht im Touch-Bar-UI-Treiber.
+
+Naechster Test-Patch:
+
+- Der Raw-Request-Code wurde per eigenem Revert-Commit entfernt, damit
+  `t2touchbar_kbd` wieder wie zuvor binden kann.
+- Stattdessen loggt `t2bce` jetzt EP0-Control-URBs deutlich genauer:
+  - `enqueue`, `init-wait-setup`
+  - `setup-request`, `setup-sent`, `setup-complete`
+  - `data-start-out/in`, `data-request`, `data-sent`, `data-complete`
+  - `status-msg`, `complete`, `cancel-request`
+- Jede Zeile enthaelt Device, Port, URB-State, Setup-Request
+  (`reqtype`, `req`, `value`, `index`, `wlen`), Transferlaenge, Offsets,
+  T2-Status und Queue-State.
+- Ziel: Beim naechsten Test sehen, ob der Touch-Bar-SET_REPORT nach dem
+  `EP0 status=3` schon beim Setup haengt, ob der T2 die Datenphase nicht
+  anfordert, ob ein Status fehlt, oder ob usbcore/usbhid den URB cancelt.
