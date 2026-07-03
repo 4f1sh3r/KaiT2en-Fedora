@@ -501,7 +501,20 @@ int bce_vhci_transfer_queue_suspend_pause(struct bce_vhci_transfer_queue *q)
                         q->endp_addr, atomic_read(&q->sq_out_pending));
         }
     }
-    bce_vhci_transfer_queue_remove_pending(q);
+    /*
+     * Deliberately NOT calling bce_vhci_transfer_queue_remove_pending()
+     * here. This is the system-suspend pause path, not a device
+     * teardown/reset: any TRANSFER_REQUEST the T2 firmware already sent
+     * for this EP0 queue before suspend (deferred because no urb was
+     * ready to consume it yet) is still valid for the same device after
+     * resume. Discarding it here was found (via ftrace: usb_port_resume
+     * -> ... -> hub_port_init -> usb_get_status -> usb_control_msg
+     * blocking ~5s in wait_for_completion_timeout) to make the first
+     * post-resume EP0 control request on this endpoint (usbcore's
+     * GET_STATUS during hub_port_init) wait with nothing pending until
+     * the firmware noticed on its own and re-sent the request -- adding
+     * a real ~5s stall per port, dominating the whole resume delay.
+     */
     if ((status = bce_vhci_cmd_endpoint_set_state(
             &q->vhci->cq, q->dev_addr, endp_addr, BCE_VHCI_ENDPOINT_PAUSED, &q->state))) {
         ret = status;
