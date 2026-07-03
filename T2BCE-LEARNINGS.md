@@ -577,16 +577,15 @@ WARNING: kernel/power/suspend_test.c:53 at suspend_test_finish+0x55/0x70
 
 Naechste sinnvolle Schritte:
 
-1. Touch-Bar-Wakeup nach Resume gezielt fixen.
+1. Resume-Latenz / `0x285`-Portzustand in t2bce fixen.
 
-   Weil ein manueller Fn-Druck die Touch Bar sicher wiederbelebt, ist der
-   naechste kleine, gut testbare Fix ein automatischer Mode-Refresh nach
-   Resume. Der sollte nicht in t2bce blind HID-Reports erfinden, sondern im
-   Touch-Bar-HID-Treiber den bereits bekannten aktuellen Modus erneut senden,
-   sobald das HID-Device nach Resume wieder nutzbar ist. Wahrscheinlich als
-   delayed work, damit der Report nicht zu frueh in die Port-Ready-Phase faellt.
+   Ein automatischer Touch-Bar-Mode-Refresh nach Resume waere zwar naheliegend,
+   aber wahrscheinlich nur ein Workaround: Der manuelle Fn-Druck beweist vor
+   allem, dass spaetere EP0-Transfers funktionieren. Der sauberere Ansatz ist,
+   die Port-/Endpoint-Readiness in t2bce so zu reparieren, dass usbcore nach
+   Resume keine halb bereiten Ports sieht.
 
-2. Resume-Latenz separat analysieren.
+2. Port 5 `raw=0x40285`/`0x285` gezielt behandeln.
 
    Die 34 Sekunden kommen nicht mehr vom Fn-Mode-Report-Bug. Hier sollten wir
    die Port-Worker-/Hub-Logs fokussieren, insbesondere:
@@ -608,3 +607,56 @@ PM: resume devices took ...
    Upstream-Patch zu laut. Sobald der Touch-Bar-Wakeup-Fix und die
    Resume-Latenz verstanden sind, sollten wir die Logs auf gezielte
    `pr_debug()`/Fehlerfaelle reduzieren.
+
+## Versuch: interne BCE-Recovery fuer resume-stuck Ports
+
+Aktuelle Session nach dem Touch-Bar-Meilenstein:
+
+- t2bce-Version `D975F4A2DA35CC283AC039A` lief.
+- Touch Bar war native Config 1, `t2bdrm` war nicht geladen.
+- Zwei Resume-Zyklen zeigten dieselbe Signatur:
+
+```text
+bce_vhci: deferring endpoint resume until ports are ready waiting=7f
+bce-vhci: port worker poll port=5 raw=40285 ...
+bce-vhci: port worker PORT_RESUME port=5 raw=40285 try=...
+bce-vhci: port worker resume retries exhausted port=5 raw=40285 ...
+bce-vhci: hub GetPortStatus resume-suspended port=5 raw=40285 status=505 ...
+usb 5-x: reset high-speed USB device ...
+PM: resume devices took 34.xxx seconds
+```
+
+Interpretation:
+
+- Port 5 bleibt nach Resume in `0x40285`/`0x285` haengen.
+- Wiederholtes `PORT_RESUME` aendert diesen Zustand nicht.
+- Sobald das Gate aufgibt, sieht usbcore einen suspendierten/nicht aktivierten
+  Port und startet Root-Hub-Reset-/Re-enumeration-Pfade.
+- Das erklaert die lange Resume-Zeit und ist vermutlich auch der Grund, warum
+  die Touch Bar nach Resume erst durch einen spaeteren EP0-Transfer wieder
+  sichtbar wird.
+
+Neuer gezielter Test:
+
+- Wenn ein Port nach den lokalen Resume-Versuchen weiter `needs_resume` bleibt,
+  fuehrt t2bce nun einmal pro Port/Resume-Zyklus intern
+  `bce_vhci_reset_device()` aus.
+- Wichtig: Das passiert im t2bce-Port-Worker, waehrend usbcore weiter gegatet
+  bleibt. Ziel ist, den BCE-internen Device-/Endpoint-Zustand zu erneuern,
+  ohne usbcore einen Root-Hub-Port-Reset und Re-enumeration ausloesen zu lassen.
+- Neues Logging:
+
+```text
+bce-vhci: port worker internal reset for resume-stuck port=...
+bce-vhci: port worker internal reset done port=... status=...
+bce-vhci: port worker resume retries exhausted after internal reset ...
+```
+
+Bewertungskriterien fuer den naechsten Test:
+
+- Idealfall: Port 5 wird nach dem internen Reset `ready`, usbcore sieht keinen
+  suspendierten `status=505` mehr, `usb 5-x: reset high-speed` verschwindet
+  oder wird deutlich weniger, `PM: resume devices took ...` sinkt deutlich.
+- Falls es scheitert: Die neuen Logs zeigen, ob `bce_vhci_reset_device()` selbst
+  fehlschlaegt, ob der Port danach weiter `0x285` meldet, oder ob usbcore trotz
+  internem Reset weiterhin den Root-Hub-Reset-Pfad startet.
