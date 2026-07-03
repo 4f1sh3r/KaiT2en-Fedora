@@ -3,6 +3,7 @@
 #include <linux/crc32.h>
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
+#include <linux/suspend.h>
 #include "audio/audio.h"
 #include <linux/version.h>
 
@@ -23,6 +24,7 @@ static void bce_free_state_buffer(struct t2bce_device *bce);
 static int bce_pm_suspend_prepare(struct t2bce_device *bce);
 static void bce_pm_suspend_abort(struct t2bce_device *bce);
 static void bce_pm_resume_finish(struct t2bce_device *bce);
+static void t2bce_log_pci_pm_state(const char *tag);
 
 static int bce_alloc_state_buffer(struct t2bce_device *bce)
 {
@@ -469,6 +471,7 @@ static int t2bce_suspend(struct device *dev)
     int status;
 
     pr_info("t2bce: suspend: entry\n");
+    t2bce_log_pci_pm_state("t2bce_suspend");
     mutex_lock(&bce->pm_lock);
 
     bce->stateful_suspend_valid = false;
@@ -526,6 +529,7 @@ static int t2bce_resume(struct device *dev)
     bool used_stateful;
 
     pr_info("t2bce: resume: entry\n");
+    t2bce_log_pci_pm_state("t2bce_resume");
     mutex_lock(&bce->pm_lock);
 
     pci_set_master(bce->pci);
@@ -554,6 +558,55 @@ out_unlock:
     return status;
 }
 
+static void t2bce_log_pci_pm_state(const char *tag)
+{
+    struct t2bce_device *bce = global_bce;
+    struct device *dev;
+    struct pci_dev *pdev;
+
+    if (!bce || !bce->pci) {
+        pr_info("t2bce: pm_state[%s]: no device yet\n", tag);
+        return;
+    }
+
+    pdev = bce->pci;
+    dev = &pdev->dev;
+
+    pr_info("t2bce: pm_state[%s]: pci_current_state=%d runtime_status=%d "
+            "runtime_suspended=%d direct_complete=%d is_suspended=%d "
+            "usage_count=%d disable_depth=%u\n",
+            tag, (int)pdev->current_state, (int)dev->power.runtime_status,
+            pm_runtime_status_suspended(dev), (int)dev->power.direct_complete,
+            (int)dev->power.is_suspended, atomic_read(&dev->power.usage_count),
+            dev->power.disable_depth);
+}
+
+static int t2bce_pm_notify(struct notifier_block *nb, unsigned long action, void *data)
+{
+    switch (action) {
+    case PM_SUSPEND_PREPARE:
+        t2bce_log_pci_pm_state("PM_SUSPEND_PREPARE");
+        break;
+    case PM_POST_SUSPEND:
+        t2bce_log_pci_pm_state("PM_POST_SUSPEND");
+        break;
+    case PM_HIBERNATION_PREPARE:
+        t2bce_log_pci_pm_state("PM_HIBERNATION_PREPARE");
+        break;
+    case PM_POST_HIBERNATION:
+        t2bce_log_pci_pm_state("PM_POST_HIBERNATION");
+        break;
+    default:
+        pr_info("t2bce: pm_notify: unhandled action=%lu\n", action);
+        break;
+    }
+    return NOTIFY_OK;
+}
+
+static struct notifier_block t2bce_pm_nb = {
+    .notifier_call = t2bce_pm_notify,
+};
+
 static int t2bce_prepare(struct device *dev)
 {
     /*
@@ -566,6 +619,7 @@ static int t2bce_prepare(struct device *dev)
      * unconditionally here forces PCI core to always run our real
      * .suspend()/.resume() instead of taking that skip path.
      */
+    t2bce_log_pci_pm_state("t2bce_prepare");
     pr_info("t2bce: prepare: entry runtime_suspended=%d usage_count=%d\n",
             pm_runtime_status_suspended(dev), atomic_read(&dev->power.usage_count));
     return 0;
@@ -577,6 +631,7 @@ static void t2bce_complete(struct device *dev)
 
     pr_info("t2bce: complete: entry no_state_fallback=%d no_state_resume=%d\n",
             bce->no_state_fallback, bce->vhci.no_state_resume);
+    t2bce_log_pci_pm_state("t2bce_complete");
     if (bce->no_state_fallback && bce->vhci.no_state_resume) {
         /* Re-add the VHCI HCD after the PM core completed resume ordering. */
         pr_info("t2bce: complete: scheduling VHCI HCD re-add after no-state wake\n");
@@ -637,6 +692,7 @@ static int __init t2bce_module_init(void)
         goto fail_drv;
 
     aaudio_module_init();
+    register_pm_notifier(&t2bce_pm_nb);
 
     return 0;
 
@@ -652,6 +708,7 @@ fail_chrdev:
 }
 static void __exit t2bce_module_exit(void)
 {
+    unregister_pm_notifier(&t2bce_pm_nb);
     pci_unregister_driver(&t2bce_pci_driver);
 
     aaudio_module_exit();
