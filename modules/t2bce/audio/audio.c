@@ -31,7 +31,7 @@ static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
     int status = 0;
     u32 cfg;
 
-    pr_info("aaudio: capturing our device\n");
+    pr_debug("aaudio: capturing our device\n");
 
     if (pci_enable_device(dev))
         return -ENODEV;
@@ -182,9 +182,8 @@ static void aaudio_remove(struct pci_dev *dev)
     kfree(aaudio);
 }
 
-static int aaudio_suspend(struct device *dev)
+static int aaudio_quiesce(struct aaudio_device *aaudio, bool suspend_pcm)
 {
-    struct aaudio_device *aaudio = pci_get_drvdata(to_pci_dev(dev));
     struct aaudio_subdevice *sdev;
     size_t i;
     int status;
@@ -213,19 +212,43 @@ static int aaudio_suspend(struct device *dev)
         if (stopped_io)
             aaudio_cmd_stop_io(sdev->a, sdev->dev_id);
 
-        if (sdev->pcm)
+        if (suspend_pcm && sdev->pcm)
             snd_pcm_suspend_all(sdev->pcm);
     }
-
-    dev_info(aaudio->dev, "suspend entry\n");
 
     status = aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_OFF);
     if (status)
         dev_warn(aaudio->dev, "Failed to reset remote access\n");
 
+    return status;
+}
+
+static int aaudio_suspend(struct device *dev)
+{
+    struct aaudio_device *aaudio = pci_get_drvdata(to_pci_dev(dev));
+    int status;
+
+    dev_dbg(aaudio->dev, "suspend entry\n");
+    status = aaudio_quiesce(aaudio, true);
     pci_disable_device(aaudio->pci);
-    dev_info(aaudio->dev, "suspend exit status=%d\n", status);
+    dev_dbg(aaudio->dev, "suspend exit status=%d\n", status);
     return 0;
+}
+
+static void aaudio_shutdown(struct pci_dev *dev)
+{
+    struct aaudio_device *aaudio = pci_get_drvdata(dev);
+
+    if (!aaudio)
+        return;
+
+    /*
+     * Shutdown is not remove: keep allocations intact, but stop active audio
+     * IO and revoke remote access while the BCE command transport is still
+     * alive. The t2bce shutdown path will close the shared bus afterwards.
+     */
+    aaudio_quiesce(aaudio, false);
+    pci_disable_device(aaudio->pci);
 }
 
 static int aaudio_resume(struct device *dev)
@@ -753,6 +776,7 @@ struct pci_driver aaudio_pci_driver = {
         .id_table = aaudio_ids,
         .probe = aaudio_probe,
         .remove = aaudio_remove,
+        .shutdown = aaudio_shutdown,
         .driver = {
                 .pm = &aaudio_pci_driver_pm
         }

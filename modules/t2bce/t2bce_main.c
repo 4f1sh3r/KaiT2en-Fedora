@@ -676,6 +676,6 @@ static void __exit t2bce_module_exit(void)
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@gmail.com>");
 MODULE_DESCRIPTION("T2 BCE Driver");
-MODULE_VERSION("0.041");
+MODULE_VERSION("0.05");
 module_init(t2bce_module_init);
 module_exit(t2bce_module_exit);
