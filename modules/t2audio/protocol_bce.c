@@ -3,39 +3,39 @@
 #include "audio.h"
 #include <linux/dma-mapping.h>
 
-static void aaudio_bce_out_queue_completion(struct t2bce_queue_sq *sq);
-static void aaudio_bce_in_queue_completion(struct t2bce_queue_sq *sq);
-static int aaudio_bce_queue_init(struct aaudio_device *dev, struct aaudio_bce_queue *q, const char *name,
+static void t2audio_bce_out_queue_completion(struct t2bce_queue_sq *sq);
+static void t2audio_bce_in_queue_completion(struct t2bce_queue_sq *sq);
+static int t2audio_bce_queue_init(struct t2audio_device *dev, struct t2audio_bce_queue *q, const char *name,
                                  enum dma_data_direction direction, t2bce_sq_completion cfn);
-void aaudio_bce_in_queue_submit_pending(struct aaudio_bce_queue *q, size_t count);
-static void aaudio_deferred_msg_work(struct work_struct *ws);
+void t2audio_bce_in_queue_submit_pending(struct t2audio_bce_queue *q, size_t count);
+static void t2audio_deferred_msg_work(struct work_struct *ws);
 
-int aaudio_bce_init(struct aaudio_device *dev)
+int t2audio_bce_init(struct t2audio_device *dev)
 {
     int status;
-    struct aaudio_bce *bce = &dev->bcem;
+    struct t2audio_bce *bce = &dev->bcem;
     bce->cq = t2bce_create_cq(dev->bce, 0x80);
     spin_lock_init(&bce->spinlock);
     if (!bce->cq)
         return -EINVAL;
-    if ((status = aaudio_bce_queue_init(dev, &bce->qout, "com.apple.BridgeAudio.IntelToARM", DMA_TO_DEVICE,
-            aaudio_bce_out_queue_completion))) {
+    if ((status = t2audio_bce_queue_init(dev, &bce->qout, "com.apple.BridgeAudio.IntelToARM", DMA_TO_DEVICE,
+            t2audio_bce_out_queue_completion))) {
         return status;
     }
-    if ((status = aaudio_bce_queue_init(dev, &bce->qin, "com.apple.BridgeAudio.ARMToIntel", DMA_FROM_DEVICE,
-            aaudio_bce_in_queue_completion))) {
+    if ((status = t2audio_bce_queue_init(dev, &bce->qin, "com.apple.BridgeAudio.ARMToIntel", DMA_FROM_DEVICE,
+            t2audio_bce_in_queue_completion))) {
         return status;
     }
-    aaudio_bce_in_queue_submit_pending(&bce->qin, bce->qin.el_count);
+    t2audio_bce_in_queue_submit_pending(&bce->qin, bce->qin.el_count);
     return 0;
 }
 
-int aaudio_bce_queue_init(struct aaudio_device *dev, struct aaudio_bce_queue *q, const char *name,
+int t2audio_bce_queue_init(struct t2audio_device *dev, struct t2audio_bce_queue *q, const char *name,
         enum dma_data_direction direction, t2bce_sq_completion cfn)
 {
     q->cq = dev->bcem.cq;
-    q->el_size = AAUDIO_BCE_QUEUE_ELEMENT_SIZE;
-    q->el_count = AAUDIO_BCE_QUEUE_ELEMENT_COUNT;
+    q->el_size = T2AUDIO_BCE_QUEUE_ELEMENT_SIZE;
+    q->el_count = T2AUDIO_BCE_QUEUE_ELEMENT_COUNT;
     /* NOTE: The Apple impl uses 0x80 as the queue size, however we use 21 (in fact 20) to simplify the impl */
     q->sq = t2bce_create_sq(dev->bce, q->cq, name, (u32) (q->el_count + 1), direction, cfn, dev);
     if (!q->sq)
@@ -49,21 +49,21 @@ int aaudio_bce_queue_init(struct aaudio_device *dev, struct aaudio_bce_queue *q,
     return 0;
 }
 
-static void aaudio_send_create_tag(struct aaudio_bce *b, int *tagn, char tag[4])
+static void t2audio_send_create_tag(struct t2audio_bce *b, int *tagn, char tag[4])
 {
     char tag_zero[5];
-    b->tag_num = (b->tag_num + 1) % AAUDIO_BCE_QUEUE_TAG_COUNT;
+    b->tag_num = (b->tag_num + 1) % T2AUDIO_BCE_QUEUE_TAG_COUNT;
     *tagn = b->tag_num;
     snprintf(tag_zero, 5, "S%03d", b->tag_num);
     *((u32 *) tag) = *((u32 *) tag_zero);
 }
 
-int __aaudio_send_prepare(struct aaudio_bce *b, struct aaudio_send_ctx *ctx, char *tag)
+int __t2audio_send_prepare(struct t2audio_bce *b, struct t2audio_send_ctx *ctx, char *tag)
 {
     int status;
     size_t index;
     void *dptr;
-    struct aaudio_msg_header *header;
+    struct t2audio_msg_header *header;
     if ((status = t2bce_reserve_submission(b->qout.sq, &ctx->timeout)))
         return status;
     spin_lock_irqsave(&b->spinlock, ctx->irq_flags);
@@ -74,15 +74,15 @@ int __aaudio_send_prepare(struct aaudio_bce *b, struct aaudio_send_ctx *ctx, cha
     if (tag)
         *((u32 *) header->tag) = *((u32 *) tag);
     else
-        aaudio_send_create_tag(b, &ctx->tag_n, header->tag);
+        t2audio_send_create_tag(b, &ctx->tag_n, header->tag);
     return 0;
 }
 
-void __aaudio_send(struct aaudio_bce *b, struct aaudio_send_ctx *ctx)
+void __t2audio_send(struct t2audio_bce *b, struct t2audio_send_ctx *ctx)
 {
 #ifdef DEBUG
-    pr_debug("aaudio: Sending command data\n");
-    print_hex_dump(KERN_DEBUG, "aaudio:OUT ", DUMP_PREFIX_NONE, 32, 1, ctx->msg.data, ctx->msg.size, true);
+    pr_debug("t2audio: Sending command data\n");
+    print_hex_dump(KERN_DEBUG, "t2audio:OUT ", DUMP_PREFIX_NONE, 32, 1, ctx->msg.data, ctx->msg.size, true);
 #endif
     t2bce_set_next_submission_single(b->qout.sq,
             b->qout.dma_addr + (dma_addr_t) (ctx->msg.data - b->qout.data), ctx->msg.size);
@@ -91,14 +91,14 @@ void __aaudio_send(struct aaudio_bce *b, struct aaudio_send_ctx *ctx)
     spin_unlock_irqrestore(&b->spinlock, ctx->irq_flags);
 }
 
-int __aaudio_send_cmd_sync(struct aaudio_bce *b, struct aaudio_send_ctx *ctx, struct aaudio_msg *reply)
+int __t2audio_send_cmd_sync(struct t2audio_bce *b, struct t2audio_send_ctx *ctx, struct t2audio_msg *reply)
 {
-    struct aaudio_bce_queue_entry ent;
+    struct t2audio_bce_queue_entry ent;
     DECLARE_COMPLETION_ONSTACK(cmpl);
     ent.msg = reply;
     ent.cmpl = &cmpl;
     b->pending_entries[ctx->tag_n] = &ent;
-    __aaudio_send(b, ctx); /* unlocks the spinlock */
+    __t2audio_send(b, ctx); /* unlocks the spinlock */
     ctx->timeout = wait_for_completion_timeout(&cmpl, ctx->timeout);
     if (ctx->timeout == 0) {
         /* Remove the pending queue entry; this will be normally handled by the completion route but
@@ -112,23 +112,23 @@ int __aaudio_send_cmd_sync(struct aaudio_bce *b, struct aaudio_send_ctx *ctx, st
     return 0;
 }
 
-static void aaudio_handle_reply(struct aaudio_bce *b, struct aaudio_msg *reply)
+static void t2audio_handle_reply(struct t2audio_bce *b, struct t2audio_msg *reply)
 {
     const char *tag;
     int tagn;
     unsigned long irq_flags;
     char tag_zero[5];
-    struct aaudio_bce_queue_entry *entry;
+    struct t2audio_bce_queue_entry *entry;
 
-    tag = ((struct aaudio_msg_header *) reply->data)->tag;
+    tag = ((struct t2audio_msg_header *) reply->data)->tag;
     if (tag[0] != 'S') {
-        pr_err("aaudio_handle_reply: Unexpected tag: %.4s\n", tag);
+        pr_err("t2audio_handle_reply: Unexpected tag: %.4s\n", tag);
         return;
     }
     *((u32 *) tag_zero) = *((u32 *) tag);
     tag_zero[4] = 0;
     if (kstrtoint(&tag_zero[1], 10, &tagn)) {
-        pr_err("aaudio_handle_reply: Tag parse failed: %.4s\n", tag);
+        pr_err("t2audio_handle_reply: Tag parse failed: %.4s\n", tag);
         return;
     }
 
@@ -142,39 +142,39 @@ static void aaudio_handle_reply(struct aaudio_bce *b, struct aaudio_msg *reply)
 
         b->pending_entries[tagn] = NULL;
     } else {
-        pr_err("aaudio_handle_reply: No queued item found for tag: %.4s\n", tag);
+        pr_err("t2audio_handle_reply: No queued item found for tag: %.4s\n", tag);
     }
     spin_unlock_irqrestore(&b->spinlock, irq_flags);
 }
 
-static void aaudio_bce_out_queue_completion(struct t2bce_queue_sq *sq)
+static void t2audio_bce_out_queue_completion(struct t2bce_queue_sq *sq)
 {
     while (t2bce_next_completion(sq)) {
         t2bce_notify_submission_complete(sq);
     }
 }
 
-static void aaudio_bce_in_queue_handle_msg(struct aaudio_device *a, struct aaudio_msg *msg);
+static void t2audio_bce_in_queue_handle_msg(struct t2audio_device *a, struct t2audio_msg *msg);
 
-static void aaudio_deferred_msg_work(struct work_struct *ws)
+static void t2audio_deferred_msg_work(struct work_struct *ws)
 {
-    struct aaudio_deferred_msg *work = container_of(ws, struct aaudio_deferred_msg, ws);
-    struct aaudio_msg_header *header = work->msg.data;
+    struct t2audio_deferred_msg *work = container_of(ws, struct t2audio_deferred_msg, ws);
+    struct t2audio_msg_header *header = work->msg.data;
 
-    if (header->type == AAUDIO_MSG_TYPE_COMMAND)
-        aaudio_handle_command(work->a, &work->msg);
-    else if (header->type == AAUDIO_MSG_TYPE_NOTIFICATION)
-        aaudio_handle_notification(work->a, &work->msg);
+    if (header->type == T2AUDIO_MSG_TYPE_COMMAND)
+        t2audio_handle_command(work->a, &work->msg);
+    else if (header->type == T2AUDIO_MSG_TYPE_NOTIFICATION)
+        t2audio_handle_notification(work->a, &work->msg);
 
     kfree(work->msg.data);
     kfree(work);
 }
 
-static void aaudio_bce_in_queue_completion(struct t2bce_queue_sq *sq)
+static void t2audio_bce_in_queue_completion(struct t2bce_queue_sq *sq)
 {
-    struct aaudio_msg msg;
-    struct aaudio_device *dev = t2bce_queue_sq_userdata(sq);
-    struct aaudio_bce_queue *q = &dev->bcem.qin;
+    struct t2audio_msg msg;
+    struct t2audio_device *dev = t2bce_queue_sq_userdata(sq);
+    struct t2audio_bce_queue *q = &dev->bcem.qin;
     struct t2bce_sq_completion_data *c;
     size_t cnt = 0;
 
@@ -183,57 +183,57 @@ static void aaudio_bce_in_queue_completion(struct t2bce_queue_sq *sq)
         msg.data = (u8 *) q->data + q->data_head * q->el_size;
         msg.size = c->data_size;
 #ifdef DEBUG
-        pr_debug("aaudio: Received command data %llx\n", c->data_size);
-        print_hex_dump(KERN_DEBUG, "aaudio:IN ", DUMP_PREFIX_NONE, 32, 1, msg.data, min(msg.size, 128UL), true);
+        pr_debug("t2audio: Received command data %llx\n", c->data_size);
+        print_hex_dump(KERN_DEBUG, "t2audio:IN ", DUMP_PREFIX_NONE, 32, 1, msg.data, min(msg.size, 128UL), true);
 #endif
-        aaudio_bce_in_queue_handle_msg(dev, &msg);
+        t2audio_bce_in_queue_handle_msg(dev, &msg);
 
         q->data_head = (q->data_head + 1) % q->el_count;
 
         t2bce_notify_submission_complete(sq);
         ++cnt;
     }
-    aaudio_bce_in_queue_submit_pending(q, cnt);
+    t2audio_bce_in_queue_submit_pending(q, cnt);
 }
 
-static void aaudio_bce_in_queue_handle_msg(struct aaudio_device *a, struct aaudio_msg *msg)
+static void t2audio_bce_in_queue_handle_msg(struct t2audio_device *a, struct t2audio_msg *msg)
 {
-    struct aaudio_msg_header *header = (struct aaudio_msg_header *) msg->data;
-    struct aaudio_deferred_msg *work;
+    struct t2audio_msg_header *header = (struct t2audio_msg_header *) msg->data;
+    struct t2audio_deferred_msg *work;
 
-    if (msg->size < sizeof(struct aaudio_msg_header)) {
-        pr_err("aaudio: Msg size smaller than header (%lx)", msg->size);
+    if (msg->size < sizeof(struct t2audio_msg_header)) {
+        pr_err("t2audio: Msg size smaller than header (%lx)", msg->size);
         return;
     }
-    if (header->type == AAUDIO_MSG_TYPE_RESPONSE) {
-        aaudio_handle_reply(&a->bcem, msg);
+    if (header->type == T2AUDIO_MSG_TYPE_RESPONSE) {
+        t2audio_handle_reply(&a->bcem, msg);
         return;
     }
 
     work = kzalloc(sizeof(*work), GFP_ATOMIC);
     if (!work) {
-        pr_err("aaudio: Failed to allocate deferred message work\n");
+        pr_err("t2audio: Failed to allocate deferred message work\n");
         return;
     }
 
     work->msg.data = kmemdup(msg->data, msg->size, GFP_ATOMIC);
     if (!work->msg.data) {
         kfree(work);
-        pr_err("aaudio: Failed to copy deferred message\n");
+        pr_err("t2audio: Failed to copy deferred message\n");
         return;
     }
 
     work->a = a;
     work->msg.size = msg->size;
-    INIT_WORK(&work->ws, aaudio_deferred_msg_work);
+    INIT_WORK(&work->ws, t2audio_deferred_msg_work);
     schedule_work(&work->ws);
 }
 
-void aaudio_bce_in_queue_submit_pending(struct aaudio_bce_queue *q, size_t count)
+void t2audio_bce_in_queue_submit_pending(struct t2audio_bce_queue *q, size_t count)
 {
     while (count--) {
         if (t2bce_reserve_submission(q->sq, NULL)) {
-            pr_err("aaudio: Failed to reserve an event queue submission\n");
+            pr_err("t2audio: Failed to reserve an event queue submission\n");
             break;
         }
         t2bce_set_next_submission_single(q->sq,
@@ -243,15 +243,15 @@ void aaudio_bce_in_queue_submit_pending(struct aaudio_bce_queue *q, size_t count
     t2bce_submit_to_device(q->sq);
 }
 
-struct aaudio_msg aaudio_reply_alloc(void)
+struct t2audio_msg t2audio_reply_alloc(void)
 {
-    struct aaudio_msg ret;
-    ret.size = AAUDIO_BCE_QUEUE_ELEMENT_SIZE;
+    struct t2audio_msg ret;
+    ret.size = T2AUDIO_BCE_QUEUE_ELEMENT_SIZE;
     ret.data = kmalloc(ret.size, GFP_KERNEL);
     return ret;
 }
 
-void aaudio_reply_free(struct aaudio_msg *reply)
+void t2audio_reply_free(struct t2audio_msg *reply)
 {
     kfree(reply->data);
 }

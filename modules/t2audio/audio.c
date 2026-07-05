@@ -11,145 +11,145 @@
 #include "pcm.h"
 #include <linux/version.h>
 
-static int aaudio_alsa_index = SNDRV_DEFAULT_IDX1;
-static char *aaudio_alsa_id = SNDRV_DEFAULT_STR1;
+static int t2audio_alsa_index = SNDRV_DEFAULT_IDX1;
+static char *t2audio_alsa_id = SNDRV_DEFAULT_STR1;
 
-static dev_t aaudio_chrdev;
-static struct class *aaudio_class;
+static dev_t t2audio_chrdev;
+static struct class *t2audio_class;
 
-static int aaudio_init_cmd(struct aaudio_device *a);
-static int aaudio_init_bs(struct aaudio_device *a);
-static void aaudio_init_dev(struct aaudio_device *a, aaudio_device_id_t dev_id);
-static void aaudio_free_dev(struct aaudio_subdevice *sdev);
-static void aaudio_reset_stream(struct aaudio_stream *stream);
-static void aaudio_reset_streams(struct aaudio_device *a);
-static void aaudio_resume_work(struct work_struct *ws);
-static void aaudio_resume_complete(void *userdata);
+static int t2audio_init_cmd(struct t2audio_device *a);
+static int t2audio_init_bs(struct t2audio_device *a);
+static void t2audio_init_dev(struct t2audio_device *a, t2audio_device_id_t dev_id);
+static void t2audio_free_dev(struct t2audio_subdevice *sdev);
+static void t2audio_reset_stream(struct t2audio_stream *stream);
+static void t2audio_reset_streams(struct t2audio_device *a);
+static void t2audio_resume_work(struct work_struct *ws);
+static void t2audio_resume_complete(void *userdata);
 
-static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
+static int t2audio_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
-    struct aaudio_device *aaudio = NULL;
-    struct aaudio_subdevice *sdev = NULL;
+    struct t2audio_device *t2audio = NULL;
+    struct t2audio_subdevice *sdev = NULL;
     int status = 0;
     u32 cfg;
 
-    pr_debug("aaudio: capturing our device\n");
+    pr_debug("t2audio: capturing our device\n");
 
     if (pci_enable_device(dev))
         return -ENODEV;
-    if (pci_request_regions(dev, "aaudio")) {
+    if (pci_request_regions(dev, "t2audio")) {
         status = -ENODEV;
         goto fail;
     }
     pci_set_master(dev);
 
-    aaudio = kzalloc(sizeof(struct aaudio_device), GFP_KERNEL);
-    if (!aaudio) {
+    t2audio = kzalloc(sizeof(struct t2audio_device), GFP_KERNEL);
+    if (!t2audio) {
         status = -ENOMEM;
         goto fail;
     }
 
-    aaudio->bce = t2bce_client_get(&dev->dev);
-    if (IS_ERR(aaudio->bce)) {
-        status = PTR_ERR(aaudio->bce);
-        aaudio->bce = NULL;
+    t2audio->bce = t2bce_client_get(&dev->dev);
+    if (IS_ERR(t2audio->bce)) {
+        status = PTR_ERR(t2audio->bce);
+        t2audio->bce = NULL;
         if (status != -EPROBE_DEFER)
-            dev_warn(&dev->dev, "aaudio: Failed to get BCE client: %d\n", status);
+            dev_warn(&dev->dev, "t2audio: Failed to get BCE client: %d\n", status);
         goto fail;
     }
 
-    aaudio->pci = dev;
-    pci_set_drvdata(dev, aaudio);
-    t2bce_client_set_resume_complete_callback(aaudio->bce, aaudio_resume_complete, aaudio);
+    t2audio->pci = dev;
+    pci_set_drvdata(dev, t2audio);
+    t2bce_client_set_resume_complete_callback(t2audio->bce, t2audio_resume_complete, t2audio);
 
-    aaudio->devt = aaudio_chrdev;
-    aaudio->dev = device_create(aaudio_class, &dev->dev, aaudio->devt, NULL, "aaudio");
-    if (IS_ERR_OR_NULL(aaudio->dev)) {
-        status = PTR_ERR(aaudio->dev);
+    t2audio->devt = t2audio_chrdev;
+    t2audio->dev = device_create(t2audio_class, &dev->dev, t2audio->devt, NULL, "t2audio");
+    if (IS_ERR_OR_NULL(t2audio->dev)) {
+        status = PTR_ERR(t2audio->dev);
         goto fail;
     }
-    init_completion(&aaudio->remote_alive);
-    INIT_WORK(&aaudio->resume_work, aaudio_resume_work);
-    INIT_LIST_HEAD(&aaudio->subdevice_list);
+    init_completion(&t2audio->remote_alive);
+    INIT_WORK(&t2audio->resume_work, t2audio_resume_work);
+    INIT_LIST_HEAD(&t2audio->subdevice_list);
 
     /* Init: set an unknown flag in the bitset */
     if (pci_read_config_dword(dev, 4, &cfg))
-        dev_warn(&dev->dev, "aaudio: pci_read_config_dword fail\n");
+        dev_warn(&dev->dev, "t2audio: pci_read_config_dword fail\n");
     if (pci_write_config_dword(dev, 4, cfg | 6u))
-        dev_warn(&dev->dev, "aaudio: pci_write_config_dword fail\n");
+        dev_warn(&dev->dev, "t2audio: pci_write_config_dword fail\n");
 
-    pr_debug("aaudio: bs len = %llx\n", pci_resource_len(dev, 0));
-    aaudio->reg_mem_bs_dma = pci_resource_start(dev, 0);
-    aaudio->reg_mem_bs = pci_iomap(dev, 0, 0);
-    aaudio->reg_mem_cfg = pci_iomap(dev, 4, 0);
+    pr_debug("t2audio: bs len = %llx\n", pci_resource_len(dev, 0));
+    t2audio->reg_mem_bs_dma = pci_resource_start(dev, 0);
+    t2audio->reg_mem_bs = pci_iomap(dev, 0, 0);
+    t2audio->reg_mem_cfg = pci_iomap(dev, 4, 0);
 
-    aaudio->reg_mem_gpr = (u32 __iomem *) ((u8 __iomem *) aaudio->reg_mem_cfg + 0xC000);
+    t2audio->reg_mem_gpr = (u32 __iomem *) ((u8 __iomem *) t2audio->reg_mem_cfg + 0xC000);
 
-    if (IS_ERR_OR_NULL(aaudio->reg_mem_bs) || IS_ERR_OR_NULL(aaudio->reg_mem_cfg)) {
-        dev_warn(&dev->dev, "aaudio: Failed to pci_iomap required regions\n");
+    if (IS_ERR_OR_NULL(t2audio->reg_mem_bs) || IS_ERR_OR_NULL(t2audio->reg_mem_cfg)) {
+        dev_warn(&dev->dev, "t2audio: Failed to pci_iomap required regions\n");
         goto fail;
     }
 
-    if (aaudio_bce_init(aaudio)) {
-        dev_warn(&dev->dev, "aaudio: Failed to init BCE command transport\n");
+    if (t2audio_bce_init(t2audio)) {
+        dev_warn(&dev->dev, "t2audio: Failed to init BCE command transport\n");
         goto fail;
     }
 
-    if (snd_card_new(aaudio->dev, aaudio_alsa_index, aaudio_alsa_id, THIS_MODULE, 0, &aaudio->card)) {
-        dev_err(&dev->dev, "aaudio: Failed to create ALSA card\n");
+    if (snd_card_new(t2audio->dev, t2audio_alsa_index, t2audio_alsa_id, THIS_MODULE, 0, &t2audio->card)) {
+        dev_err(&dev->dev, "t2audio: Failed to create ALSA card\n");
         goto fail;
     }
 
-    strcpy(aaudio->card->shortname, "Apple T2 Audio");
-    strcpy(aaudio->card->longname, "Apple T2 Audio");
-    strcpy(aaudio->card->mixername, "Apple T2 Audio");
+    strcpy(t2audio->card->shortname, "Apple T2 Audio");
+    strcpy(t2audio->card->longname, "Apple T2 Audio");
+    strcpy(t2audio->card->mixername, "Apple T2 Audio");
     /* Dynamic alsa ids start at 100 */
-    aaudio->next_alsa_id = 100;
+    t2audio->next_alsa_id = 100;
 
-    if (aaudio_init_cmd(aaudio)) {
-        dev_err(&dev->dev, "aaudio: Failed to initialize over BCE\n");
+    if (t2audio_init_cmd(t2audio)) {
+        dev_err(&dev->dev, "t2audio: Failed to initialize over BCE\n");
         goto fail_snd;
     }
 
-    if (aaudio_init_bs(aaudio)) {
-        dev_err(&dev->dev, "aaudio: Failed to initialize BufferStruct\n");
+    if (t2audio_init_bs(t2audio)) {
+        dev_err(&dev->dev, "t2audio: Failed to initialize BufferStruct\n");
         goto fail_snd;
     }
 
-    if ((status = aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_ON))) {
+    if ((status = t2audio_cmd_set_remote_access(t2audio, T2AUDIO_REMOTE_ACCESS_ON))) {
         dev_err(&dev->dev, "Failed to set remote access\n");
         return status;
     }
 
-    if (snd_card_register(aaudio->card)) {
-        dev_err(&dev->dev, "aaudio: Failed to register ALSA sound device\n");
+    if (snd_card_register(t2audio->card)) {
+        dev_err(&dev->dev, "t2audio: Failed to register ALSA sound device\n");
         goto fail_snd;
     }
 
-    list_for_each_entry(sdev, &aaudio->subdevice_list, list) {
-        struct aaudio_buffer_struct_device *dev = &aaudio->bs->devices[sdev->buf_id];
+    list_for_each_entry(sdev, &t2audio->subdevice_list, list) {
+        struct t2audio_buffer_struct_device *dev = &t2audio->bs->devices[sdev->buf_id];
 
         if (sdev->out_stream_cnt == 1 && !strcmp(dev->name, "Speaker")) {
             struct snd_pcm_hardware *hw = sdev->out_streams[0].alsa_hw_desc;
 
-            snprintf(aaudio->card->driver, sizeof(aaudio->card->driver) / sizeof(char), "AppleT2x%d", hw->channels_min);
+            snprintf(t2audio->card->driver, sizeof(t2audio->card->driver) / sizeof(char), "AppleT2x%d", hw->channels_min);
         }
     }
 
     return 0;
 
 fail_snd:
-    snd_card_free(aaudio->card);
+    snd_card_free(t2audio->card);
 fail:
-    if (aaudio) {
-        if (aaudio->dev)
-            device_destroy(aaudio_class, aaudio->devt);
-        if (!IS_ERR_OR_NULL(aaudio->reg_mem_bs))
-            pci_iounmap(dev, aaudio->reg_mem_bs);
-        if (!IS_ERR_OR_NULL(aaudio->reg_mem_cfg))
-            pci_iounmap(dev, aaudio->reg_mem_cfg);
-        t2bce_client_put(aaudio->bce);
-        kfree(aaudio);
+    if (t2audio) {
+        if (t2audio->dev)
+            device_destroy(t2audio_class, t2audio->devt);
+        if (!IS_ERR_OR_NULL(t2audio->reg_mem_bs))
+            pci_iounmap(dev, t2audio->reg_mem_bs);
+        if (!IS_ERR_OR_NULL(t2audio->reg_mem_cfg))
+            pci_iounmap(dev, t2audio->reg_mem_cfg);
+        t2bce_client_put(t2audio->bce);
+        kfree(t2audio);
     }
 
     pci_release_regions(dev);
@@ -162,39 +162,39 @@ fail:
 
 
 
-static void aaudio_remove(struct pci_dev *dev)
+static void t2audio_remove(struct pci_dev *dev)
 {
-    struct aaudio_subdevice *sdev;
-    struct aaudio_device *aaudio = pci_get_drvdata(dev);
+    struct t2audio_subdevice *sdev;
+    struct t2audio_device *t2audio = pci_get_drvdata(dev);
 
-    cancel_work_sync(&aaudio->resume_work);
-    snd_card_free(aaudio->card);
-    while (!list_empty(&aaudio->subdevice_list)) {
-        sdev = list_first_entry(&aaudio->subdevice_list, struct aaudio_subdevice, list);
+    cancel_work_sync(&t2audio->resume_work);
+    snd_card_free(t2audio->card);
+    while (!list_empty(&t2audio->subdevice_list)) {
+        sdev = list_first_entry(&t2audio->subdevice_list, struct t2audio_subdevice, list);
         list_del(&sdev->list);
-        aaudio_free_dev(sdev);
+        t2audio_free_dev(sdev);
     }
-    pci_iounmap(dev, aaudio->reg_mem_bs);
-    pci_iounmap(dev, aaudio->reg_mem_cfg);
-    device_destroy(aaudio_class, aaudio->devt);
+    pci_iounmap(dev, t2audio->reg_mem_bs);
+    pci_iounmap(dev, t2audio->reg_mem_cfg);
+    device_destroy(t2audio_class, t2audio->devt);
     pci_free_irq_vectors(dev);
     pci_release_regions(dev);
     pci_disable_device(dev);
-    t2bce_client_put(aaudio->bce);
-    kfree(aaudio);
+    t2bce_client_put(t2audio->bce);
+    kfree(t2audio);
 }
 
-static int aaudio_quiesce(struct aaudio_device *aaudio, bool suspend_pcm)
+static int t2audio_quiesce(struct t2audio_device *t2audio, bool suspend_pcm)
 {
-    struct aaudio_subdevice *sdev;
+    struct t2audio_subdevice *sdev;
     size_t i;
     int status;
 
-    cancel_work_sync(&aaudio->resume_work);
-    aaudio->resume_deferred = false;
+    cancel_work_sync(&t2audio->resume_work);
+    t2audio->resume_deferred = false;
 
     /* Suspend PCM streams */
-    list_for_each_entry(sdev, &aaudio->subdevice_list, list) {
+    list_for_each_entry(sdev, &t2audio->subdevice_list, list) {
         bool stopped_io = false;
 
         for (i = 0; i < sdev->out_stream_cnt; i++) {
@@ -212,36 +212,36 @@ static int aaudio_quiesce(struct aaudio_device *aaudio, bool suspend_pcm)
         }
 
         if (stopped_io)
-            aaudio_cmd_stop_io(sdev->a, sdev->dev_id);
+            t2audio_cmd_stop_io(sdev->a, sdev->dev_id);
 
         if (suspend_pcm && sdev->pcm)
             snd_pcm_suspend_all(sdev->pcm);
     }
 
-    status = aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_OFF);
+    status = t2audio_cmd_set_remote_access(t2audio, T2AUDIO_REMOTE_ACCESS_OFF);
     if (status)
-        dev_warn(aaudio->dev, "Failed to reset remote access\n");
+        dev_warn(t2audio->dev, "Failed to reset remote access\n");
 
     return status;
 }
 
-static int aaudio_suspend(struct device *dev)
+static int t2audio_suspend(struct device *dev)
 {
-    struct aaudio_device *aaudio = pci_get_drvdata(to_pci_dev(dev));
+    struct t2audio_device *t2audio = pci_get_drvdata(to_pci_dev(dev));
     int status;
 
-    dev_dbg(aaudio->dev, "suspend entry\n");
-    status = aaudio_quiesce(aaudio, true);
-    pci_disable_device(aaudio->pci);
-    dev_dbg(aaudio->dev, "suspend exit status=%d\n", status);
+    dev_dbg(t2audio->dev, "suspend entry\n");
+    status = t2audio_quiesce(t2audio, true);
+    pci_disable_device(t2audio->pci);
+    dev_dbg(t2audio->dev, "suspend exit status=%d\n", status);
     return 0;
 }
 
-static void aaudio_shutdown(struct pci_dev *dev)
+static void t2audio_shutdown(struct pci_dev *dev)
 {
-    struct aaudio_device *aaudio = pci_get_drvdata(dev);
+    struct t2audio_device *t2audio = pci_get_drvdata(dev);
 
-    if (!aaudio)
+    if (!t2audio)
         return;
 
     /*
@@ -249,67 +249,67 @@ static void aaudio_shutdown(struct pci_dev *dev)
      * IO and revoke remote access while the BCE command transport is still
      * alive. The t2bce shutdown path will close the shared bus afterwards.
      */
-    aaudio_quiesce(aaudio, false);
-    pci_disable_device(aaudio->pci);
+    t2audio_quiesce(t2audio, false);
+    pci_disable_device(t2audio->pci);
 }
 
-static int aaudio_resume(struct device *dev)
+static int t2audio_resume(struct device *dev)
 {
     int status;
-    struct aaudio_device *aaudio = pci_get_drvdata(to_pci_dev(dev));
-    bool no_state_resume = t2bce_client_no_state_resume(aaudio->bce);
+    struct t2audio_device *t2audio = pci_get_drvdata(to_pci_dev(dev));
+    bool no_state_resume = t2bce_client_no_state_resume(t2audio->bce);
     const char *path = no_state_resume ? "no-state" : "stateful";
 
-    if ((status = pci_enable_device(aaudio->pci)))
+    if ((status = pci_enable_device(t2audio->pci)))
         return status;
-    pci_set_master(aaudio->pci);
+    pci_set_master(t2audio->pci);
     
-    /* we are deferring aaudio resume here until vhci is finished*/
+    /* we are deferring t2audio resume here until vhci is finished*/
     if (!no_state_resume) {
-        aaudio->resume_deferred = true;
+        t2audio->resume_deferred = true;
         return 0;
     }
 
-    if ((status = aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_ON))) {
-        dev_err(aaudio->dev, "Failed to set remote access\n");
+    if ((status = t2audio_cmd_set_remote_access(t2audio, T2AUDIO_REMOTE_ACCESS_ON))) {
+        dev_err(t2audio->dev, "Failed to set remote access\n");
         return status;
     }
 
-    aaudio->resume_deferred = false;
-    aaudio_reset_streams(aaudio);
+    t2audio->resume_deferred = false;
+    t2audio_reset_streams(t2audio);
 
-    pr_debug("aaudio: resume exit status=0 path=%s\n", path);
+    pr_debug("t2audio: resume exit status=0 path=%s\n", path);
     return 0;
 }
 
-static void aaudio_resume_work(struct work_struct *ws)
+static void t2audio_resume_work(struct work_struct *ws)
 {
-    struct aaudio_device *aaudio = container_of(ws, struct aaudio_device, resume_work);
+    struct t2audio_device *t2audio = container_of(ws, struct t2audio_device, resume_work);
 
-    if (!aaudio->resume_deferred)
+    if (!t2audio->resume_deferred)
         return;
 
-    if (aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_ON)) {
-        aaudio->resume_deferred = false;
-        dev_err(aaudio->dev, "Deferred remote access enable failed\n");
+    if (t2audio_cmd_set_remote_access(t2audio, T2AUDIO_REMOTE_ACCESS_ON)) {
+        t2audio->resume_deferred = false;
+        dev_err(t2audio->dev, "Deferred remote access enable failed\n");
         return;
     }
 
-    aaudio->resume_deferred = false;
-    pr_debug("aaudio: resume deferred path complete\n");
+    t2audio->resume_deferred = false;
+    pr_debug("t2audio: resume deferred path complete\n");
 }
 
-static void aaudio_resume_complete(void *userdata)
+static void t2audio_resume_complete(void *userdata)
 {
-    struct aaudio_device *aaudio = userdata;
+    struct t2audio_device *t2audio = userdata;
 
-    if (!aaudio || !aaudio->resume_deferred)
+    if (!t2audio || !t2audio->resume_deferred)
         return;
 
-    schedule_work(&aaudio->resume_work);
+    schedule_work(&t2audio->resume_work);
 }
 
-static void aaudio_reset_stream(struct aaudio_stream *stream)
+static void t2audio_reset_stream(struct t2audio_stream *stream)
 {
     stream->started = 0;
     stream->waiting_for_first_ts = true;
@@ -317,29 +317,29 @@ static void aaudio_reset_stream(struct aaudio_stream *stream)
     stream->frame_min = stream->latency;
 }
 
-static void aaudio_reset_streams(struct aaudio_device *a)
+static void t2audio_reset_streams(struct t2audio_device *a)
 {
-    struct aaudio_subdevice *sdev;
+    struct t2audio_subdevice *sdev;
     size_t i;
 
     list_for_each_entry(sdev, &a->subdevice_list, list) {
         for (i = 0; i < sdev->in_stream_cnt; i++)
-            aaudio_reset_stream(&sdev->in_streams[i]);
+            t2audio_reset_stream(&sdev->in_streams[i]);
         for (i = 0; i < sdev->out_stream_cnt; i++)
-            aaudio_reset_stream(&sdev->out_streams[i]);
+            t2audio_reset_stream(&sdev->out_streams[i]);
     }
 }
 
-static int aaudio_init_cmd(struct aaudio_device *a)
+static int t2audio_init_cmd(struct t2audio_device *a)
 {
     int status;
-    struct aaudio_send_ctx sctx;
-    struct aaudio_msg buf;
+    struct t2audio_send_ctx sctx;
+    struct t2audio_msg buf;
     u64 dev_cnt, dev_i;
-    aaudio_device_id_t *dev_l;
+    t2audio_device_id_t *dev_l;
 
-    if ((status = aaudio_send(a, &sctx, 500,
-                              aaudio_msg_write_alive_notification, 1, 3))) {
+    if ((status = t2audio_send(a, &sctx, 500,
+                              t2audio_msg_write_alive_notification, 1, 3))) {
         dev_err(a->dev, "Sending alive notification failed\n");
         return status;
     }
@@ -348,124 +348,124 @@ static int aaudio_init_cmd(struct aaudio_device *a)
         dev_err(a->dev, "Timed out waiting for remote\n");
         return -ETIMEDOUT;
     }
-    pr_debug("aaudio: Continuing init\n");
+    pr_debug("t2audio: Continuing init\n");
 
-    buf = aaudio_reply_alloc();
-    if ((status = aaudio_cmd_get_device_list(a, &buf, &dev_l, &dev_cnt))) {
+    buf = t2audio_reply_alloc();
+    if ((status = t2audio_cmd_get_device_list(a, &buf, &dev_l, &dev_cnt))) {
         dev_err(a->dev, "Failed to get device list\n");
-        aaudio_reply_free(&buf);
+        t2audio_reply_free(&buf);
         return status;
     }
     for (dev_i = 0; dev_i < dev_cnt; ++dev_i)
-        aaudio_init_dev(a, dev_l[dev_i]);
-    aaudio_reply_free(&buf);
+        t2audio_init_dev(a, dev_l[dev_i]);
+    t2audio_reply_free(&buf);
 
     return 0;
 }
 
-static void aaudio_init_stream_info(struct aaudio_subdevice *sdev, struct aaudio_stream *strm);
-static void aaudio_handle_jack_connection_change(struct aaudio_subdevice *sdev);
+static void t2audio_init_stream_info(struct t2audio_subdevice *sdev, struct t2audio_stream *strm);
+static void t2audio_handle_jack_connection_change(struct t2audio_subdevice *sdev);
 
-static void aaudio_init_dev(struct aaudio_device *a, aaudio_device_id_t dev_id)
+static void t2audio_init_dev(struct t2audio_device *a, t2audio_device_id_t dev_id)
 {
-    struct aaudio_subdevice *sdev;
-    struct aaudio_msg buf = aaudio_reply_alloc();
+    struct t2audio_subdevice *sdev;
+    struct t2audio_msg buf = t2audio_reply_alloc();
     u64 uid_len, stream_cnt, i;
-    aaudio_object_id_t *stream_list;
+    t2audio_object_id_t *stream_list;
     char *uid;
 
-    sdev = kzalloc(sizeof(struct aaudio_subdevice), GFP_KERNEL);
+    sdev = kzalloc(sizeof(struct t2audio_subdevice), GFP_KERNEL);
 
-    if (aaudio_cmd_get_property(a, &buf, dev_id, dev_id, AAUDIO_PROP(AAUDIO_PROP_SCOPE_GLOBAL, AAUDIO_PROP_UID, 0),
-            NULL, 0, (void **) &uid, &uid_len) || uid_len > AAUDIO_DEVICE_MAX_UID_LEN) {
+    if (t2audio_cmd_get_property(a, &buf, dev_id, dev_id, T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_GLOBAL, T2AUDIO_PROP_UID, 0),
+            NULL, 0, (void **) &uid, &uid_len) || uid_len > T2AUDIO_DEVICE_MAX_UID_LEN) {
         dev_err(a->dev, "Failed to get device uid for device %llx\n", dev_id);
         goto fail;
     }
-    pr_debug("aaudio: Remote device %llx %.*s\n", dev_id, (int) uid_len, uid);
+    pr_debug("t2audio: Remote device %llx %.*s\n", dev_id, (int) uid_len, uid);
 
     sdev->a = a;
     INIT_LIST_HEAD(&sdev->list);
     sdev->dev_id = dev_id;
-    sdev->buf_id = AAUDIO_BUFFER_ID_NONE;
+    sdev->buf_id = T2AUDIO_BUFFER_ID_NONE;
     strncpy(sdev->uid, uid, uid_len);
     sdev->uid[uid_len + 1] = '\0';
 
-    if (aaudio_cmd_get_primitive_property(a, dev_id, dev_id,
-            AAUDIO_PROP(AAUDIO_PROP_SCOPE_INPUT, AAUDIO_PROP_LATENCY, 0), NULL, 0, &sdev->in_latency, sizeof(u32)))
+    if (t2audio_cmd_get_primitive_property(a, dev_id, dev_id,
+            T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_INPUT, T2AUDIO_PROP_LATENCY, 0), NULL, 0, &sdev->in_latency, sizeof(u32)))
         dev_warn(a->dev, "Failed to query device input latency\n");
-    if (aaudio_cmd_get_primitive_property(a, dev_id, dev_id,
-            AAUDIO_PROP(AAUDIO_PROP_SCOPE_OUTPUT, AAUDIO_PROP_LATENCY, 0), NULL, 0, &sdev->out_latency, sizeof(u32)))
+    if (t2audio_cmd_get_primitive_property(a, dev_id, dev_id,
+            T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_OUTPUT, T2AUDIO_PROP_LATENCY, 0), NULL, 0, &sdev->out_latency, sizeof(u32)))
         dev_warn(a->dev, "Failed to query device output latency\n");
 
-    if (aaudio_cmd_get_input_stream_list(a, &buf, dev_id, &stream_list, &stream_cnt)) {
+    if (t2audio_cmd_get_input_stream_list(a, &buf, dev_id, &stream_list, &stream_cnt)) {
         dev_err(a->dev, "Failed to get input stream list for device %llx\n", dev_id);
         goto fail;
     }
-    if (stream_cnt > AAUDIO_DEVICE_MAX_INPUT_STREAMS) {
+    if (stream_cnt > T2AUDIO_DEVICE_MAX_INPUT_STREAMS) {
         dev_warn(a->dev, "Device %s input stream count %llu is larger than the supported count of %u\n",
-                sdev->uid, stream_cnt, AAUDIO_DEVICE_MAX_INPUT_STREAMS);
-        stream_cnt = AAUDIO_DEVICE_MAX_INPUT_STREAMS;
+                sdev->uid, stream_cnt, T2AUDIO_DEVICE_MAX_INPUT_STREAMS);
+        stream_cnt = T2AUDIO_DEVICE_MAX_INPUT_STREAMS;
     }
     sdev->in_stream_cnt = stream_cnt;
     for (i = 0; i < stream_cnt; i++) {
         sdev->in_streams[i].id = stream_list[i];
         sdev->in_streams[i].buffer_cnt = 0;
-        aaudio_init_stream_info(sdev, &sdev->in_streams[i]);
+        t2audio_init_stream_info(sdev, &sdev->in_streams[i]);
         sdev->in_streams[i].latency += sdev->in_latency;
     }
 
-    if (aaudio_cmd_get_output_stream_list(a, &buf, dev_id, &stream_list, &stream_cnt)) {
+    if (t2audio_cmd_get_output_stream_list(a, &buf, dev_id, &stream_list, &stream_cnt)) {
         dev_err(a->dev, "Failed to get output stream list for device %llx\n", dev_id);
         goto fail;
     }
-    if (stream_cnt > AAUDIO_DEVICE_MAX_OUTPUT_STREAMS) {
+    if (stream_cnt > T2AUDIO_DEVICE_MAX_OUTPUT_STREAMS) {
         dev_warn(a->dev, "Device %s output stream count %llu is larger than the supported count of %u\n",
-                 sdev->uid, stream_cnt, AAUDIO_DEVICE_MAX_OUTPUT_STREAMS);
-        stream_cnt = AAUDIO_DEVICE_MAX_OUTPUT_STREAMS;
+                 sdev->uid, stream_cnt, T2AUDIO_DEVICE_MAX_OUTPUT_STREAMS);
+        stream_cnt = T2AUDIO_DEVICE_MAX_OUTPUT_STREAMS;
     }
     sdev->out_stream_cnt = stream_cnt;
     for (i = 0; i < stream_cnt; i++) {
         sdev->out_streams[i].id = stream_list[i];
         sdev->out_streams[i].buffer_cnt = 0;
-        aaudio_init_stream_info(sdev, &sdev->out_streams[i]);
+        t2audio_init_stream_info(sdev, &sdev->out_streams[i]);
         sdev->out_streams[i].latency += sdev->out_latency;
     }
 
     if (sdev->is_pcm)
-        aaudio_create_pcm(sdev);
+        t2audio_create_pcm(sdev);
     /* Headphone Jack status */
     if (!strcmp(sdev->uid, "Codec Output")) {
         if (snd_jack_new(a->card, sdev->uid, SND_JACK_HEADPHONE, &sdev->jack, true, false))
             dev_warn(a->dev, "Failed to create an attached jack for %s\n", sdev->uid);
-        aaudio_cmd_property_listener(a, sdev->dev_id, sdev->dev_id,
-                AAUDIO_PROP(AAUDIO_PROP_SCOPE_OUTPUT, AAUDIO_PROP_JACK_PLUGGED, 0));
-        aaudio_handle_jack_connection_change(sdev);
+        t2audio_cmd_property_listener(a, sdev->dev_id, sdev->dev_id,
+                T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_OUTPUT, T2AUDIO_PROP_JACK_PLUGGED, 0));
+        t2audio_handle_jack_connection_change(sdev);
     }
 
-    aaudio_reply_free(&buf);
+    t2audio_reply_free(&buf);
 
     list_add_tail(&sdev->list, &a->subdevice_list);
     return;
 
 fail:
-    aaudio_reply_free(&buf);
+    t2audio_reply_free(&buf);
     kfree(sdev);
 }
 
-static void aaudio_init_stream_info(struct aaudio_subdevice *sdev, struct aaudio_stream *strm)
+static void t2audio_init_stream_info(struct t2audio_subdevice *sdev, struct t2audio_stream *strm)
 {
-    if (aaudio_cmd_get_primitive_property(sdev->a, sdev->dev_id, strm->id,
-            AAUDIO_PROP(AAUDIO_PROP_SCOPE_GLOBAL, AAUDIO_PROP_PHYS_FORMAT, 0), NULL, 0,
+    if (t2audio_cmd_get_primitive_property(sdev->a, sdev->dev_id, strm->id,
+            T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_GLOBAL, T2AUDIO_PROP_PHYS_FORMAT, 0), NULL, 0,
             &strm->desc, sizeof(strm->desc)))
         dev_warn(sdev->a->dev, "Failed to query stream descriptor\n");
-    if (aaudio_cmd_get_primitive_property(sdev->a, sdev->dev_id, strm->id,
-            AAUDIO_PROP(AAUDIO_PROP_SCOPE_GLOBAL, AAUDIO_PROP_LATENCY, 0), NULL, 0, &strm->latency, sizeof(u32)))
+    if (t2audio_cmd_get_primitive_property(sdev->a, sdev->dev_id, strm->id,
+            T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_GLOBAL, T2AUDIO_PROP_LATENCY, 0), NULL, 0, &strm->latency, sizeof(u32)))
         dev_warn(sdev->a->dev, "Failed to query stream latency\n");
-    if (strm->desc.format_id == AAUDIO_FORMAT_LPCM)
+    if (strm->desc.format_id == T2AUDIO_FORMAT_LPCM)
         sdev->is_pcm = true;
 }
 
-static void aaudio_free_dev(struct aaudio_subdevice *sdev)
+static void t2audio_free_dev(struct t2audio_subdevice *sdev)
 {
     size_t i;
     for (i = 0; i < sdev->in_stream_cnt; i++) {
@@ -483,9 +483,9 @@ static void aaudio_free_dev(struct aaudio_subdevice *sdev)
     kfree(sdev);
 }
 
-static struct aaudio_subdevice *aaudio_find_dev_by_dev_id(struct aaudio_device *a, aaudio_device_id_t dev_id)
+static struct t2audio_subdevice *t2audio_find_dev_by_dev_id(struct t2audio_device *a, t2audio_device_id_t dev_id)
 {
-    struct aaudio_subdevice *sdev;
+    struct t2audio_subdevice *sdev;
     list_for_each_entry(sdev, &a->subdevice_list, list) {
         if (dev_id == sdev->dev_id)
             return sdev;
@@ -493,9 +493,9 @@ static struct aaudio_subdevice *aaudio_find_dev_by_dev_id(struct aaudio_device *
     return NULL;
 }
 
-static struct aaudio_subdevice *aaudio_find_dev_by_uid(struct aaudio_device *a, const char *uid)
+static struct t2audio_subdevice *t2audio_find_dev_by_uid(struct t2audio_device *a, const char *uid)
 {
-    struct aaudio_subdevice *sdev;
+    struct t2audio_subdevice *sdev;
     list_for_each_entry(sdev, &a->subdevice_list, list) {
         if (!strcmp(uid, sdev->uid))
             return sdev;
@@ -503,60 +503,60 @@ static struct aaudio_subdevice *aaudio_find_dev_by_uid(struct aaudio_device *a, 
     return NULL;
 }
 
-static void aaudio_init_bs_stream(struct aaudio_device *a, struct aaudio_stream *strm,
-        struct aaudio_buffer_struct_stream *bs_strm);
-static void aaudio_init_bs_stream_host(struct aaudio_device *a, struct aaudio_stream *strm,
-        struct aaudio_buffer_struct_stream *bs_strm);
+static void t2audio_init_bs_stream(struct t2audio_device *a, struct t2audio_stream *strm,
+        struct t2audio_buffer_struct_stream *bs_strm);
+static void t2audio_init_bs_stream_host(struct t2audio_device *a, struct t2audio_stream *strm,
+        struct t2audio_buffer_struct_stream *bs_strm);
 
-static int aaudio_init_bs(struct aaudio_device *a)
+static int t2audio_init_bs(struct t2audio_device *a)
 {
     int i, j;
-    struct aaudio_buffer_struct_device *dev;
-    struct aaudio_subdevice *sdev;
+    struct t2audio_buffer_struct_device *dev;
+    struct t2audio_subdevice *sdev;
     u32 ver, sig, bs_base;
 
     ver = ioread32(&a->reg_mem_gpr[0]);
     if (ver < 3) {
-        dev_err(a->dev, "aaudio: Bad GPR version (%u)", ver);
+        dev_err(a->dev, "t2audio: Bad GPR version (%u)", ver);
         return -EINVAL;
     }
     sig = ioread32(&a->reg_mem_gpr[1]);
-    if (sig != AAUDIO_SIG) {
-        dev_err(a->dev, "aaudio: Bad GPR sig (%x)", sig);
+    if (sig != T2AUDIO_SIG) {
+        dev_err(a->dev, "t2audio: Bad GPR sig (%x)", sig);
         return -EINVAL;
     }
     bs_base = ioread32(&a->reg_mem_gpr[2]);
-    a->bs = (struct aaudio_buffer_struct *) ((u8 *) a->reg_mem_bs + bs_base);
-    if (a->bs->signature != AAUDIO_SIG) {
-        dev_err(a->dev, "aaudio: Bad BufferStruct sig (%x)", a->bs->signature);
+    a->bs = (struct t2audio_buffer_struct *) ((u8 *) a->reg_mem_bs + bs_base);
+    if (a->bs->signature != T2AUDIO_SIG) {
+        dev_err(a->dev, "t2audio: Bad BufferStruct sig (%x)", a->bs->signature);
         return -EINVAL;
     }
-    pr_debug("aaudio: BufferStruct ver = %i\n", a->bs->version);
-    pr_debug("aaudio: Num devices = %i\n", a->bs->num_devices);
+    pr_debug("t2audio: BufferStruct ver = %i\n", a->bs->version);
+    pr_debug("t2audio: Num devices = %i\n", a->bs->num_devices);
     for (i = 0; i < a->bs->num_devices; i++) {
         dev = &a->bs->devices[i];
-        pr_debug("aaudio: Device %i %s\n", i, dev->name);
+        pr_debug("t2audio: Device %i %s\n", i, dev->name);
 
-        sdev = aaudio_find_dev_by_uid(a, dev->name);
+        sdev = t2audio_find_dev_by_uid(a, dev->name);
         if (!sdev) {
-            dev_err(a->dev, "aaudio: Subdevice not found for BufferStruct device %s\n", dev->name);
+            dev_err(a->dev, "t2audio: Subdevice not found for BufferStruct device %s\n", dev->name);
             continue;
         }
         sdev->buf_id = (u8) i;
         dev->num_input_streams = 0;
         for (j = 0; j < dev->num_output_streams; j++) {
-            pr_debug("aaudio: Device %i Stream %i: Output; Buffer Count = %i\n", i, j,
+            pr_debug("t2audio: Device %i Stream %i: Output; Buffer Count = %i\n", i, j,
                      dev->output_streams[j].num_buffers);
             if (j < sdev->out_stream_cnt)
-                aaudio_init_bs_stream(a, &sdev->out_streams[j], &dev->output_streams[j]);
+                t2audio_init_bs_stream(a, &sdev->out_streams[j], &dev->output_streams[j]);
         }
     }
 
     list_for_each_entry(sdev, &a->subdevice_list, list) {
-        if (sdev->buf_id != AAUDIO_BUFFER_ID_NONE)
+        if (sdev->buf_id != T2AUDIO_BUFFER_ID_NONE)
             continue;
         sdev->buf_id = i;
-        pr_debug("aaudio: Created device %i %s\n", i, sdev->uid);
+        pr_debug("t2audio: Created device %i %s\n", i, sdev->uid);
         strcpy(a->bs->devices[i].name, sdev->uid);
         a->bs->devices[i].num_input_streams = 0;
         a->bs->devices[i].num_output_streams = 0;
@@ -564,13 +564,13 @@ static int aaudio_init_bs(struct aaudio_device *a)
     }
     list_for_each_entry(sdev, &a->subdevice_list, list) {
         if (sdev->in_stream_cnt == 1) {
-            pr_debug("aaudio: Device %i Host Stream; Input\n", sdev->buf_id);
-            aaudio_init_bs_stream_host(a, &sdev->in_streams[0], &a->bs->devices[sdev->buf_id].input_streams[0]);
+            pr_debug("t2audio: Device %i Host Stream; Input\n", sdev->buf_id);
+            t2audio_init_bs_stream_host(a, &sdev->in_streams[0], &a->bs->devices[sdev->buf_id].input_streams[0]);
             a->bs->devices[sdev->buf_id].num_input_streams = 1;
             wmb();
 
-            if (aaudio_cmd_set_input_stream_address_ranges(a, sdev->dev_id)) {
-                dev_err(a->dev, "aaudio: Failed to set input stream address ranges\n");
+            if (t2audio_cmd_set_input_stream_address_ranges(a, sdev->dev_id)) {
+                dev_err(a->dev, "t2audio: Failed to set input stream address ranges\n");
             }
         }
     }
@@ -578,19 +578,19 @@ static int aaudio_init_bs(struct aaudio_device *a)
     return 0;
 }
 
-static void aaudio_init_bs_stream(struct aaudio_device *a, struct aaudio_stream *strm,
-                                  struct aaudio_buffer_struct_stream *bs_strm)
+static void t2audio_init_bs_stream(struct t2audio_device *a, struct t2audio_stream *strm,
+                                  struct t2audio_buffer_struct_stream *bs_strm)
 {
     size_t i;
     strm->buffer_cnt = bs_strm->num_buffers;
-    if (bs_strm->num_buffers > AAUDIO_DEVICE_MAX_BUFFER_COUNT) {
+    if (bs_strm->num_buffers > T2AUDIO_DEVICE_MAX_BUFFER_COUNT) {
         dev_warn(a->dev, "BufferStruct buffer count %u exceeds driver limit of %u\n", bs_strm->num_buffers,
-                AAUDIO_DEVICE_MAX_BUFFER_COUNT);
-        strm->buffer_cnt = AAUDIO_DEVICE_MAX_BUFFER_COUNT;
+                T2AUDIO_DEVICE_MAX_BUFFER_COUNT);
+        strm->buffer_cnt = T2AUDIO_DEVICE_MAX_BUFFER_COUNT;
     }
     if (!strm->buffer_cnt)
         return;
-    strm->buffers = kmalloc_array(strm->buffer_cnt, sizeof(struct aaudio_dma_buf), GFP_KERNEL);
+    strm->buffers = kmalloc_array(strm->buffer_cnt, sizeof(struct t2audio_dma_buf), GFP_KERNEL);
     if (!strm->buffers) {
         dev_err(a->dev, "Buffer list allocation failed\n");
         return;
@@ -603,15 +603,15 @@ static void aaudio_init_bs_stream(struct aaudio_device *a, struct aaudio_stream 
 
     if (strm->buffer_cnt == 1) {
         strm->alsa_hw_desc = kmalloc(sizeof(struct snd_pcm_hardware), GFP_KERNEL);
-        if (aaudio_create_hw_info(&strm->desc, strm->alsa_hw_desc, strm->buffers[0].size)) {
+        if (t2audio_create_hw_info(&strm->desc, strm->alsa_hw_desc, strm->buffers[0].size)) {
             kfree(strm->alsa_hw_desc);
             strm->alsa_hw_desc = NULL;
         }
     }
 }
 
-static void aaudio_init_bs_stream_host(struct aaudio_device *a, struct aaudio_stream *strm,
-        struct aaudio_buffer_struct_stream *bs_strm)
+static void t2audio_init_bs_stream_host(struct t2audio_device *a, struct t2audio_stream *strm,
+        struct t2audio_buffer_struct_stream *bs_strm)
 {
     size_t size;
     dma_addr_t dma_addr;
@@ -629,7 +629,7 @@ static void aaudio_init_bs_stream_host(struct aaudio_device *a, struct aaudio_st
     memset(dma_ptr, 0, size);
 
     strm->buffer_cnt = 1;
-    strm->buffers = kmalloc_array(strm->buffer_cnt, sizeof(struct aaudio_dma_buf), GFP_KERNEL);
+    strm->buffers = kmalloc_array(strm->buffer_cnt, sizeof(struct t2audio_dma_buf), GFP_KERNEL);
     if (!strm->buffers) {
         dev_err(a->dev, "Buffer list allocation failed\n");
         return;
@@ -639,60 +639,60 @@ static void aaudio_init_bs_stream_host(struct aaudio_device *a, struct aaudio_st
     strm->buffers[0].size = size;
 
     strm->alsa_hw_desc = kmalloc(sizeof(struct snd_pcm_hardware), GFP_KERNEL);
-    if (aaudio_create_hw_info(&strm->desc, strm->alsa_hw_desc, strm->buffers[0].size)) {
+    if (t2audio_create_hw_info(&strm->desc, strm->alsa_hw_desc, strm->buffers[0].size)) {
         kfree(strm->alsa_hw_desc);
         strm->alsa_hw_desc = NULL;
     }
 }
 
-static void aaudio_handle_prop_change(struct aaudio_device *a, struct aaudio_msg *msg);
+static void t2audio_handle_prop_change(struct t2audio_device *a, struct t2audio_msg *msg);
 
-void aaudio_handle_notification(struct aaudio_device *a, struct aaudio_msg *msg)
+void t2audio_handle_notification(struct t2audio_device *a, struct t2audio_msg *msg)
 {
-    struct aaudio_send_ctx sctx;
-    struct aaudio_msg_base base;
-    if (aaudio_msg_read_base(msg, &base))
+    struct t2audio_send_ctx sctx;
+    struct t2audio_msg_base base;
+    if (t2audio_msg_read_base(msg, &base))
         return;
     switch (base.msg) {
-        case AAUDIO_MSG_NOTIFICATION_BOOT:
-            pr_debug("aaudio: Received boot notification from remote\n");
+        case T2AUDIO_MSG_NOTIFICATION_BOOT:
+            pr_debug("t2audio: Received boot notification from remote\n");
 
             /* Resend the alive notify */
-            if (aaudio_send(a, &sctx, 500,
-                    aaudio_msg_write_alive_notification, 1, 3)) {
+            if (t2audio_send(a, &sctx, 500,
+                    t2audio_msg_write_alive_notification, 1, 3)) {
                 pr_err("Sending alive notification failed\n");
             }
             break;
-        case AAUDIO_MSG_NOTIFICATION_ALIVE:
-            pr_debug("aaudio: Received alive notification from remote\n");
+        case T2AUDIO_MSG_NOTIFICATION_ALIVE:
+            pr_debug("t2audio: Received alive notification from remote\n");
             complete_all(&a->remote_alive);
             break;
-        case AAUDIO_MSG_PROPERTY_CHANGED:
-            aaudio_handle_prop_change(a, msg);
+        case T2AUDIO_MSG_PROPERTY_CHANGED:
+            t2audio_handle_prop_change(a, msg);
             break;
         default:
-            pr_debug("aaudio: Unhandled notification %i\n", base.msg);
+            pr_debug("t2audio: Unhandled notification %i\n", base.msg);
             break;
     }
 }
 
-struct aaudio_prop_change_work_struct {
+struct t2audio_prop_change_work_struct {
     struct work_struct ws;
-    struct aaudio_device *a;
-    aaudio_device_id_t dev;
-    aaudio_object_id_t obj;
-    struct aaudio_prop_addr prop;
+    struct t2audio_device *a;
+    t2audio_device_id_t dev;
+    t2audio_object_id_t obj;
+    struct t2audio_prop_addr prop;
 };
 
-static void aaudio_handle_jack_connection_change(struct aaudio_subdevice *sdev)
+static void t2audio_handle_jack_connection_change(struct t2audio_subdevice *sdev)
 {
     u32 plugged;
     if (!sdev->jack)
         return;
     /* NOTE: Apple made the plug status scoped to the input and output streams. This makes no sense for us, so I just
      * always pick the OUTPUT status. */
-    if (aaudio_cmd_get_primitive_property(sdev->a, sdev->dev_id, sdev->dev_id,
-            AAUDIO_PROP(AAUDIO_PROP_SCOPE_OUTPUT, AAUDIO_PROP_JACK_PLUGGED, 0), NULL, 0, &plugged, sizeof(plugged))) {
+    if (t2audio_cmd_get_primitive_property(sdev->a, sdev->dev_id, sdev->dev_id,
+            T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_OUTPUT, T2AUDIO_PROP_JACK_PLUGGED, 0), NULL, 0, &plugged, sizeof(plugged))) {
         dev_err(sdev->a->dev, "Failed to get jack enable status\n");
         return;
     }
@@ -700,134 +700,134 @@ static void aaudio_handle_jack_connection_change(struct aaudio_subdevice *sdev)
     snd_jack_report(sdev->jack, plugged ? sdev->jack->type : 0);
 }
 
-void aaudio_handle_prop_change_work(struct work_struct *ws)
+void t2audio_handle_prop_change_work(struct work_struct *ws)
 {
-    struct aaudio_prop_change_work_struct *work = container_of(ws, struct aaudio_prop_change_work_struct, ws);
-    struct aaudio_subdevice *sdev;
+    struct t2audio_prop_change_work_struct *work = container_of(ws, struct t2audio_prop_change_work_struct, ws);
+    struct t2audio_subdevice *sdev;
 
-    sdev = aaudio_find_dev_by_dev_id(work->a, work->dev);
+    sdev = t2audio_find_dev_by_dev_id(work->a, work->dev);
     if (!sdev) {
         dev_err(work->a->dev, "Property notification change: device not found\n");
         goto done;
     }
     dev_dbg(work->a->dev, "Property changed for device: %s\n", sdev->uid);
 
-    if (work->prop.scope == AAUDIO_PROP_SCOPE_OUTPUT && work->prop.selector == AAUDIO_PROP_JACK_PLUGGED) {
-        aaudio_handle_jack_connection_change(sdev);
+    if (work->prop.scope == T2AUDIO_PROP_SCOPE_OUTPUT && work->prop.selector == T2AUDIO_PROP_JACK_PLUGGED) {
+        t2audio_handle_jack_connection_change(sdev);
     }
 
 done:
     kfree(work);
 }
 
-void aaudio_handle_prop_change(struct aaudio_device *a, struct aaudio_msg *msg)
+void t2audio_handle_prop_change(struct t2audio_device *a, struct t2audio_msg *msg)
 {
     /* NOTE: This is a scheduled work because this callback will generally need to query device information and this
      * is not possible when we are in the reply parsing code's context. */
-    struct aaudio_prop_change_work_struct *work;
-    work = kmalloc(sizeof(struct aaudio_prop_change_work_struct), GFP_KERNEL);
+    struct t2audio_prop_change_work_struct *work;
+    work = kmalloc(sizeof(struct t2audio_prop_change_work_struct), GFP_KERNEL);
     work->a = a;
-    INIT_WORK(&work->ws, aaudio_handle_prop_change_work);
-    aaudio_msg_read_property_changed(msg, &work->dev, &work->obj, &work->prop);
+    INIT_WORK(&work->ws, t2audio_handle_prop_change_work);
+    t2audio_msg_read_property_changed(msg, &work->dev, &work->obj, &work->prop);
     schedule_work(&work->ws);
 }
 
-#define aaudio_send_cmd_response(a, sctx, msg, fn, ...) \
-    if (aaudio_send_with_tag(a, sctx, ((struct aaudio_msg_header *) msg->data)->tag, 500, fn, ##__VA_ARGS__)) \
-        pr_err("aaudio: Failed to reply to a command\n");
+#define t2audio_send_cmd_response(a, sctx, msg, fn, ...) \
+    if (t2audio_send_with_tag(a, sctx, ((struct t2audio_msg_header *) msg->data)->tag, 500, fn, ##__VA_ARGS__)) \
+        pr_err("t2audio: Failed to reply to a command\n");
 
-void aaudio_handle_cmd_timestamp(struct aaudio_device *a, struct aaudio_msg *msg)
+void t2audio_handle_cmd_timestamp(struct t2audio_device *a, struct t2audio_msg *msg)
 {
     ktime_t time_os = ktime_get_boottime();
-    struct aaudio_send_ctx sctx;
-    struct aaudio_subdevice *sdev;
+    struct t2audio_send_ctx sctx;
+    struct t2audio_subdevice *sdev;
     u64 devid, timestamp, update_seed;
-    aaudio_msg_read_update_timestamp(msg, &devid, &timestamp, &update_seed);
+    t2audio_msg_read_update_timestamp(msg, &devid, &timestamp, &update_seed);
     dev_dbg(a->dev, "Received timestamp update for dev=%llx ts=%llx seed=%llx\n", devid, timestamp, update_seed);
 
-    sdev = aaudio_find_dev_by_dev_id(a, devid);
-    aaudio_handle_timestamp(sdev, time_os, timestamp);
+    sdev = t2audio_find_dev_by_dev_id(a, devid);
+    t2audio_handle_timestamp(sdev, time_os, timestamp);
 
-    aaudio_send_cmd_response(a, &sctx, msg,
-            aaudio_msg_write_update_timestamp_response);
+    t2audio_send_cmd_response(a, &sctx, msg,
+            t2audio_msg_write_update_timestamp_response);
 }
 
-void aaudio_handle_command(struct aaudio_device *a, struct aaudio_msg *msg)
+void t2audio_handle_command(struct t2audio_device *a, struct t2audio_msg *msg)
 {
-    struct aaudio_msg_base base;
-    if (aaudio_msg_read_base(msg, &base))
+    struct t2audio_msg_base base;
+    if (t2audio_msg_read_base(msg, &base))
         return;
     switch (base.msg) {
-        case AAUDIO_MSG_UPDATE_TIMESTAMP:
-            aaudio_handle_cmd_timestamp(a, msg);
+        case T2AUDIO_MSG_UPDATE_TIMESTAMP:
+            t2audio_handle_cmd_timestamp(a, msg);
             break;
         default:
-            pr_debug("aaudio: Unhandled device command %i\n", base.msg);
+            pr_debug("t2audio: Unhandled device command %i\n", base.msg);
             break;
     }
 }
 
-static struct pci_device_id aaudio_ids[  ] = {
+static struct pci_device_id t2audio_ids[  ] = {
         { PCI_DEVICE(PCI_VENDOR_ID_APPLE, 0x1803) },
         { 0, },
 };
-MODULE_DEVICE_TABLE(pci, aaudio_ids);
+MODULE_DEVICE_TABLE(pci, t2audio_ids);
 
-struct dev_pm_ops aaudio_pci_driver_pm = {
-        .suspend = aaudio_suspend,
-        .resume = aaudio_resume
+struct dev_pm_ops t2audio_pci_driver_pm = {
+        .suspend = t2audio_suspend,
+        .resume = t2audio_resume
 };
-struct pci_driver aaudio_pci_driver = {
-        .name = "aaudio",
-        .id_table = aaudio_ids,
-        .probe = aaudio_probe,
-        .remove = aaudio_remove,
-        .shutdown = aaudio_shutdown,
+struct pci_driver t2audio_pci_driver = {
+        .name = "t2audio",
+        .id_table = t2audio_ids,
+        .probe = t2audio_probe,
+        .remove = t2audio_remove,
+        .shutdown = t2audio_shutdown,
         .driver = {
-                .pm = &aaudio_pci_driver_pm
+                .pm = &t2audio_pci_driver_pm
         }
 };
 
 
-static int __init aaudio_module_init(void)
+static int __init t2audio_module_init(void)
 {
     int result;
-    if ((result = alloc_chrdev_region(&aaudio_chrdev, 0, 1, "aaudio")))
+    if ((result = alloc_chrdev_region(&t2audio_chrdev, 0, 1, "t2audio")))
         goto fail_chrdev;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6,4,0)
-    aaudio_class = class_create(THIS_MODULE, "aaudio");
+    t2audio_class = class_create(THIS_MODULE, "t2audio");
 #else
-    aaudio_class = class_create("aaudio");
+    t2audio_class = class_create("t2audio");
 #endif
-    if (IS_ERR(aaudio_class)) {
-        result = PTR_ERR(aaudio_class);
+    if (IS_ERR(t2audio_class)) {
+        result = PTR_ERR(t2audio_class);
         goto fail_class;
     }
     
-    result = pci_register_driver(&aaudio_pci_driver);
+    result = pci_register_driver(&t2audio_pci_driver);
     if (result)
         goto fail_drv;
     return 0;
 
 fail_drv:
-    pci_unregister_driver(&aaudio_pci_driver);
+    pci_unregister_driver(&t2audio_pci_driver);
 fail_class:
-    class_destroy(aaudio_class);
+    class_destroy(t2audio_class);
 fail_chrdev:
-    unregister_chrdev_region(aaudio_chrdev, 1);
+    unregister_chrdev_region(t2audio_chrdev, 1);
     if (!result)
         result = -EINVAL;
     return result;
 }
 
-static void __exit aaudio_module_exit(void)
+static void __exit t2audio_module_exit(void)
 {
-    pci_unregister_driver(&aaudio_pci_driver);
-    class_destroy(aaudio_class);
-    unregister_chrdev_region(aaudio_chrdev, 1);
+    pci_unregister_driver(&t2audio_pci_driver);
+    class_destroy(t2audio_class);
+    unregister_chrdev_region(t2audio_chrdev, 1);
 }
 
-struct aaudio_alsa_pcm_id_mapping aaudio_alsa_id_mappings[] = {
+struct t2audio_alsa_pcm_id_mapping t2audio_alsa_id_mappings[] = {
         {"Speaker", 0},
         {"Digital Mic", 1},
         {"Codec Output", 2},
@@ -836,14 +836,14 @@ struct aaudio_alsa_pcm_id_mapping aaudio_alsa_id_mappings[] = {
         {}
 };
 
-module_param_named(index, aaudio_alsa_index, int, 0444);
+module_param_named(index, t2audio_alsa_index, int, 0444);
 MODULE_PARM_DESC(index, "Index value for Apple Internal Audio soundcard.");
-module_param_named(id, aaudio_alsa_id, charp, 0444);
+module_param_named(id, t2audio_alsa_id, charp, 0444);
 MODULE_PARM_DESC(id, "ID string for Apple Internal Audio soundcard.");
 MODULE_SOFTDEP("pre: t2bce");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@gmail.com>");
 MODULE_DESCRIPTION("Apple T2 Audio Driver");
 MODULE_VERSION("0.01");
-module_init(aaudio_module_init);
-module_exit(aaudio_module_exit);
+module_init(t2audio_module_init);
+module_exit(t2audio_module_exit);

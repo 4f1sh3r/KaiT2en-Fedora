@@ -1,5 +1,5 @@
-#ifndef AAUDIO_H
-#define AAUDIO_H
+#ifndef T2AUDIO_H
+#define T2AUDIO_H
 
 #include <linux/types.h>
 #include <linux/workqueue.h>
@@ -8,65 +8,65 @@
 #include "protocol_bce.h"
 #include "description.h"
 
-#define AAUDIO_SIG 0x19870423
+#define T2AUDIO_SIG 0x19870423
 
-#define AAUDIO_DEVICE_MAX_UID_LEN 128
-#define AAUDIO_DEVICE_MAX_INPUT_STREAMS 1
-#define AAUDIO_DEVICE_MAX_OUTPUT_STREAMS 1
-#define AAUDIO_DEVICE_MAX_BUFFER_COUNT 1
+#define T2AUDIO_DEVICE_MAX_UID_LEN 128
+#define T2AUDIO_DEVICE_MAX_INPUT_STREAMS 1
+#define T2AUDIO_DEVICE_MAX_OUTPUT_STREAMS 1
+#define T2AUDIO_DEVICE_MAX_BUFFER_COUNT 1
 
-#define AAUDIO_BUFFER_ID_NONE 0xffu
+#define T2AUDIO_BUFFER_ID_NONE 0xffu
 
 struct snd_card;
 struct snd_pcm;
 struct snd_pcm_hardware;
 struct snd_jack;
 
-struct __attribute__((packed)) __attribute__((aligned(4))) aaudio_buffer_struct_buffer {
+struct __attribute__((packed)) __attribute__((aligned(4))) t2audio_buffer_struct_buffer {
     size_t address;
     size_t size;
     size_t pad[4];
 };
-struct aaudio_buffer_struct_stream {
+struct t2audio_buffer_struct_stream {
     u8 num_buffers;
-    struct aaudio_buffer_struct_buffer buffers[100];
+    struct t2audio_buffer_struct_buffer buffers[100];
     char filler[32];
 };
-struct aaudio_buffer_struct_device {
+struct t2audio_buffer_struct_device {
     char name[128];
     u8 num_input_streams;
     u8 num_output_streams;
-    struct aaudio_buffer_struct_stream input_streams[5];
-    struct aaudio_buffer_struct_stream output_streams[5];
+    struct t2audio_buffer_struct_stream input_streams[5];
+    struct t2audio_buffer_struct_stream output_streams[5];
     char filler[128];
 };
-struct aaudio_buffer_struct {
+struct t2audio_buffer_struct {
     u32 version;
     u32 signature;
     u32 flags;
     u8 num_devices;
-    struct aaudio_buffer_struct_device devices[20];
+    struct t2audio_buffer_struct_device devices[20];
 };
 
-struct aaudio_device;
+struct t2audio_device;
 
-struct aaudio_deferred_msg {
+struct t2audio_deferred_msg {
     struct work_struct ws;
-    struct aaudio_device *a;
-    struct aaudio_msg msg;
+    struct t2audio_device *a;
+    struct t2audio_msg msg;
 };
 
-struct aaudio_dma_buf {
+struct t2audio_dma_buf {
     dma_addr_t dma_addr;
     void *ptr;
     size_t size;
 };
-struct aaudio_stream {
-    aaudio_object_id_t id;
+struct t2audio_stream {
+    t2audio_object_id_t id;
     size_t buffer_cnt;
-    struct aaudio_dma_buf *buffers;
+    struct t2audio_dma_buf *buffers;
 
-    struct aaudio_apple_description desc;
+    struct t2audio_apple_description desc;
     struct snd_pcm_hardware *alsa_hw_desc;
     u32 latency;
 
@@ -76,28 +76,28 @@ struct aaudio_stream {
     snd_pcm_sframes_t frame_min;
     int started;
 };
-struct aaudio_subdevice {
-    struct aaudio_device *a;
+struct t2audio_subdevice {
+    struct t2audio_device *a;
     struct list_head list;
-    aaudio_device_id_t dev_id;
+    t2audio_device_id_t dev_id;
     u32 in_latency, out_latency;
     u8 buf_id;
     int alsa_id;
-    char uid[AAUDIO_DEVICE_MAX_UID_LEN + 1];
+    char uid[T2AUDIO_DEVICE_MAX_UID_LEN + 1];
     size_t in_stream_cnt;
-    struct aaudio_stream in_streams[AAUDIO_DEVICE_MAX_INPUT_STREAMS];
+    struct t2audio_stream in_streams[T2AUDIO_DEVICE_MAX_INPUT_STREAMS];
     size_t out_stream_cnt;
-    struct aaudio_stream out_streams[AAUDIO_DEVICE_MAX_OUTPUT_STREAMS];
+    struct t2audio_stream out_streams[T2AUDIO_DEVICE_MAX_OUTPUT_STREAMS];
     bool is_pcm;
     struct snd_pcm *pcm;
     struct snd_jack *jack;
 };
-struct aaudio_alsa_pcm_id_mapping {
+struct t2audio_alsa_pcm_id_mapping {
     const char *name;
     int alsa_id;
 };
 
-struct aaudio_device {
+struct t2audio_device {
     struct pci_dev *pci;
     dev_t devt;
     struct device *dev;
@@ -107,10 +107,10 @@ struct aaudio_device {
 
     u32 __iomem *reg_mem_gpr;
 
-    struct aaudio_buffer_struct *bs;
+    struct t2audio_buffer_struct *bs;
 
     struct t2bce_client *bce;
-    struct aaudio_bce bcem;
+    struct t2audio_bce bcem;
 
     struct snd_card *card;
 
@@ -122,11 +122,11 @@ struct aaudio_device {
     bool resume_deferred;
 };
 
-void aaudio_handle_notification(struct aaudio_device *a, struct aaudio_msg *msg);
-void aaudio_handle_prop_change_work(struct work_struct *ws);
-void aaudio_handle_cmd_timestamp(struct aaudio_device *a, struct aaudio_msg *msg);
-void aaudio_handle_command(struct aaudio_device *a, struct aaudio_msg *msg);
+void t2audio_handle_notification(struct t2audio_device *a, struct t2audio_msg *msg);
+void t2audio_handle_prop_change_work(struct work_struct *ws);
+void t2audio_handle_cmd_timestamp(struct t2audio_device *a, struct t2audio_msg *msg);
+void t2audio_handle_command(struct t2audio_device *a, struct t2audio_msg *msg);
 
-extern struct aaudio_alsa_pcm_id_mapping aaudio_alsa_id_mappings[];
+extern struct t2audio_alsa_pcm_id_mapping t2audio_alsa_id_mappings[];
 
-#endif //AAUDIO_H
+#endif //T2AUDIO_H
