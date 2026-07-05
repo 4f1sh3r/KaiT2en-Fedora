@@ -911,6 +911,7 @@ static int bce_vhci_urb_data_transfer_completion(struct bce_vhci_urb *urb, struc
 static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
 {
     struct bce_vhci_transfer_queue *q = urb->q;
+    int port;
     if (urb->received_status == 0)
         return 0;
     if (urb->state == BCE_VHCI_URB_DATA_TRANSFER_COMPLETE ||
@@ -919,6 +920,23 @@ static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
         urb->state = BCE_VHCI_URB_CONTROL_COMPLETE;
         if (urb->received_status != BCE_VHCI_SUCCESS) {
             if (urb->received_status == 3 && urb->q->endp_addr == 0x00) {
+                /*
+                 * An EP0 stall on the port's own resume cycle can mean the
+                 * port itself isn't actually settled yet even though usbcore
+                 * already saw it as ready. Nudge the port worker to send a
+                 * PORT_RESUME before endpoint queues come back, instead of
+                 * only resetting this one endpoint.
+                 */
+                for (port = 1; port <= q->vhci->port_count; port++) {
+                    if (q->vhci->port_to_device[port] != q->dev_addr)
+                        continue;
+                    set_bit(port - 1, &q->vhci->port_resume_requested);
+                    set_bit(port - 1, &q->vhci->port_change_waiting);
+                    q->vhci->stateful_resume_gating = true;
+                    queue_delayed_work(q->vhci->tq_state_wq,
+                                       &q->vhci->w_port_status_change, 0);
+                    break;
+                }
                 q->active = false;
                 q->stalled = true;
                 q->state = BCE_VHCI_ENDPOINT_STALLED;
