@@ -101,6 +101,8 @@ static int t2bce_probe(struct pci_dev *dev, const struct pci_device_id *id)
     spin_lock_init(&bce->queues_lock);
     ida_init(&bce->queue_ida);
     mutex_init(&bce->pm_lock);
+    mutex_init(&bce->clients_lock);
+    INIT_LIST_HEAD(&bce->clients);
     bce->mailbox_channel_active = true;
 
     if ((status = pci_request_irq(dev, 0, bce_handle_mb_irq, NULL, dev, "bce_mbox")))
@@ -607,7 +609,7 @@ static void t2bce_complete(struct device *dev)
         bce->no_state_fallback = false;
     }
 
-    aaudio_resume_post_vhci(bce->aaudio);
+    t2bce_notify_post_vhci_resume(bce);
     pr_debug("t2bce: complete: exit\n");
 }
 

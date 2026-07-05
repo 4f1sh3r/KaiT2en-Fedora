@@ -4,6 +4,7 @@
 #include <linux/pci.h>
 #include <linux/spinlock.h>
 #include <linux/mutex.h>
+#include <linux/list.h>
 #include "mailbox.h"
 #include "queue.h"
 #include "vhci/vhci.h"
@@ -38,9 +39,10 @@ struct t2bce_device {
     bool no_state_fallback;
     bool mailbox_channel_active;
     struct mutex pm_lock;
+    struct mutex clients_lock;
+    struct list_head clients;
 
     struct bce_vhci vhci;
-    struct aaudio_device *aaudio;
 };
 
 extern struct t2bce_device *global_bce;

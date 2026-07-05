@@ -23,6 +23,7 @@ static void aaudio_free_dev(struct aaudio_subdevice *sdev);
 static void aaudio_reset_stream(struct aaudio_stream *stream);
 static void aaudio_reset_streams(struct aaudio_device *a);
 static void aaudio_resume_work(struct work_struct *ws);
+static void aaudio_resume_post_vhci(void *userdata);
 
 static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
@@ -56,7 +57,7 @@ static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
     aaudio->pci = dev;
     pci_set_drvdata(dev, aaudio);
-    t2bce_client_set_audio(aaudio->bce, aaudio);
+    t2bce_client_set_post_vhci_resume(aaudio->bce, aaudio_resume_post_vhci, aaudio);
 
     aaudio->devt = aaudio_chrdev;
     aaudio->dev = device_create(aaudio_class, &dev->dev, aaudio->devt, NULL, "aaudio");
@@ -144,7 +145,6 @@ fail:
             pci_iounmap(dev, aaudio->reg_mem_bs);
         if (!IS_ERR_OR_NULL(aaudio->reg_mem_cfg))
             pci_iounmap(dev, aaudio->reg_mem_cfg);
-        t2bce_client_clear_audio(aaudio->bce, aaudio);
         t2bce_client_put(aaudio->bce);
         kfree(aaudio);
     }
@@ -165,7 +165,6 @@ static void aaudio_remove(struct pci_dev *dev)
     struct aaudio_device *aaudio = pci_get_drvdata(dev);
 
     cancel_work_sync(&aaudio->resume_work);
-    t2bce_client_clear_audio(aaudio->bce, aaudio);
     snd_card_free(aaudio->card);
     while (!list_empty(&aaudio->subdevice_list)) {
         sdev = list_first_entry(&aaudio->subdevice_list, struct aaudio_subdevice, list);
@@ -297,8 +296,10 @@ static void aaudio_resume_work(struct work_struct *ws)
     pr_debug("aaudio: resume deferred path complete\n");
 }
 
-void aaudio_resume_post_vhci(struct aaudio_device *aaudio)
+static void aaudio_resume_post_vhci(void *userdata)
 {
+    struct aaudio_device *aaudio = userdata;
+
     if (!aaudio || !aaudio->resume_deferred)
         return;
 
