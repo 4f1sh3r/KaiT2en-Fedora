@@ -1,5 +1,6 @@
 #include "pcm.h"
 #include "audio.h"
+#include <linux/io.h>
 
 static u64 aaudio_get_alsa_fmtbit(struct aaudio_apple_description *desc)
 {
