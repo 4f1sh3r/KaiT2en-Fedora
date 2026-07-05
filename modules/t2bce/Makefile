@@ -1,8 +1,10 @@
 modname := t2bce
 obj-m += $(modname).o
+obj-m += t2audio.o
 
 AUDIO_SRC ?= ../t2audio
-t2bce-objs := t2bce_main.o mailbox.o queue.o queue_dma.o transport.o vhci/vhci.o vhci/queue.o vhci/transfer.o $(AUDIO_SRC)/audio.o $(AUDIO_SRC)/protocol.o $(AUDIO_SRC)/protocol_bce.o $(AUDIO_SRC)/pcm.o
+t2bce-objs := t2bce_main.o mailbox.o queue.o queue_dma.o transport.o vhci/vhci.o vhci/queue.o vhci/transfer.o
+t2audio-objs := $(AUDIO_SRC)/audio.o $(AUDIO_SRC)/protocol.o $(AUDIO_SRC)/protocol_bce.o $(AUDIO_SRC)/pcm.o
 
 MY_CFLAGS += -DWITHOUT_NVME_PATCH
 #MY_CFLAGS += -g -DDEBUG
@@ -27,10 +29,12 @@ all:
 
 clean:
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
-	find $(PWD) $(AUDIO_DIR) -type f \( -name '*.o' -o -name '*.ko' -o -name '*.mod' -o -name '*.mod.c' -o -name '.*.cmd' -o -name 'Module.symvers' -o -name 'modules.order' \) -delete
+	find $(PWD) $(AUDIO_DIR) -ignore_readdir_race -type f \( -name '*.o' -o -name '*.ko' -o -name '*.mod' -o -name '*.mod.c' -o -name '.*.cmd' -o -name 'Module.symvers' -o -name 'modules.order' \) -delete
 
 install:
 	@test -f t2bce.ko || { echo "t2bce.ko not found; run make first"; exit 1; }
+	@test -f t2audio.ko || { echo "t2audio.ko not found; run make first"; exit 1; }
 	install -d -o root -g root -m 0755 $(MODDEST)
 	install -o root -g root -m 0644 t2bce.ko $(MODDEST)/t2bce.ko
+	install -o root -g root -m 0644 t2audio.ko $(MODDEST)/t2audio.ko
 	depmod -a $(KVERSION)

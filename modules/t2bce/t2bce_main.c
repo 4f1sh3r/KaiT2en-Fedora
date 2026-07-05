@@ -1,8 +1,8 @@
 #include "t2bce.h"
+#include "t2bce_transport.h"
 #include <linux/module.h>
 #include <linux/crc32.h>
 #include <linux/delay.h>
-#include "audio.h"
 #include <linux/version.h>
 
 static dev_t bce_chrdev;
@@ -662,8 +662,6 @@ static int __init t2bce_module_init(void)
     if (result)
         goto fail_drv;
 
-    aaudio_module_init();
-
     return 0;
 
 fail_drv:
@@ -680,7 +678,6 @@ static void __exit t2bce_module_exit(void)
 {
     pci_unregister_driver(&t2bce_pci_driver);
 
-    aaudio_module_exit();
     bce_vhci_module_exit();
     class_destroy(bce_class);
     unregister_chrdev_region(bce_chrdev, 1);

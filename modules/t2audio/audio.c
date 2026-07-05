@@ -768,6 +768,7 @@ static struct pci_device_id aaudio_ids[  ] = {
         { PCI_DEVICE(PCI_VENDOR_ID_APPLE, 0x1803) },
         { 0, },
 };
+MODULE_DEVICE_TABLE(pci, aaudio_ids);
 
 struct dev_pm_ops aaudio_pci_driver_pm = {
         .suspend = aaudio_suspend,
@@ -785,7 +786,7 @@ struct pci_driver aaudio_pci_driver = {
 };
 
 
-int aaudio_module_init(void)
+static int __init aaudio_module_init(void)
 {
     int result;
     if ((result = alloc_chrdev_region(&aaudio_chrdev, 0, 1, "aaudio")))
@@ -816,7 +817,7 @@ fail_chrdev:
     return result;
 }
 
-void aaudio_module_exit(void)
+static void __exit aaudio_module_exit(void)
 {
     pci_unregister_driver(&aaudio_pci_driver);
     class_destroy(aaudio_class);
@@ -836,3 +837,10 @@ module_param_named(index, aaudio_alsa_index, int, 0444);
 MODULE_PARM_DESC(index, "Index value for Apple Internal Audio soundcard.");
 module_param_named(id, aaudio_alsa_id, charp, 0444);
 MODULE_PARM_DESC(id, "ID string for Apple Internal Audio soundcard.");
+MODULE_SOFTDEP("pre: t2bce");
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@gmail.com>");
+MODULE_DESCRIPTION("Apple T2 Audio Driver");
+MODULE_VERSION("0.01");
+module_init(aaudio_module_init);
+module_exit(aaudio_module_exit);

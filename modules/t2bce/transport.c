@@ -1,6 +1,7 @@
 #include "t2bce_transport.h"
 #include "t2bce.h"
 
+#include <linux/export.h>
 #include <linux/slab.h>
 
 struct t2bce_client {
@@ -66,6 +67,7 @@ struct t2bce_client *t2bce_client_get(struct device *dev)
 
     return client;
 }
+EXPORT_SYMBOL_GPL(t2bce_client_get);
 
 void t2bce_client_put(struct t2bce_client *client)
 {
@@ -80,16 +82,19 @@ void t2bce_client_put(struct t2bce_client *client)
         device_link_del(client->link);
     kfree(client);
 }
+EXPORT_SYMBOL_GPL(t2bce_client_put);
 
 struct device *t2bce_client_dma_dev(struct t2bce_client *client)
 {
     return &client->bce->pci->dev;
 }
+EXPORT_SYMBOL_GPL(t2bce_client_dma_dev);
 
 bool t2bce_client_no_state_resume(struct t2bce_client *client)
 {
     return client->bce->vhci.no_state_resume;
 }
+EXPORT_SYMBOL_GPL(t2bce_client_no_state_resume);
 
 void t2bce_client_set_post_vhci_resume(struct t2bce_client *client,
         t2bce_resume_callback callback, void *userdata)
@@ -97,6 +102,7 @@ void t2bce_client_set_post_vhci_resume(struct t2bce_client *client,
     client->post_vhci_resume = callback;
     client->post_vhci_resume_userdata = userdata;
 }
+EXPORT_SYMBOL_GPL(t2bce_client_set_post_vhci_resume);
 
 void t2bce_notify_post_vhci_resume(struct t2bce_device *bce)
 {
@@ -114,11 +120,13 @@ struct t2bce_queue_cq *t2bce_create_cq(struct t2bce_client *client, u32 el_count
 {
     return to_t2bce_cq(bce_create_cq(client->bce, el_count));
 }
+EXPORT_SYMBOL_GPL(t2bce_create_cq);
 
 void t2bce_destroy_cq(struct t2bce_client *client, struct t2bce_queue_cq *cq)
 {
     bce_destroy_cq(client->bce, to_bce_cq(cq));
 }
+EXPORT_SYMBOL_GPL(t2bce_destroy_cq);
 
 struct t2bce_queue_sq *t2bce_create_sq(struct t2bce_client *client, struct t2bce_queue_cq *cq,
         const char *name, u32 el_count, enum dma_data_direction direction,
@@ -143,6 +151,7 @@ struct t2bce_queue_sq *t2bce_create_sq(struct t2bce_client *client, struct t2bce
 
     return to_t2bce_sq(sq);
 }
+EXPORT_SYMBOL_GPL(t2bce_create_sq);
 
 void t2bce_destroy_sq(struct t2bce_client *client, struct t2bce_queue_sq *sq)
 {
@@ -152,6 +161,7 @@ void t2bce_destroy_sq(struct t2bce_client *client, struct t2bce_queue_sq *sq)
     bce_destroy_sq(client->bce, bce_sq);
     kfree(ctx);
 }
+EXPORT_SYMBOL_GPL(t2bce_destroy_sq);
 
 void *t2bce_queue_sq_userdata(struct t2bce_queue_sq *sq)
 {
@@ -159,11 +169,13 @@ void *t2bce_queue_sq_userdata(struct t2bce_queue_sq *sq)
 
     return ctx->userdata;
 }
+EXPORT_SYMBOL_GPL(t2bce_queue_sq_userdata);
 
 int t2bce_reserve_submission(struct t2bce_queue_sq *sq, unsigned long *timeout)
 {
     return bce_reserve_submission(to_bce_sq(sq), timeout);
 }
+EXPORT_SYMBOL_GPL(t2bce_reserve_submission);
 
 void t2bce_set_next_submission_single(struct t2bce_queue_sq *sq, dma_addr_t addr, size_t size)
 {
@@ -171,18 +183,22 @@ void t2bce_set_next_submission_single(struct t2bce_queue_sq *sq, dma_addr_t addr
 
     bce_set_submission_single(submission, addr, size);
 }
+EXPORT_SYMBOL_GPL(t2bce_set_next_submission_single);
 
 void t2bce_submit_to_device(struct t2bce_queue_sq *sq)
 {
     bce_submit_to_device(to_bce_sq(sq));
 }
+EXPORT_SYMBOL_GPL(t2bce_submit_to_device);
 
 void t2bce_notify_submission_complete(struct t2bce_queue_sq *sq)
 {
     bce_notify_submission_complete(to_bce_sq(sq));
 }
+EXPORT_SYMBOL_GPL(t2bce_notify_submission_complete);
 
 struct t2bce_sq_completion_data *t2bce_next_completion(struct t2bce_queue_sq *sq)
 {
     return (struct t2bce_sq_completion_data *) bce_next_completion(to_bce_sq(sq));
 }
+EXPORT_SYMBOL_GPL(t2bce_next_completion);
