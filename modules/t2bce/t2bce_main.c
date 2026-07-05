@@ -617,7 +617,7 @@ static void t2bce_complete(struct device *dev)
         bce->no_state_fallback = false;
     }
 
-    t2bce_notify_post_vhci_resume(bce);
+    t2bce_notify_resume_complete(bce);
     pr_debug("t2bce: complete: exit\n");
 }
 

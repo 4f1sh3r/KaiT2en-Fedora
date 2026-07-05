@@ -10,8 +10,8 @@ struct t2bce_client {
     struct device *dev;
     struct device_link *link;
     struct list_head list;
-    t2bce_resume_callback post_vhci_resume;
-    void *post_vhci_resume_userdata;
+    t2bce_client_resume_callback resume_complete;
+    void *resume_complete_userdata;
 };
 
 struct t2bce_sq_ctx {
@@ -107,21 +107,21 @@ bool t2bce_client_no_state_resume(struct t2bce_client *client)
 }
 EXPORT_SYMBOL_GPL(t2bce_client_no_state_resume);
 
-void t2bce_client_set_post_vhci_resume(struct t2bce_client *client,
-        t2bce_resume_callback callback, void *userdata)
+void t2bce_client_set_resume_complete_callback(struct t2bce_client *client,
+        t2bce_client_resume_callback callback, void *userdata)
 {
     if (!callback) {
-        smp_store_release(&client->post_vhci_resume, NULL);
-        WRITE_ONCE(client->post_vhci_resume_userdata, NULL);
+        smp_store_release(&client->resume_complete, NULL);
+        WRITE_ONCE(client->resume_complete_userdata, NULL);
         return;
     }
 
-    WRITE_ONCE(client->post_vhci_resume_userdata, userdata);
-    smp_store_release(&client->post_vhci_resume, callback);
+    WRITE_ONCE(client->resume_complete_userdata, userdata);
+    smp_store_release(&client->resume_complete, callback);
 }
-EXPORT_SYMBOL_GPL(t2bce_client_set_post_vhci_resume);
+EXPORT_SYMBOL_GPL(t2bce_client_set_resume_complete_callback);
 
-void t2bce_notify_post_vhci_resume(struct t2bce_device *bce)
+void t2bce_notify_resume_complete(struct t2bce_device *bce)
 {
     struct t2bce_client *client;
     int srcu_idx;
@@ -129,10 +129,10 @@ void t2bce_notify_post_vhci_resume(struct t2bce_device *bce)
     srcu_idx = srcu_read_lock(&bce->clients_srcu);
     list_for_each_entry_srcu(client, &bce->clients, list,
             srcu_read_lock_held(&bce->clients_srcu)) {
-        t2bce_resume_callback callback = smp_load_acquire(&client->post_vhci_resume);
+        t2bce_client_resume_callback callback = smp_load_acquire(&client->resume_complete);
 
         if (callback)
-            callback(READ_ONCE(client->post_vhci_resume_userdata));
+            callback(READ_ONCE(client->resume_complete_userdata));
     }
     srcu_read_unlock(&bce->clients_srcu, srcu_idx);
 }

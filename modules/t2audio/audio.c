@@ -24,7 +24,7 @@ static void aaudio_free_dev(struct aaudio_subdevice *sdev);
 static void aaudio_reset_stream(struct aaudio_stream *stream);
 static void aaudio_reset_streams(struct aaudio_device *a);
 static void aaudio_resume_work(struct work_struct *ws);
-static void aaudio_resume_post_vhci(void *userdata);
+static void aaudio_resume_complete(void *userdata);
 
 static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
@@ -60,7 +60,7 @@ static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
     aaudio->pci = dev;
     pci_set_drvdata(dev, aaudio);
-    t2bce_client_set_post_vhci_resume(aaudio->bce, aaudio_resume_post_vhci, aaudio);
+    t2bce_client_set_resume_complete_callback(aaudio->bce, aaudio_resume_complete, aaudio);
 
     aaudio->devt = aaudio_chrdev;
     aaudio->dev = device_create(aaudio_class, &dev->dev, aaudio->devt, NULL, "aaudio");
@@ -299,7 +299,7 @@ static void aaudio_resume_work(struct work_struct *ws)
     pr_debug("aaudio: resume deferred path complete\n");
 }
 
-static void aaudio_resume_post_vhci(void *userdata)
+static void aaudio_resume_complete(void *userdata)
 {
     struct aaudio_device *aaudio = userdata;
 

@@ -50,6 +50,6 @@ struct t2bce_device {
 
 extern struct t2bce_device *global_bce;
 
-void t2bce_notify_post_vhci_resume(struct t2bce_device *bce);
+void t2bce_notify_resume_complete(struct t2bce_device *bce);
 
 #endif //APPLE_BCE_H
