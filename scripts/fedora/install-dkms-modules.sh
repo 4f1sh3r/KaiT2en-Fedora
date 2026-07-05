@@ -5,10 +5,11 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
 require_root
 require_repo_root
 require_fedora
-require_command dkms make install rm chown mktemp depmod
+require_command dkms make install rm chown mktemp depmod sed tar find
 
 MODULES=(
 	t2bce
+	t2audio
 	t2smc
 	t2bdrm
 	t2touchbar
@@ -56,19 +57,21 @@ copy_module_source() {
 		--exclude='modules.order' \
 		-cf - . | tar -C "$dst" -xf -
 
-	if [[ "$name" == "t2bce" ]]; then
-		info "copying t2audio source into $dst/t2audio for transitional t2bce build"
-		install -d -o root -g root -m 0755 "$dst/t2audio"
-		tar -C "$REPO_ROOT/modules/t2audio" \
+	if [[ "$name" == "t2audio" ]]; then
+		local t2bce_version t2bce_symvers
+
+		t2bce_version="$(sed -n 's/^PACKAGE_VERSION="\([^"]*\)".*/\1/p' "$REPO_ROOT/modules/t2bce/dkms.conf")"
+		[[ -n "$t2bce_version" ]] || fail "missing PACKAGE_VERSION in $REPO_ROOT/modules/t2bce/dkms.conf"
+		t2bce_symvers="$(find "/var/lib/dkms/t2bce/$t2bce_version/$(kernel_release)" -path '*/module/Module.symvers' -print -quit 2>/dev/null || true)"
+		[[ -f "$t2bce_symvers" ]] || fail "missing t2bce Module.symvers; build t2bce before t2audio"
+
+		info "copying t2bce interface into $dst/t2bce for t2audio build"
+		install -d -o root -g root -m 0755 "$dst/t2bce"
+		install -d -o root -g root -m 0755 "$dst/t2bce/include"
+		tar -C "$REPO_ROOT/modules/t2bce/include" \
 			--exclude='.git' \
-			--exclude='*.ko' \
-			--exclude='*.o' \
-			--exclude='*.mod' \
-			--exclude='*.mod.c' \
-			--exclude='.*.cmd' \
-			--exclude='Module.symvers' \
-			--exclude='modules.order' \
-			-cf - . | tar -C "$dst/t2audio" -xf -
+			-cf - . | tar -C "$dst/t2bce/include" -xf -
+		install -o root -g root -m 0644 "$t2bce_symvers" "$dst/t2bce/Module.symvers"
 	fi
 
 	chown -R root:root "$dst"
