@@ -1,7 +1,4 @@
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
-};
+use std::collections::VecDeque;
 
 use crate::{
     config::{curve_for_preset, AppConfig, CurvePoint},
@@ -12,7 +9,6 @@ use crate::{
 pub struct Controller {
     samples: VecDeque<u8>,
     last_applied_percent: Option<u8>,
-    last_tick: Instant,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -28,7 +24,6 @@ impl Controller {
         Self {
             samples: VecDeque::with_capacity(50),
             last_applied_percent: None,
-            last_tick: Instant::now() - Duration::from_secs(5),
         }
     }
 
@@ -75,8 +70,6 @@ impl Controller {
             }
         }
 
-        self.last_tick = Instant::now();
-
         Ok(ControlSnapshot {
             temperatures: snapshot,
             effective_temp_c: smoothed_temp,
@@ -92,10 +85,6 @@ impl Controller {
         }
         self.last_applied_percent = None;
         Ok(())
-    }
-
-    pub fn should_tick(&self) -> bool {
-        self.last_tick.elapsed() >= Duration::from_millis(800)
     }
 
     fn smoothed_temp(&self) -> Option<u8> {

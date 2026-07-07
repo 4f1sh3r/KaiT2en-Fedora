@@ -330,7 +330,7 @@ fn daemon_main() -> error::Result<()> {
             }
         }
 
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_secs(1));
     }
 }
 
@@ -369,24 +369,16 @@ impl DaemonRuntime {
     }
 
     fn tick(&mut self) {
-        if self.controller.should_tick() {
-            match self
-                .controller
-                .tick(&self.config, &mut self.fans, &mut self.temperatures)
-            {
-                Ok(snapshot) => {
-                    self.snapshot = snapshot;
-                }
-                Err(error) => {
-                    self.status = format!("Fan control failed: {error}");
-                }
+        match self
+            .controller
+            .tick(&self.config, &mut self.fans, &mut self.temperatures)
+        {
+            Ok(snapshot) => {
+                self.snapshot = snapshot;
             }
-        } else {
-            for fan in &mut self.fans {
-                let _ = fan.refresh_state();
+            Err(error) => {
+                self.status = format!("Fan control failed: {error}");
             }
-            self.snapshot.temperatures = TemperatureSnapshot::read_from(&mut self.temperatures);
-            self.snapshot.effective_temp_c = self.snapshot.temperatures.effective_temp_c();
         }
     }
 
@@ -593,7 +585,7 @@ fn build_ui(app: &Application) {
     {
         let model = model.clone();
         let ui = ui.clone();
-        glib::timeout_add_local(Duration::from_millis(900), move || {
+        glib::timeout_add_local(Duration::from_secs(1), move || {
             let mut model = model.borrow_mut();
             model.tick();
             sync_ui(&model, &ui);
