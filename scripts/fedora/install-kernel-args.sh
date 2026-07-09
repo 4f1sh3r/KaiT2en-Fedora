@@ -34,7 +34,7 @@ ADD_ARGS=(
 	"initcall_blacklist=cmos_init,magicmouse_driver_init"
 )
 
-MODULE_BLACKLIST="module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,thunderbolt,apple_bce,apple_mfi_fastcharge,apple_gmux"
+MODULE_BLACKLIST="module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux"
 
 ADD_ARGS+=("$MODULE_BLACKLIST")
 KERNEL_ARGS="${ADD_ARGS[*]}"
