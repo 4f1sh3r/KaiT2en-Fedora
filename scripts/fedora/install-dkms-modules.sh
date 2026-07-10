@@ -5,7 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
 require_root
 require_repo_root
 require_fedora
-require_command dkms make install rm chown mktemp depmod sed tar find
+require_command dkms make install rm chown mktemp depmod sed tar find grep
 
 MODULES=(
 	t2bce_dma
@@ -45,9 +45,15 @@ remove_dkms_module_versions() {
 
 	while IFS= read -r version; do
 		[[ -n "$version" ]] || continue
-		info "removing legacy DKMS module $name/$version"
+		info "removing DKMS module $name/$version"
 		dkms remove --no-depmod -m "$name" -v "$version" --all >/dev/null 2>&1 || true
-	done < <(dkms status -m "$name" 2>/dev/null | sed -n "s|^$name/\\([^,]*\\),.*|\\1|p")
+		if dkms_module_version_exists "$name" "$version"; then
+			purge_dkms_module_version "$name" "$version"
+		fi
+		if dkms_module_version_exists "$name" "$version"; then
+			fail "DKMS still contains $name/$version after purge"
+		fi
+	done < <(dkms status -m "$name" 2>/dev/null | sed -n "s|^$name/\\([^,:]*\\)[,:].*|\\1|p")
 }
 
 remove_legacy_dkms_modules() {
@@ -58,10 +64,25 @@ remove_legacy_dkms_modules() {
 	done
 }
 
+remove_repo_dkms_modules() {
+	local module
+
+	for module in "${MODULES[@]}"; do
+		remove_dkms_module_versions "$module"
+	done
+}
+
 dkms_module_version_exists() {
 	local name=$1 version=$2
 
 	dkms status -m "$name" 2>/dev/null | sed -n "s|^$name/$version\\([,:].*\\)\\?$|found|p" | grep -q '^found$'
+}
+
+dkms_module_version_installed() {
+	local name=$1 version=$2 kernel
+	kernel="$(kernel_release)"
+
+	dkms status -m "$name" -v "$version" -k "$kernel" 2>/dev/null | grep -Fq ': installed'
 }
 
 purge_dkms_module_version() {
@@ -145,20 +166,17 @@ install_module() {
 	version="$MODULE_VERSION"
 
 	info "registering $name/$version with DKMS"
-	dkms remove --no-depmod -m "$name" -v "$version" --all >/dev/null 2>&1 || true
-	if dkms_module_version_exists "$name" "$version"; then
-		purge_dkms_module_version "$name" "$version"
-	fi
-	if dkms_module_version_exists "$name" "$version"; then
-		fail "DKMS still contains $name/$version after purge"
-	fi
 	dkms add -m "$name" -v "$version"
 	dkms build -m "$name" -v "$version"
 	dkms install --no-depmod --force -m "$name" -v "$version"
+	if ! dkms_module_version_installed "$name" "$version"; then
+		fail "DKMS did not install $name/$version for kernel $(kernel_release)"
+	fi
 }
 
 disable_dkms_post_transaction
 remove_legacy_dkms_modules
+remove_repo_dkms_modules
 
 for module in "${MODULES[@]}"; do
 	install_module "$module"
