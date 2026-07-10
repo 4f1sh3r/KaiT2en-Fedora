@@ -376,10 +376,18 @@ static snd_pcm_uframes_t t2audio_pcm_pointer(struct snd_pcm_substream *substream
         return 0;
 
     /*
-     * If we haven't received the first bridgeOS timestamp yet, use the
-     * local clock anchored at start_io completion as a fallback.  The
-     * DMA may have been running for tens of milliseconds (especially
+     * Re-anchor on every bridgeOS timestamp update (roughly once per
+     * ring cycle, ~346ms at 48kHz). Until the first update arrives, fall
+     * back to the host clock captured at start_io completion — the DMA
+     * may have been running for tens of milliseconds by then (especially
      * on codec outputs), so reporting 0 would starve the pipeline.
+     * Anchoring only once at stream start and free-running from there is
+     * not an option: a single stale anchor accumulates unbounded drift
+     * over the stream lifetime (observed as a silent multi-minute
+     * dropout with hw_ptr advancing at a perfect, fictitious 48000Hz).
+     * stream->remote_timestamp is host-clock-domain (see
+     * t2audio_handle_stream_timestamp()), so re-anchoring on it here
+     * never injects a cross-clock-domain error.
      */
     if (stream->waiting_for_first_ts)
         time_from_start = ktime_get_boottime() - stream->start_io_time;
@@ -480,8 +488,23 @@ static void t2audio_handle_stream_timestamp(struct snd_pcm_substream *substream,
 
     stream = t2audio_pcm_stream(substream);
     snd_pcm_stream_lock_irqsave(substream, flags);
-    /* Use T2 clock — the DMA engine runs on this time domain. */
-    stream->remote_timestamp = (s64)dev_timestamp;
+    /*
+     * Anchor on os_timestamp (host ktime_get_boottime(), captured when
+     * this message was processed), not dev_timestamp: the latter is
+     * bridgeOS's own clock, and using it here reinterprets a foreign
+     * clock domain as boottime-ns. Right after a real suspend/resume the
+     * two domains can disagree, and a device-domain anchor then makes the
+     * interpolated pointer glitch, which makes PipeWire recover-restart
+     * the stream every ~85ms — much faster than the ~346ms timestamp
+     * message cadence, so most restarts run entirely on the
+     * waiting_for_first_ts -> start_io_time fallback and the storm
+     * sustains itself. With a host-domain anchor the fallback and the
+     * real anchor are self-consistent by construction (both are
+     * ktime_get_boottime()-domain), so the pointer jump at the handoff is
+     * only ever the elapsed fallback duration, never a cross-domain
+     * epoch/rate error.
+     */
+    stream->remote_timestamp = ktime_to_ns(os_timestamp);
     if (stream->waiting_for_first_ts) {
         pr_debug("t2bce_audio: first ts on %s (t2=%lld host=%lld)\n",
                 sdev->uid, dev_timestamp, ktime_to_ns(os_timestamp));
