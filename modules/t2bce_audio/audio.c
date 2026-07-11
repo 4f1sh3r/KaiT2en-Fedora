@@ -246,7 +246,7 @@ static int t2audio_suspend(struct device *dev)
     struct t2audio_device *t2audio = pci_get_drvdata(to_pci_dev(dev));
     int status;
 
-    dev_dbg(t2audio->dev, "suspend entry\n");
+    pr_debug("t2bce_audio: suspend entry\n");
     status = t2audio_quiesce(t2audio, true);
     pci_disable_device(t2audio->pci);
     pr_info("t2bce_audio: suspend exit status=%d\n", status);
@@ -732,7 +732,7 @@ static void t2audio_handle_jack_connection_change(struct t2audio_subdevice *sdev
         dev_err(sdev->a->dev, "Failed to get jack enable status\n");
         return;
     }
-    dev_dbg(sdev->a->dev, "Jack is now %s\n", plugged ? "plugged" : "unplugged");
+    pr_debug("t2bce_audio: Jack is now %s\n", plugged ? "plugged" : "unplugged");
     snd_jack_report(sdev->jack, plugged ? sdev->jack->type : 0);
 }
 
@@ -746,7 +746,7 @@ void t2audio_handle_prop_change_work(struct work_struct *ws)
         dev_err(work->a->dev, "Property notification change: device not found\n");
         goto done;
     }
-    dev_dbg(work->a->dev, "Property changed for device: %s\n", sdev->uid);
+    pr_debug("t2bce_audio: Property changed for device: %s\n", sdev->uid);
 
     if (work->prop.scope == T2AUDIO_PROP_SCOPE_OUTPUT && work->prop.selector == T2AUDIO_PROP_JACK_PLUGGED) {
         t2audio_handle_jack_connection_change(sdev);
@@ -779,7 +779,7 @@ void t2audio_handle_cmd_timestamp(struct t2audio_device *a, struct t2audio_msg *
     struct t2audio_subdevice *sdev;
     u64 devid, timestamp, update_seed;
     t2audio_msg_read_update_timestamp(msg, &devid, &timestamp, &update_seed);
-    dev_dbg(a->dev, "Received timestamp update for dev=%llx ts=%llx seed=%llx\n", devid, timestamp, update_seed);
+    pr_debug("t2bce_audio: Received timestamp update for dev=%llx ts=%llx seed=%llx\n", devid, timestamp, update_seed);
 
     sdev = t2audio_find_dev_by_dev_id(a, devid);
     t2audio_handle_timestamp(sdev, time_os, timestamp);

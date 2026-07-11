@@ -149,7 +149,7 @@ static int iomem_read_smc(struct t2smc_device *t2,
 
 	err = ioread8(t2->iomem + T2SMC_IOMEM_KEY_CMD);
 	if (err != 0) {
-		dev_dbg(t2->dev, "read_smc_mmio(%x %.4s) failed: %u\n",
+		pr_debug("read_smc_mmio(%x %.4s) failed: %u\n",
 			cmd, key, err);
 		return -EIO;
 	}
@@ -189,7 +189,7 @@ static int iomem_write_smc(struct t2smc_device *t2,
 
 	err = ioread8(t2->iomem + T2SMC_IOMEM_KEY_CMD);
 	if (err != 0) {
-		dev_dbg(t2->dev, "write_smc_mmio(%x %.4s) failed: %u\n",
+		pr_debug("write_smc_mmio(%x %.4s) failed: %u\n",
 			cmd, key, err);
 		return -EIO;
 	}
@@ -213,7 +213,7 @@ static int iomem_get_key_info(struct t2smc_device *t2,
 
 	err = ioread8(t2->iomem + T2SMC_IOMEM_KEY_CMD);
 	if (err != 0) {
-		dev_dbg(t2->dev, "get_key_type_mmio(%.4s) failed: %u\n", key, err);
+		pr_debug("get_key_type_mmio(%.4s) failed: %u\n", key, err);
 		return -EIO;
 	}
 
@@ -222,7 +222,7 @@ static int iomem_get_key_info(struct t2smc_device *t2,
 	memcpy(info->type, &type, sizeof(type));
 	info->flags = ioread8(t2->iomem + T2SMC_IOMEM_KEY_TYPE_FLAGS);
 
-	dev_dbg(t2->dev, "get_key_type_mmio(%.4s): len=%u type=%.4s flags=%x\n",
+	pr_debug("get_key_type_mmio(%.4s): len=%u type=%.4s flags=%x\n",
 		key, info->len, info->type, info->flags);
 	return 0;
 }
@@ -543,7 +543,7 @@ static int t2smc_try_enable_iomem(struct t2smc_device *t2)
 {
 	u8 test_val, ldkn_version;
 
-	dev_dbg(t2->dev, "Trying to enable MMIO communication\n");
+	pr_debug("Trying to enable MMIO communication\n");
 	t2->iomem = ioremap(t2->iomem_addr, t2->iomem_size);
 	if (!t2->iomem)
 		goto out;
