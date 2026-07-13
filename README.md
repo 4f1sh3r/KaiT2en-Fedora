@@ -14,7 +14,7 @@ DKMS modules, which are constantly improved for later direct mainline
 kernel submission. This has some major advantages for users
 and developers alike:
 
-- most users get a working daily driver out of the box. See [*remaining work*](#remaining-work)
+- most users get a working daily driver out of the box. See [*problematic macs*](#problematic-macs)
 - driver behaviour is isolated by a clean environment
 - you always get the latest vanilla kernel directly from Fedora
 - devs don't need to compile the kernel for debugging modules
@@ -89,6 +89,19 @@ Please keep changes and PR desciptions focused. You may use AI for debugging, bu
 slop and we will refuse to review or even merge obvious slop. We are not interested in workarounds.
 There is a distinct difference in just making broken things work and fixing things. 
 
+## Problematic Macs
+
+Most Macs will run just fine out of the box. There are some Macs that have issues on a very low level,
+mostly GPU related.
+
+- MacBook Pro A1990 15,1 SMU is different from other MacBooks. Resume is broken when running with dGPU as primary GPU.
+Running iGPU as primary will make resume work once only. `vgaswitcheroo` will loose it's path after first resume because
+it depends on seeing two GPUs. The dGPU will die on first resume anyways. Still very usable as daily driver, with the exception of suspend.
+- Mac Pro 7,1 needs the the Infinity Fabric Link jumpered and Wifi isn't working. Not much info here, since it's a rare bird.
+- iMac 27" 5k will only display 4k. The cause is suspected to be around ACPI, EFI, SMC, `gmux`, `vgaswitcheroo`...
+- iMac 20" and 27" show inconsistent GPU behaviour on boot like sporadical black screens.
+ 
+
 ## Remaining work
 
 Though with a very few exceptions everything is working OOTB when installing KaiT2en,
@@ -101,6 +114,7 @@ commenting T2 particularities (don't use AI on this).
 - We need a OSDW quirk in upstream ACPI/Thunderbolt drivers to get away from kernel param `!Darwin` 
 - Macbook 15,1 needs gmux, vgaswitcheroo, amdgpu and maybe even i915 work for the SMU to
 survive suspend.
+- Mac Pro 7,1 is a rare snowflake and suffers an issue with the Infinity Fabric Link 
 - iMac situation is unclear where the dGPU is sporadically not properly intitialized on boot.
 Also 5k support remains an issue on 27" iMacs.
 - Broadcom 4377 chips need a fix in brcmfmac to work around the firmware refusing D0 to D3cold transition.
