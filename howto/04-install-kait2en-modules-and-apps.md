@@ -27,6 +27,36 @@ Please reboot after the script completed without errors.
 sudo reboot
 ```
 
+## Automatic ACPI firmware fixes
+
+Before rebuilding the initramfs, the installer checks for two known ACPI
+problems on Intel T2 Macs:
+
+- CpuSSDT tries to load SSDT sub-tables already loaded by Linux. The fix
+  pre-initializes `\SDTL` so `GCAP` skips them and avoids `AE_ALREADY_EXISTS`.
+- a DSDT `_OSC` buffer overflow reported as `AE_AML_BUFFER_LIMIT`
+
+The autofix builds the matching override from the running Mac's ACPI tables and
+validates it with `iasl`. A table is not installed if validation fails.
+
+Successful overrides and their Dracut configuration are written to:
+
+```text
+/usr/local/lib/firmware/acpi/*.aml
+/etc/dracut.conf.d/t2-acpi-fix.conf
+```
+
+Files replaced during deployment are backed up below
+`/var/backups/t2-acpi-fix/<timestamp>/`.
+
+After rebooting, both commands should return no matching kernel messages for a
+successfully applied fix:
+
+```bash
+journalctl -b0 -k --grep=AE_AML_BUFFER_LIMIT
+journalctl -b0 -k --grep='Marking method'
+```
+
 ## Apps
 
 The installer installs the required KaiT2en apps:

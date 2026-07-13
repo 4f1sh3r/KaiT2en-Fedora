@@ -9,6 +9,10 @@ info() {
 	printf '[kait2en] %s\n' "$*"
 }
 
+warn() {
+	printf '[kait2en] warning: %s\n' "$*" >&2
+}
+
 fail() {
 	printf '[kait2en] error: %s\n' "$*" >&2
 	exit 1
