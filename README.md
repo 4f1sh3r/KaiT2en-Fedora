@@ -39,9 +39,20 @@ after installation of KaiT2en.
 The repository is meant to be used as an offline USB kit. Copy it to a USB
 drive, keep that drive connected, and run all commands from the repository root
 unless a guide says otherwise.
-
 The setup is intentionally explicit. You will use the terminal, run commands and
 know which file was installed where.
+
+## Technical achievements beyond the current T2Linux stack
+
+- `t2bce` replaces apple-bce. It is split into four separate upstreamable modules for core, vhci, (sg-)DMA, audio
+- working suspend out of the box for most T2 Macs with working touchbar after resume
+- react-drm as replacement for tiny-dfr - content aware touchbar controls
+- t2-fan-control is a GUI app for temperature/fan control curves that replaces t2fan-rd
+- `t2bce_audio` replaces `aaudio` with stutter-free audio and upstream-friendly UCM support
+- `t2smc` replaces `applesmc`, adds rtc, hwmon support, SMC sensor support and battery charge limiting
+- t2-smc-control is a GUI app for setting battery charge limit and inspecting rtc and real time SMC sensor data
+- automatically fixes Apple's broken ACPI tables that show as `AE_AML_BUFFER_LIMIT`and `AE_ALREADY_EXISTS` in journal
+- always up-to-date vanilla Fedora kernel
 
 ## Start here
 
