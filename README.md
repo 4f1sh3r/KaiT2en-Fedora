@@ -64,6 +64,7 @@ Read the howto documents in order:
 4. [Install Broadcom firmware on Fedora](howto/03-install-broadcom-firmware.md)
 5. [Install KaiT2en modules and apps](howto/04-install-kait2en-modules-and-apps.md)
 6. [Revert T2 Linux Fedora to vanilla + KaiT2en](howto/05-revert-t2linux-fedora.md)
+7. [Configure GPUs](howto/06-configuring-gpus.md)
 
 ## Community
 
@@ -105,9 +106,7 @@ There is a distinct difference in just making broken things work and fixing thin
 Most Macs will run just fine out of the box. There are some Macs that have issues on a very low level,
 mostly GPU related.
 
-- MacBook Pro A1990 15,1 SMU is different from other MacBooks. Resume is broken when running with dGPU as primary GPU.
-Running iGPU as primary will make resume work once only. `vgaswitcheroo` will loose it's path after first resume because
-it depends on seeing two GPUs. The dGPU will die on first resume anyways. Still very usable as daily driver, with the exception of suspend.
+- MacBook Pro A1990 15,1 SMU is different from other MacBooks. Resume is broken when running with dGPU as primary GPU. Users can workaround that as described in [06-configuring-gpus.md](howto/06-configuring-gpus.md)
 - Mac Pro 7,1 needs the the Infinity Fabric Link jumpered and Wifi isn't working. Not much info here, since it's a rare bird.
 - iMac 27" 5k will only display 4k. The cause is suspected to be around ACPI, EFI, SMC, `gmux`, `vgaswitcheroo`...
 - iMac 20" and 27" show inconsistent GPU behaviour on boot like sporadical black screens.
