@@ -1,6 +1,6 @@
 {
-    "node.description": "MacBook Pro 16,2 DSP Speakers",
-    "media.name": "MacBook Pro 16,2 DSP Speakers",
+    "node.description": "MacBook Pro T2 DSP Speakers",
+    "media.name": "MacBook Pro T2 DSP Speakers",
     "filter.graph": {
         "nodes": [
             {
@@ -67,16 +67,6 @@
             },
             {
                 "type": "builtin",
-                "label": "copy",
-                "name": "copyL"
-            },
-            {
-                "type": "builtin",
-                "label": "copy",
-                "name": "copyR"
-            },
-            {
-                "type": "builtin",
                 "label": "convolver",
                 "name": "convLT",
                 "config": {
@@ -133,18 +123,46 @@
             }
         ],
         "links": [
-            {"output": "virtualbass:out_l", "input": "compressor:in_l"},
-            {"output": "virtualbass:out_r", "input": "compressor:in_r"},
-            {"output": "compressor:out_l", "input": "limiter:in_1"},
-            {"output": "compressor:out_r", "input": "limiter:in_2"},
-            {"output": "limiter:out_1", "input": "ell:in"},
-            {"output": "limiter:out_2", "input": "elr:in"},
-            {"output": "ell:out", "input": "copyL:In"},
-            {"output": "elr:out", "input": "copyR:In"},
-            {"output": "copyL:Out", "input": "convLT:In"},
-            {"output": "copyL:Out", "input": "convLW:In"},
-            {"output": "copyR:Out", "input": "convRT:In"},
-            {"output": "copyR:Out", "input": "convRW:In"}
+            {
+                "output": "virtualbass:out_l",
+                "input": "compressor:in_l"
+            },
+            {
+                "output": "virtualbass:out_r",
+                "input": "compressor:in_r"
+            },
+            {
+                "output": "compressor:out_l",
+                "input": "limiter:in_1"
+            },
+            {
+                "output": "compressor:out_r",
+                "input": "limiter:in_2"
+            },
+            {
+                "output": "limiter:out_1",
+                "input": "ell:in"
+            },
+            {
+                "output": "limiter:out_2",
+                "input": "elr:in"
+            },
+            {
+                "output": "ell:out",
+                "input": "convLT:In"
+            },
+            {
+                "output": "ell:out",
+                "input": "convLW:In"
+            },
+            {
+                "output": "elr:out",
+                "input": "convRT:In"
+            },
+            {
+                "output": "elr:out",
+                "input": "convRW:In"
+            }
         ],
         "inputs": [
             "virtualbass:in_l",
@@ -175,23 +193,39 @@
         "node.name": "audio_effect.t2-162-speakers",
         "media.class": "Audio/Sink",
         "audio.channels": "2",
-        "audio.position": ["FL", "FR"],
+        "audio.position": [
+            "FL",
+            "FR"
+        ],
         "device.api": "dsp",
-        "audio.allowed-rates": [48000, 44100],
+        "audio.rate": 48000,
+        "audio.allowed-rates": [
+            48000,
+            44100
+        ],
         "node.virtual": "false",
-        "priority.session": 1500,
-        "state.default-volume": 1.0,
+        "priority.session": 850,
+        "state.default-volume": 0.75,
         "device.icon-name": "audio-speakers"
     },
     "playback.props": {
         "node.name": "effect_output.t2-162-speakers",
-        "node.description": "MacBook Pro 16,2 DSP Speakers Out",
-        "media.name": "MacBook Pro 16,2 DSP Speakers Out",
+        "node.description": "MacBook Pro T2 DSP Speakers Out",
+        "media.name": "MacBook Pro T2 DSP Speakers Out",
         "target.object": "alsa_output.pci-0000_04_00.3.Speakers",
         "node.dont-fallback": "true",
         "node.passive": "true",
         "audio.channels": "4",
-        "audio.allowed-rates": [48000, 44100],
-        "audio.position": ["FL", "FR", "RL", "RR"]
+        "audio.rate": 48000,
+        "audio.allowed-rates": [
+            48000,
+            44100
+        ],
+        "audio.position": [
+            "FL",
+            "FR",
+            "RL",
+            "RR"
+        ]
     }
 }
