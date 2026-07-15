@@ -28,6 +28,7 @@ model_dir_for_product() {
 	case "$1" in
 		MacBookPro15,1) printf '%s\n' "15_1" ;;
 		MacBookPro16,1) printf '%s\n' "16_1" ;;
+		MacBookPro16,2) printf '%s\n' "16_2" ;;
 		MacBookPro16,4) printf '%s\n' "16_4" ;;
 		MacBookAir9,1) printf '%s\n' "9_1" ;;
 		*) return 1 ;;

@@ -2,17 +2,22 @@
 
 PipeWire/WirePlumber DSP graphs and FIR files for Apple T2 audio.
 
-The files in `firs/` are imported from `t2-apple-audio-dsp` and are installed
-by `scripts/fedora/install-dsp.sh` when the current Mac model has a matching
-profile.
+The profiles in `firs/` are installed by `scripts/fedora/install-dsp.sh` when
+Most FIR files originate from lemmyg's
+`t2-apple-audio-dsp`; the MacBook Pro 15,1 FIRs were generated from UMIK-1
+measurements of that model by deqrocks.
 
 Supported profiles:
 
 - `MacBookPro16,1` -> `16_1`
+- `MacBookPro16,2` -> `16_2`
 - `MacBookPro16,4` -> `16_4`
 - `MacBookAir9,1` -> `9_1`
-- `MacBookPro15,1` -> `15_1` (experimental 4-channel profile derived from
-  the shared 16,x tweeter/woofer FIRs)
+- `MacBookPro15,1` -> `15_1`
+
+The `16_2` profile starts from the same two-channel DSP and FIR configuration
+as `9_1`, but is kept in a separate directory so both models can be tuned
+independently.
 
 The installer copies the matching files to:
 
