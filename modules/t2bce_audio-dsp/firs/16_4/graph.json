@@ -56,6 +56,16 @@
                 }
             },
             {
+                "type": "builtin",
+                "label": "copy",
+                "name": "copyL"
+            },
+            {
+                "type": "builtin",
+                "label": "copy",
+                "name": "copyR"
+            },
+            {
                 "type": "lv2",
                 "plugin": "http://lsp-plug.in/plugins/lv2/loud_comp_mono",
                 "name": "elr",
@@ -124,6 +134,16 @@
             {
                 "type": "builtin",
                 "label": "copy",
+                "name": "copyLW"
+            },
+            {
+                "type": "builtin",
+                "label": "copy",
+                "name": "copyRW"
+            },
+            {
+                "type": "builtin",
+                "label": "copy",
                 "name": "LW"
             },
             {
@@ -149,14 +169,18 @@
             {"output": "compressor:out_r", "input": "limiter:in_2"},
             {"output": "limiter:out_1", "input": "ell:in"},
             {"output": "limiter:out_2", "input": "elr:in"},
-            {"output": "ell:out", "input": "convLT:In"},
-            {"output": "ell:out", "input": "convLW:In"},
-            {"output": "elr:out", "input": "convRT:In"},
-            {"output": "elr:out", "input": "convRW:In"},
-            {"output": "convLW:Out", "input": "LW:In"},
-            {"output": "convRW:Out", "input": "RW:In"},
-            {"output": "convLW:Out", "input": "LW2:In"},
-            {"output": "convRW:Out", "input": "RW2:In"}
+            {"output": "ell:out", "input": "copyL:In"},
+            {"output": "elr:out", "input": "copyR:In"},
+            {"output": "copyL:Out", "input": "convLT:In"},
+            {"output": "copyL:Out", "input": "convLW:In"},
+            {"output": "copyR:Out", "input": "convRT:In"},
+            {"output": "copyR:Out", "input": "convRW:In"},
+            {"output": "convLW:Out", "input": "copyLW:In"},
+            {"output": "convRW:Out", "input": "copyRW:In"},
+            {"output": "copyLW:Out", "input": "LW:In"},
+            {"output": "copyRW:Out", "input": "RW:In"},
+            {"output": "copyLW:Out", "input": "LW2:In"},
+            {"output": "copyRW:Out", "input": "RW2:In"}
         ],
         "inputs": [
             "virtualbass:in_l",

@@ -67,6 +67,16 @@
             },
             {
                 "type": "builtin",
+                "label": "copy",
+                "name": "copyL"
+            },
+            {
+                "type": "builtin",
+                "label": "copy",
+                "name": "copyR"
+            },
+            {
+                "type": "builtin",
                 "label": "convolver",
                 "name": "convLT",
                 "config": {
@@ -129,10 +139,12 @@
             {"output": "compressor:out_r", "input": "limiter:in_2"},
             {"output": "limiter:out_1", "input": "ell:in"},
             {"output": "limiter:out_2", "input": "elr:in"},
-            {"output": "ell:out", "input": "convLT:In"},
-            {"output": "ell:out", "input": "convLW:In"},
-            {"output": "elr:out", "input": "convRT:In"},
-            {"output": "elr:out", "input": "convRW:In"}
+            {"output": "ell:out", "input": "copyL:In"},
+            {"output": "elr:out", "input": "copyR:In"},
+            {"output": "copyL:Out", "input": "convLT:In"},
+            {"output": "copyL:Out", "input": "convLW:In"},
+            {"output": "copyR:Out", "input": "convRT:In"},
+            {"output": "copyR:Out", "input": "convRW:In"}
         ],
         "inputs": [
             "virtualbass:in_l",

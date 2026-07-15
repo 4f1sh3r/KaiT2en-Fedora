@@ -87,13 +87,14 @@
         "device.icon-name": "audio-microphone",
         "target.object": "alsa_input.pci-0000_74_00.3.BuiltinMic",
         "node.dont-fallback": "true",
-        "node.passive": "true"
+        "node.passive": "true",
+        "node.pause-on-idle": "true"
     },
     "playback.props": {
         "node.name": "audio_effect.t2-91-mic",
         "media.class": "Audio/Source",
         "priority.session": 2005,
-        "node.passive": "true",
+        "node.pause-on-idle": "true",
         "audio.channels": "1",
         "node.virtual": "false",
         "state.default-volume": 0.343,

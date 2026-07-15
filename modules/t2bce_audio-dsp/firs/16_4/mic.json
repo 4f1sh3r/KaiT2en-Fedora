@@ -84,6 +84,7 @@
         "stream.dont-remix": "true",
         "target.object": "alsa_input.pci-0000_04_00.3.BuiltinMic",
         "node.passive": "true",
+        "node.pause-on-idle": "true",
         "node.virtual": "false",
         "state.default-volume": 1.00,
         "audio.allowed-rates": [44100, 48000]
@@ -93,7 +94,7 @@
         "node.description": "MacBook Pro T2 DSP Mic",
         "media.name": "MacBook Pro T2 DSP Mic",
         "media.class": "Audio/Source",
-        "node.passive": "true",
+        "node.pause-on-idle": "true",
         "audio.position": ["MONO"],
         "audio.channels": "1",
         "node.virtual": "false",
