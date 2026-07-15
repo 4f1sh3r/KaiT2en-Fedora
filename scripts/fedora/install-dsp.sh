@@ -97,6 +97,18 @@ install_graph() {
 	rm -f "$tmp"
 }
 
+clean_installed_profile() {
+	local dir=$1
+
+	[[ -d "$dir" ]] || return 0
+
+	# Only remove file types managed by this installer. Do not recursively
+	# replace the directory in case an administrator keeps other files there.
+	find "$dir" -maxdepth 1 -type f \
+		\( -name '*.wav' -o -name '*.lua' -o -name 'graph.json' -o -name 'mic.json' \) \
+		-delete
+}
+
 product_name=
 if [[ -r /sys/class/dmi/id/product_name ]]; then
 	product_name="$(< /sys/class/dmi/id/product_name)"
@@ -130,6 +142,7 @@ info "installing audio DSP for $product_name ($model_dir)"
 dnf install -y "${DSP_PACKAGES[@]}"
 
 install -d -o root -g root -m 0755 "$dst_dir"
+clean_installed_profile "$dst_dir"
 find "$src_dir" -maxdepth 1 -type f \( -name '*.wav' -o -name '*.lua' \) \
 	-exec install -o root -g root -m 0644 {} "$dst_dir/" \;
 
@@ -145,6 +158,7 @@ if [[ -f "$src_dir/mic.json" ]]; then
 	has_mic=1
 fi
 
+rm -f "$WP_SCRIPT_DIR/t2-force-unmute.lua"
 if [[ -f "$dst_dir/t2-force-unmute.lua" ]]; then
 	install -d -o root -g root -m 0755 "$WP_SCRIPT_DIR"
 	ln -sf "$dst_dir/t2-force-unmute.lua" "$WP_SCRIPT_DIR/t2-force-unmute.lua"

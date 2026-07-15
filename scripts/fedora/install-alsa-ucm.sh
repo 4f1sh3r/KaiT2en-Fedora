@@ -5,7 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
 require_root
 require_repo_root
 require_fedora
-require_command basename cp cut getent install readlink sed
+require_command basename cp cut getent install readlink rm sed
 
 UCM_SRC="$REPO_ROOT/modules/t2bce_audio-alsa-ucm-conf/ucm2"
 UCM_DST="/usr/share/alsa/ucm2"
@@ -79,6 +79,12 @@ reset_wireplumber_t2_profile_state() {
 info "installing Apple T2 ALSA UCM profile"
 
 install -d -o root -g root -m 0755 "$UCM_DST/AppleT2"
+
+# Remove KaiT2en profile files superseded by the split UCM layout. Keep this
+# list explicit: /usr/share/alsa/ucm2 may also contain distribution files.
+rm -f \
+	"$UCM_DST/AppleT2/HiFi.conf" \
+	"$UCM_DST/AppleT2/Measurement-x4.conf"
 
 for profile in HiFi-x2 HiFi-x4 HiFi-x6; do
 	[[ -r "$UCM_SRC/AppleT2/$profile.conf" ]] ||
