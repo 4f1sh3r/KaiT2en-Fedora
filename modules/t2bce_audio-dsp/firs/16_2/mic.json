@@ -8,7 +8,7 @@
                 "label": "mixer",
                 "name": "mixL",
                 "control": {
-                    "Gain 1": 2
+                    "Gain 1": 1.5
                 }
             },
             {
@@ -16,7 +16,7 @@
                 "label": "mixer",
                 "name": "mixR",
                 "control": {
-                    "Gain 1": 2
+                    "Gain 1": 1.5
                 }
             },
             {
@@ -24,7 +24,7 @@
                 "label": "mixer",
                 "name": "mixO",
                 "control": {
-                    "Gain 1": 2
+                    "Gain 1": 1
                 }
             },
             {
@@ -32,7 +32,7 @@
                 "plugin": "https://chadmed.au/triforce",
                 "name": "bf",
                 "control": {
-                    "h_angle": 120.0,
+                    "h_angle": 230.0,
                     "v_angle": 0.0,
                     "opt_freq": 1100.0,
                     "t_win": 500.0,
@@ -47,7 +47,7 @@
                 "label": "mixer",
                 "name": "mixFinal",
                 "control": {
-                    "Gain 1": 60
+                    "Gain 1": 80
                 }
             },
             {
@@ -62,11 +62,11 @@
             }
         ],
         "links": [
-            { "output": "mixL:Out", "input": "bf:in_1" },
-            { "output": "mixR:Out", "input": "bf:in_2" },
-            { "output": "mixO:Out", "input": "bf:in_3" },
-            { "output": "bf:out", "input": "mixFinal:In 1" },
-            { "output": "mixFinal:Out", "input": "hpf:In" }
+            {"output": "mixL:Out", "input": "bf:in_1"},
+            {"output": "mixR:Out", "input": "bf:in_2"},
+            {"output": "mixO:Out", "input": "bf:in_3"},
+            {"output": "bf:out", "input": "mixFinal:In 1"},
+            {"output": "mixFinal:Out", "input": "hpf:In"}
         ],
         "inputs": [
             "mixL:In 1",
@@ -79,26 +79,28 @@
     },
     "capture.props": {
         "node.name": "effect_input.t2-162-mic",
+        "audio.position": ["AUX0", "AUX1", "AUX2"],
         "audio.channels": "3",
-        "audio.position": ["FL", "FR", "LFE"],
-        "audio.allowed-rates": [48000],
+        "stream.dont-remix": "true",
+        "target.object": "alsa_input.pci-0000_04_00.3.BuiltinMic",
+        "node.passive": "true",
+        "node.pause-on-idle": "true",
         "node.virtual": "false",
         "state.default-volume": 1.00,
-        "device.icon-name": "audio-microphone",
-        "target.object": "alsa_input.pci-0000_74_00.3.BuiltinMic",
-        "node.dont-fallback": "true",
-        "node.passive": "true",
-        "node.pause-on-idle": "true"
+        "audio.allowed-rates": [44100, 48000]
     },
     "playback.props": {
         "node.name": "audio_effect.t2-162-mic",
+        "node.description": "MacBook Pro T2 DSP Mic",
+        "media.name": "MacBook Pro T2 DSP Mic",
         "media.class": "Audio/Source",
-        "priority.session": 2005,
         "node.pause-on-idle": "true",
+        "audio.position": ["MONO"],
         "audio.channels": "1",
         "node.virtual": "false",
-        "state.default-volume": 0.343,
-        "audio.allowed-rates": [8000, 11025, 16000, 22050, 44100, 48000],
-        "audio.position": ["AUX0"]
+        "priority.session": 850,
+        "state.default-volume": 1.0,
+        "audio.allowed-rates": [44100, 48000],
+        "device.icon-name": "audio-input-microphone"
     }
 }
