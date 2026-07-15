@@ -43,10 +43,10 @@
                 "name": "convL",
                 "config": {
                     "filename": [
-                        "/usr/share/t2-linux-audio/9_1/44.wav",
-                        "/usr/share/t2-linux-audio/9_1/48.wav",
-                        "/usr/share/t2-linux-audio/9_1/96.wav",
-                        "/usr/share/t2-linux-audio/9_1/192.wav"
+                        "/usr/share/t2-linux-audio/16_2/44.wav",
+                        "/usr/share/t2-linux-audio/16_2/48.wav",
+                        "/usr/share/t2-linux-audio/16_2/96.wav",
+                        "/usr/share/t2-linux-audio/16_2/192.wav"
                     ],
                     "channel": 0,
                     "gain": 1.0
@@ -58,10 +58,10 @@
                 "name": "convR",
                 "config": {
                     "filename": [
-                        "/usr/share/t2-linux-audio/9_1/44.wav",
-                        "/usr/share/t2-linux-audio/9_1/48.wav",
-                        "/usr/share/t2-linux-audio/9_1/96.wav",
-                        "/usr/share/t2-linux-audio/9_1/192.wav"
+                        "/usr/share/t2-linux-audio/16_2/44.wav",
+                        "/usr/share/t2-linux-audio/16_2/48.wav",
+                        "/usr/share/t2-linux-audio/16_2/96.wav",
+                        "/usr/share/t2-linux-audio/16_2/192.wav"
                     ],
                     "channel": 0,
                     "gain": 1.0
