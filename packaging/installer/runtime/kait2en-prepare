@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+repository=${KAIT2EN_REPOSITORY:-/usr/local/src/KaiT2en-Fedora}
+transition_source=${KAIT2EN_TRANSITION_SOURCE:-/usr/share/kait2en-installer/transition-source}
+state_dir=${KAIT2EN_STATE_DIR:-/var/lib/kait2en-installer}
+autostart_file=${KAIT2EN_AUTOSTART_FILE:-/etc/xdg/autostart/kait2en-install.desktop}
+boot_root=${KAIT2EN_BOOT_ROOT:-/boot}
+modules_root=${KAIT2EN_MODULES_ROOT:-/usr/lib/modules}
+repository_url=https://github.com/kaiT2en/KaiT2en-Fedora.git
+transition_package=kmod-kait2en-input
+input_modules=(t2bce_dma t2hid hid_t2magicmouse t2bce_core t2bce_vhci)
+original_default=
+target_kernel=
+transition_dir=
+new_repository=
+restore_default=0
+work=
+
+die() {
+	printf '[kait2en] error: %s\n' "$*" >&2
+	exit 1
+}
+
+state_value() {
+	local key=$1
+	[[ -r "$state_dir/state" ]] || return 1
+	awk -F= -v key="$key" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' \
+		"$state_dir/state"
+}
+
+write_state() {
+	local phase=$1 kernel=${2:-} temporary
+	install -d -m 0755 "$state_dir"
+	temporary=$(mktemp "$state_dir/state.XXXXXX")
+	printf 'phase=%s\n' "$phase" >"$temporary"
+	[[ -z "$kernel" ]] || printf 'target_kernel=%s\n' "$kernel" >>"$temporary"
+	chmod 0644 "$temporary"
+	mv -f "$temporary" "$state_dir/state"
+}
+
+cleanup() {
+	local status=$?
+	if [[ -n "$transition_dir" && -d "$transition_dir" ]]; then
+		rm -rf "$transition_dir"
+		[[ -z "$target_kernel" ]] || depmod -a "$target_kernel" >/dev/null 2>&1 || :
+	fi
+	if ((restore_default == 1)) && [[ -n "$original_default" ]]; then
+		grubby --set-default "$original_default" >/dev/null 2>&1 ||
+			printf '[kait2en] warning: could not restore default kernel %s\n' \
+				"$original_default" >&2
+	fi
+	[[ -z "$work" ]] || rm -rf "$work"
+	[[ -z "$new_repository" ]] || rm -rf "$new_repository"
+	exit "$status"
+}
+trap cleanup EXIT
+
+wait_for_dnf() {
+	until dnf -q makecache --refresh; do
+		printf '\nConnect to a Wi-Fi network and press any key to retry. '
+		IFS= read -r -n 1 _answer
+		printf '\n'
+	done
+}
+
+wait_for_github() {
+	until git ls-remote --exit-code "$repository_url" refs/heads/main \
+		>/dev/null 2>&1; do
+		printf '\nConnect to a Wi-Fi network and press any key to retry. '
+		IFS= read -r -n 1 _answer
+		printf '\n'
+	done
+}
+
+bootstrap_repository() {
+	local setup_user uid gid parent
+	setup_user=${SUDO_USER:-}
+	[[ -n "$setup_user" && "$setup_user" != root ]] ||
+		die 'the guided installer must be started by a regular user through sudo'
+	uid=$(id -u "$setup_user") || die "unknown setup user: $setup_user"
+	gid=$(id -g "$setup_user") || die "unknown setup user: $setup_user"
+	((uid >= 1000 && uid < 65534)) || die "invalid setup user: $setup_user"
+
+	wait_for_dnf
+	dnf install -y git
+	wait_for_github
+	if [[ -e "$repository" ]]; then
+		[[ -d "$repository/.git" ]] ||
+			die "$repository exists but is not a Git checkout"
+		[[ $(git -c safe.directory="$repository" -C "$repository" remote get-url origin) == "$repository_url" ]] ||
+			die "$repository has an unexpected origin URL"
+		[[ $(git -c safe.directory="$repository" -C "$repository" branch --show-current) == main ]] ||
+			die "$repository is not on the main branch"
+		[[ -z $(git -c safe.directory="$repository" -C "$repository" status --porcelain) ]] ||
+			die "$repository has local changes; they were not discarded"
+		git -c safe.directory="$repository" -C "$repository" fetch origin main
+		git -c safe.directory="$repository" -C "$repository" merge --ff-only origin/main
+		chown -R "$uid:$gid" "$repository"
+		return
+	fi
+
+	parent=${repository%/*}
+	install -d -m 0755 "$parent"
+	new_repository="${repository}.new.$$"
+	git clone --branch main --single-branch "$repository_url" "$new_repository"
+	[[ -z $(git -C "$new_repository" status --porcelain) ]] ||
+		die 'the freshly cloned KaiT2en checkout is not clean'
+	[[ $(git -C "$new_repository" branch --show-current) == main ]] ||
+		die 'the freshly cloned KaiT2en checkout is not on main'
+	chown -R "$uid:$gid" "$new_repository"
+	mv "$new_repository" "$repository"
+	new_repository=
+}
+
+if [[ ${KAIT2EN_TEST_MODE:-0} != 1 ]]; then
+	[[ ${EUID:-$(id -u)} -eq 0 ]] || die 'run this command with sudo'
+fi
+install -d -m 0755 "$state_dir"
+exec 9>"$state_dir/lock"
+flock -n 9 || die 'another KaiT2en setup process is already running'
+
+if [[ ${1:-} == --complete ]]; then
+	[[ $# -eq 1 ]] || die 'usage: kait2en-prepare [--complete]'
+	[[ $(state_value phase || :) == reboot_pending ]] ||
+		die 'KaiT2en is not waiting for the regular installation'
+	target_kernel=$(state_value target_kernel) || die 'prepared target kernel is missing'
+	[[ $(uname -r) == "$target_kernel" ]] ||
+		die "complete the installation while running $target_kernel"
+	rm -f "$autostart_file"
+	write_state complete "$target_kernel"
+	printf '[kait2en] guided installation marked complete\n'
+	exit 0
+fi
+[[ $# -eq 0 ]] || die 'usage: kait2en-prepare [--complete]'
+
+[[ -r /etc/os-release ]] || die '/etc/os-release is missing'
+# shellcheck disable=SC1091
+source /etc/os-release
+[[ ${ID:-} == fedora && ${VERSION_ID:-} =~ ^[0-9]+$ ]] ||
+	die 'this guided installer requires Fedora'
+
+if [[ ${KAIT2EN_SKIP_BOOTSTRAP:-0} != 1 ]]; then
+	bootstrap_repository
+fi
+[[ -d "$repository/.git" ]] || die "$repository is not a Git checkout"
+[[ -x "$transition_source/packaging/installer/build-input-kmod.sh" ]] ||
+	die 'transition module builder is missing'
+[[ -r "$transition_source/source-date-epoch" ]] ||
+	die 'transition source timestamp is missing'
+transition_epoch=$(<"$transition_source/source-date-epoch")
+[[ "$transition_epoch" =~ ^[0-9]+$ ]] || die 'invalid transition source timestamp'
+
+for command in dnf rpm rpm2cpio cpio grubby dracut lsinitrd depmod sort grep \
+	awk tail flock; do
+	command -v "$command" >/dev/null 2>&1 || die "missing command: $command"
+done
+
+running_kernel=$(uname -r)
+if [[ "$running_kernel" =~ ^([0-9]+)\. && ${BASH_REMATCH[1]} -ge 7 ]]; then
+	write_state reboot_pending "$running_kernel"
+	printf '[kait2en] Fedora already runs supported kernel %s.\n' "$running_kernel"
+	exit 0
+fi
+
+original_default=$(grubby --default-kernel) ||
+	die 'could not determine the current default kernel'
+[[ -n "$original_default" ]] || die 'the current default kernel is empty'
+restore_default=1
+
+printf '[kait2en] upgrading Fedora and refreshing package metadata\n'
+dnf upgrade --refresh -y --setopt=installonly_limit=0
+grubby --set-default "$original_default"
+
+mapfile -t eligible_kernels < <(
+	rpm -q kernel-core --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' 2>/dev/null |
+		awk -F. '$1 ~ /^[0-9]+$/ && $1 >= 7' |
+		sort -V
+)
+((${#eligible_kernels[@]} > 0)) ||
+	die 'no installed Fedora kernel version 7 or newer is available after the upgrade'
+target_kernel=${eligible_kernels[${#eligible_kernels[@]} - 1]}
+[[ -d "$modules_root/$target_kernel" ]] || die "module directory is missing for $target_kernel"
+[[ -f "$boot_root/vmlinuz-$target_kernel" ]] || die "kernel image is missing for $target_kernel"
+
+printf '[kait2en] installing the regular Fedora build dependencies for %s\n' "$target_kernel"
+(
+	cd "$repository"
+	KERNEL_RELEASE="$target_kernel" bash ./scripts/fedora/install-dependencies.sh
+)
+dnf install -y cpio rpm-build
+
+work=$(mktemp -d "${KAIT2EN_WORK_PARENT:-/var/tmp}/kait2en-prepare.XXXXXX")
+mkdir -p "$work/rpm" "$work/extracted"
+printf '[kait2en] building unmodified temporary input modules for %s\n' "$target_kernel"
+rpm_path=$(
+	SOURCE_DATE_EPOCH=$transition_epoch \
+	"$transition_source/packaging/installer/build-input-kmod.sh" \
+		"$transition_source" "$target_kernel" "$work/rpm" |
+		tail -n 1
+)
+[[ -f "$rpm_path" ]] || die "temporary input RPM was not built for $target_kernel"
+(
+	cd "$work/extracted"
+	rpm2cpio "$rpm_path" | cpio -idm --quiet
+)
+
+source_modules="$work/extracted/usr/lib/modules/$target_kernel/updates/kait2en"
+[[ -d "$source_modules" ]] || die 'temporary input RPM has no module directory'
+transition_dir="$modules_root/$target_kernel/updates/kait2en-transition"
+install -d -m 0755 "$transition_dir"
+for module in "${input_modules[@]}"; do
+	[[ -f "$source_modules/$module.ko" ]] || die "temporary module is missing: $module"
+	install -m 0644 "$source_modules/$module.ko" "$transition_dir/"
+done
+
+depmod -a "$target_kernel"
+initramfs="$boot_root/initramfs-$target_kernel.img"
+dracut --force --add-drivers "${input_modules[*]}" "$initramfs" "$target_kernel"
+listing=$(lsinitrd "$initramfs")
+for module in "${input_modules[@]}"; do
+	grep -Eq "/${module}\.ko(\.[a-z0-9]+)?$" <<<"$listing" ||
+		die "$module is missing from $initramfs"
+done
+
+rm -rf "$transition_dir"
+transition_dir=
+depmod -a "$target_kernel"
+if rpm -q "$transition_package" >/dev/null 2>&1; then
+	rpm -e "$transition_package"
+fi
+
+grubby --set-default "$boot_root/vmlinuz-$target_kernel"
+restore_default=0
+write_state reboot_pending "$target_kernel"
+
+printf '\n[kait2en] Fedora %s is ready for the regular KaiT2en installer.\n' "$target_kernel"
+printf '[kait2en] Reboot to continue the guided installation.\n'

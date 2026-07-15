@@ -1,0 +1,17 @@
+#!/bin/sh
+
+kernel_release="@KERNEL_RELEASE@"
+module_root="/usr/lib/modules/$kernel_release/updates/kait2en"
+
+for module in t2bce_dma t2hid hid_t2magicmouse t2bce_core t2bce_vhci; do
+    if grep -q "^${module} " /proc/modules; then
+        continue
+    fi
+
+    if ! insmod "$module_root/$module.ko"; then
+        warn "KaiT2en: failed to load $module for $kernel_release"
+        exit 1
+    fi
+done
+
+info "KaiT2en: T2 keyboard and trackpad modules loaded"
