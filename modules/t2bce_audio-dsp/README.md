@@ -9,14 +9,9 @@ Most FIR files originate from lemmyg's `t2-apple-audio-dsp`; the MacBook Pro
 Supported profiles:
 
 - `MacBookPro16,1` -> `16_1`
-- `MacBookPro16,2` -> `16_2`
 - `MacBookPro16,4` -> `16_4`
 - `MacBookAir9,1` -> `9_1`
 - `MacBookPro15,1` -> `15_1`
-
-The `16_2` profile currently uses the four-channel graph and FIR set proposed
-by pierolenzo. Its FIRs are identical to the measured `16_1` set, so this is a
-provisional profile until measurements from a MacBook Pro 16,2 are available.
 
 The installer copies the matching files to:
 

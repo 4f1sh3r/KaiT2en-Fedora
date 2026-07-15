@@ -28,7 +28,6 @@ model_dir_for_product() {
 	case "$1" in
 		MacBookPro15,1) printf '%s\n' "15_1" ;;
 		MacBookPro16,1) printf '%s\n' "16_1" ;;
-		MacBookPro16,2) printf '%s\n' "16_2" ;;
 		MacBookPro16,4) printf '%s\n' "16_4" ;;
 		MacBookAir9,1) printf '%s\n' "9_1" ;;
 		*) return 1 ;;
@@ -115,6 +114,20 @@ if [[ -r /sys/class/dmi/id/product_name ]]; then
 fi
 if [[ -z "$product_name" ]]; then
 	info "skipping audio DSP: cannot detect product name"
+	exit 0
+fi
+
+if [[ "$product_name" == "MacBookPro16,2" ]]; then
+	info "removing unsupported audio DSP profile for $product_name"
+	clean_installed_profile "$DSP_DST_BASE/16_2"
+	rm -f \
+		"$WP_CONF" \
+		"$WP_CONF_DIR/51-t2-dsp.conf" \
+		"$WP_SCRIPT_DIR/t2-force-unmute.lua" \
+		/etc/pipewire/pipewire.conf.d/t2_*_speakers.conf \
+		/etc/pipewire/pipewire.conf.d/t2_*_mic.conf
+	restart_user_audio
+	info "audio DSP is not supported on $product_name"
 	exit 0
 fi
 
