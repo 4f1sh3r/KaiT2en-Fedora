@@ -20,7 +20,8 @@ cat >"$RULE_FILE" <<'EOF'
 #
 # 05ac:8233 = Apple T2 Controller
 # cdc_ncm   = internal USB CDC-NCM network function
-ACTION=="add|change", SUBSYSTEM=="net", ENV{ID_BUS}=="usb", ENV{ID_VENDOR_ID}=="05ac", ENV{ID_MODEL_ID}=="8233", DRIVERS=="cdc_ncm", ENV{NM_UNMANAGED}="1"
+# Interface renames emit a move event; keep the final udev state unmanaged too.
+ACTION=="add|change|move", SUBSYSTEM=="net", ENV{ID_BUS}=="usb", ENV{ID_VENDOR_ID}=="05ac", ENV{ID_MODEL_ID}=="8233", DRIVERS=="cdc_ncm", ENV{NM_UNMANAGED}="1"
 EOF
 
 chmod 0644 "$RULE_FILE"
