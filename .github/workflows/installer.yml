@@ -1,0 +1,91 @@
+name: Build KaiT2en Fedora installer kit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: targets
+        shell: bash
+        run: |
+          matrix="$({
+            git ls-files 'packaging/installer/targets/fedora-*.conf' |
+              sed -e 's|.*/||' -e 's|\.conf$||'
+          } | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: targets
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Static checks
+        run: bash tests/installer/static-check.sh
+      - name: Validate Fedora edition catalog
+        run: |
+          curl --fail --location --retry 3 \
+            --output /tmp/fedora-releases.json \
+            https://fedoraproject.org/releases.json
+          FEDORA_RELEASES_JSON=/tmp/fedora-releases.json \
+            bash tests/installer/edition-catalog.sh "${{ matrix.target }}"
+      - name: Build ${{ matrix.target }}
+        run: ./scripts/fedora/build-installer.sh --target "${{ matrix.target }}"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: installer-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Generate macOS curl bootstrap
+        shell: bash
+        run: |
+          archive="$({
+            find release-assets -maxdepth 1 -type f \
+              -name 'KaiT2en-Fedora-*-Installer-x86_64.zip'
+          } | sort -V | tail -n 1)"
+          test -n "$archive"
+          basename="${archive##*/}"
+          basename="${basename%.zip}"
+          sed \
+            -e "s|@GITHUB_REPOSITORY@|$GITHUB_REPOSITORY|g" \
+            -e "s|@ARTIFACT_BASENAME@|$basename|g" \
+            packaging/installer/macos-release-bootstrap.sh.in \
+            >release-assets/install-kait2en-fedora.sh
+          chmod 0755 release-assets/install-kait2en-fedora.sh
+          bash -n release-assets/install-kait2en-fedora.sh
+      - name: Publish release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber

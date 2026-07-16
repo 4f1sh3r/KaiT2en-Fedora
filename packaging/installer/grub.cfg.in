@@ -1,0 +1,19 @@
+set default="0"
+set timeout=5
+set timeout_style=menu
+
+terminal_input console
+terminal_output console
+
+set kait2en_efi=$root
+search --no-floppy --label --set=fedora @ISO_VOLUME_LABEL@
+
+menuentry "Start Fedora Live with KaiT2en input drivers" --class fedora --class gnu-linux --class gnu --class os {
+	linux ($fedora)@ISO_KERNEL_PATH@ quiet rhgb root=live:CDLABEL=@ISO_VOLUME_LABEL@ rd.live.image inst.updates=file:///run/kait2en/updates.img initcall_blacklist=magicmouse_driver_init module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux
+	initrd ($fedora)@ISO_INITRD_PATH@ ($kait2en_efi)/EFI/BOOT/kait2en/kait2en-input-initramfs.img ($kait2en_efi)/EFI/BOOT/kait2en/kait2en-wifi-initramfs.img
+}
+
+menuentry "Start standard Fedora Live" --class fedora --class gnu-linux --class gnu --class os {
+	linux ($fedora)@ISO_KERNEL_PATH@ quiet rhgb root=live:CDLABEL=@ISO_VOLUME_LABEL@ rd.live.image
+	initrd ($fedora)@ISO_INITRD_PATH@
+}

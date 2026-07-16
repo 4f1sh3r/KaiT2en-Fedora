@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+state_dir=${KAIT2EN_STATE_DIR:-/var/lib/kait2en-installer}
+state_file="$state_dir/state"
+repository=${KAIT2EN_REPOSITORY:-/usr/local/src/KaiT2en-Fedora}
+prepare=${KAIT2EN_PREPARE_COMMAND:-/usr/local/bin/kait2en-prepare}
+repository_url=${KAIT2EN_REPOSITORY_URL:-https://github.com/kaiT2en/KaiT2en-Fedora.git}
+repository_branch=${KAIT2EN_REPOSITORY_BRANCH:-main}
+repository_installer="$repository/packaging/installer/runtime/kait2en-install"
+self_path=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/${BASH_SOURCE[0]##*/}
+lock_file="${XDG_RUNTIME_DIR:-/tmp}/kait2en-install-$(id -u).lock"
+
+exec 9>"$lock_file"
+flock -n 9 || exit 0
+
+log_dir="$HOME/.local/state/kait2en"
+mkdir -p "$log_dir"
+exec > >(tee -a "$log_dir/install.log") 2>&1
+
+state_value() {
+	local key=$1
+	[[ -r "$state_file" ]] || return 1
+	awk -F= -v key="$key" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "$state_file"
+}
+
+pause_on_error() {
+	local status=$?
+	local line=$1
+	trap - ERR
+	printf '\nKaiT2en installation stopped at line %s (status %s).\n' "$line" "$status" >&2
+	printf 'Run kait2en-install again to retry.\n' >&2
+	printf 'Press any key to close this window. '
+	IFS= read -r -n 1 _answer || :
+	printf '\n'
+	exit "$status"
+}
+trap 'pause_on_error "$LINENO"' ERR
+
+die() {
+	printf '\n%s\n' "$*" >&2
+	printf 'Run kait2en-install again to retry.\n' >&2
+	printf 'Press any key to close this window. '
+	IFS= read -r -n 1 _answer || :
+	printf '\n'
+	exit 1
+}
+
+wait_for_github() {
+	until git ls-remote --exit-code "$repository_url" \
+		"refs/heads/$repository_branch" \
+		>/dev/null 2>&1; do
+		printf '\nConnect to a Wi-Fi network and press any key to retry. '
+		IFS= read -r -n 1 _answer
+		printf '\n'
+	done
+}
+
+offer_reboot() {
+	local answer
+	printf '\nReboot now? [Y/n] '
+	read -r answer
+	case "$answer" in n|N) return 0 ;; esac
+	sudo systemctl reboot
+}
+
+validate_repository() {
+	[[ -d "$repository/.git" ]] ||
+		die "The KaiT2en Git checkout is missing: $repository"
+	[[ -z $(git -C "$repository" status --porcelain) ]] ||
+		die "The KaiT2en checkout has local changes. They were not discarded. Resolve them in $repository and log in again."
+	[[ $(git -C "$repository" remote get-url origin) == "$repository_url" ]] ||
+		die 'The KaiT2en checkout has an unexpected origin URL.'
+}
+
+delegate_to_repository() {
+	[[ -f "$repository_installer" && "$self_path" != "$repository_installer" ]] ||
+		return 0
+	validate_repository
+	exec bash "$repository_installer" "$@"
+}
+
+refresh_repository() {
+	local previous current
+	validate_repository
+	printf 'Checking for the latest KaiT2en %s branch...\n' "$repository_branch"
+	wait_for_github
+	git -C "$repository" checkout "$repository_branch"
+	previous=$(git -C "$repository" rev-parse HEAD)
+	git -C "$repository" pull --ff-only origin "$repository_branch"
+	current=$(git -C "$repository" rev-parse HEAD)
+
+	# Once this implementation is available in the checkout, run the freshly
+	# updated copy. Future releases can change the update policy in one place.
+	if [[ "$self_path" == "$repository_installer" && \
+		${KAIT2EN_INSTALL_REEXECUTED:-0} != 1 && "$previous" != "$current" ]]; then
+		exec env KAIT2EN_INSTALL_REEXECUTED=1 bash "$repository_installer"
+	fi
+}
+
+run_project_installer() {
+	local mode=$1 result_label
+	case "$mode" in
+		initial) result_label=installation ;;
+		update) result_label=update ;;
+		*) die "Unknown KaiT2en installer mode: $mode" ;;
+	esac
+	refresh_repository
+
+	printf '\nStarting the regular KaiT2en installer.\n'
+	printf 'Administrator access is required.\n\n'
+	sudo -v
+	cd "$repository"
+	sudo bash ./scripts/fedora/install.sh
+	if [[ "$mode" == initial ]]; then
+		sudo "$prepare" --complete
+	fi
+
+	printf '\nKaiT2en %s completed successfully.\n' "$result_label"
+	printf 'Review the output above before rebooting.\n'
+	if [[ "$mode" == initial ]]; then
+		printf '\nNext steps:\n'
+		printf '  - Repository: %s\n' "$repository"
+		printf '  - Run kait2en-install at any time to update KaiT2en.\n'
+		printf '  - Reboot once more to start the fully configured system.\n'
+	fi
+	offer_reboot
+}
+
+run_initial_install() {
+	local target_kernel running_kernel
+	target_kernel=$(state_value target_kernel) ||
+		die 'KaiT2en installation state has no target kernel.'
+	running_kernel=$(uname -r)
+	if [[ "$running_kernel" != "$target_kernel" ]]; then
+		printf 'KaiT2en is waiting for Fedora kernel %s.\n' "$target_kernel"
+		printf 'The currently running kernel is %s.\n' "$running_kernel"
+		offer_reboot
+		exit 0
+	fi
+	run_project_installer initial
+}
+
+[[ $# -eq 0 ]] || die 'usage: kait2en-install'
+delegate_to_repository "$@"
+
+phase=$(state_value phase || printf 'pending')
+case "$phase" in
+	pending)
+		printf 'Starting the KaiT2en installer (phase 1 of 2).\n'
+		printf 'Do not close this window!\n'
+		printf 'Fedora will be updated before the regular KaiT2en installation.\n'
+		printf 'Ensure that you are connected to Wi-Fi before continuing.\n'
+		printf 'Press any key to continue. '
+		IFS= read -r -n 1 _answer
+		printf '\n'
+		printf 'Administrator access is required.\n\n'
+		sudo -v
+		sudo "$prepare"
+		delegate_to_repository "$@"
+		if [[ $(state_value target_kernel || :) == $(uname -r) ]]; then
+			run_initial_install
+			exit 0
+		fi
+		printf '\nThe updated Fedora kernel is ready.\n'
+		printf 'The KaiT2en installer will continue automatically after reboot.\n'
+		offer_reboot
+		;;
+	reboot_pending)
+		printf 'Continuing the KaiT2en installer (phase 2 of 2).\n'
+		run_initial_install
+		;;
+	complete)
+		printf 'Starting the KaiT2en updater.\n'
+		run_project_installer update
+		;;
+	*)
+		die "Unknown KaiT2en installation phase: $phase"
+		;;
+esac

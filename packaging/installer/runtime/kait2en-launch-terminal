@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+installer=${KAIT2EN_INSTALL_COMMAND:-/usr/local/bin/kait2en-install}
+
+if command -v ptyxis >/dev/null 2>&1; then
+	exec ptyxis --standalone -- "$installer"
+fi
+if command -v konsole >/dev/null 2>&1; then
+	exec konsole -e "$installer"
+fi
+if command -v cosmic-term >/dev/null 2>&1; then
+	exec cosmic-term -e "$installer"
+fi
+
+printf 'KaiT2en could not find a supported terminal emulator.\n' >&2
+printf 'Run %s in a terminal to continue.\n' "$installer" >&2
+exit 1
