@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.fedoraproject.Anaconda.Addons.KaiT2en
+Exec=/usr/libexec/anaconda/start-module com_kait2en_input.service
+User=root

@@ -1,0 +1,23 @@
+from dasbus.identifier import DBusServiceIdentifier
+
+from pyanaconda.core.dbus import DBus
+from pyanaconda.modules.common.constants.namespaces import ADDONS_NAMESPACE
+
+KERNEL_RELEASE = "@KERNEL_RELEASE@"
+RPM_FILENAME = "@RPM_FILENAME@"
+MODULES = (
+    "t2bce_dma",
+    "t2hid",
+    "hid_t2magicmouse",
+    "t2bce_core",
+    "t2bce_vhci",
+)
+KERNEL_ARGUMENTS = (
+    "initcall_blacklist=magicmouse_driver_init",
+    "module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux",
+)
+
+KAIT2EN = DBusServiceIdentifier(
+    namespace=(*ADDONS_NAMESPACE, "KaiT2en"),
+    message_bus=DBus,
+)

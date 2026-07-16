@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install or update KaiT2en
+Comment=Install or update KaiT2en on this T2 Mac
+Exec=/usr/local/bin/kait2en-launch-terminal
+Terminal=false
+X-GNOME-Autostart-enabled=true
+StartupNotify=false

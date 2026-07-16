@@ -1,0 +1,45 @@
+#!/bin/bash
+
+set -eu
+
+github_repository='@GITHUB_REPOSITORY@'
+artifact_basename='@ARTIFACT_BASENAME@'
+release_base_url=${KAIT2EN_RELEASE_BASE_URL:-https://github.com/$github_repository/releases/latest/download}
+terminal=${KAIT2EN_TTY:-/dev/tty}
+work=
+
+die() {
+	printf 'Error: %s\n' "$*" >&2
+	exit 1
+}
+
+cleanup() {
+	[[ -z "$work" ]] || rm -rf "$work"
+}
+trap cleanup EXIT
+
+[[ $(uname -s) == Darwin ]] || die 'this installer bootstrap requires macOS'
+[[ -r "$terminal" ]] || die 'an interactive terminal is required'
+for command in curl ditto mktemp shasum; do
+	command -v "$command" >/dev/null 2>&1 || die "missing command: $command"
+done
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-release.XXXXXX")
+archive="$work/$artifact_basename.zip"
+checksum="$archive.sha256"
+
+printf 'Downloading the latest KaiT2en Fedora installer kit...\n'
+curl --fail --location --retry 3 \
+	--output "$archive" "$release_base_url/$artifact_basename.zip"
+curl --fail --location --retry 3 \
+	--output "$checksum" "$release_base_url/$artifact_basename.zip.sha256"
+
+(
+	cd "$work"
+	shasum -a 256 -c "$artifact_basename.zip.sha256"
+)
+
+mkdir "$work/kit"
+ditto -x -k "$archive" "$work/kit"
+printf 'Starting the verified KaiT2en Fedora installer...\n'
+bash "$work/kit/scripts/macos/prepare-fedora-installer.sh" "$@" <"$terminal"
