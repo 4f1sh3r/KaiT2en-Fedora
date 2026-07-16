@@ -12,13 +12,6 @@ repository_installer="$repository/packaging/installer/runtime/kait2en-install"
 self_path=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/${BASH_SOURCE[0]##*/}
 lock_file="${XDG_RUNTIME_DIR:-/tmp}/kait2en-install-$(id -u).lock"
 
-exec 9>"$lock_file"
-flock -n 9 || exit 0
-
-log_dir="$HOME/.local/state/kait2en"
-mkdir -p "$log_dir"
-exec > >(tee -a "$log_dir/install.log") 2>&1
-
 state_value() {
 	local key=$1
 	[[ -r "$state_file" ]] || return 1
@@ -36,7 +29,6 @@ pause_on_error() {
 	printf '\n'
 	exit "$status"
 }
-trap 'pause_on_error "$LINENO"' ERR
 
 die() {
 	printf '\n%s\n' "$*" >&2
@@ -144,6 +136,20 @@ run_initial_install() {
 
 [[ $# -eq 0 ]] || die 'usage: kait2en-install'
 delegate_to_repository "$@"
+
+# An exec within one installer session inherits the active lock and logging
+# pipeline. Initializing them again would make the new process contend with
+# the tee process that still owns an inherited descriptor for the same lock.
+if [[ ${KAIT2EN_INSTALL_SESSION_ACTIVE:-0} != 1 ]]; then
+	exec 9>"$lock_file"
+	flock -n 9 || exit 0
+
+	log_dir="$HOME/.local/state/kait2en"
+	mkdir -p "$log_dir"
+	exec > >(tee -a "$log_dir/install.log") 2>&1
+	export KAIT2EN_INSTALL_SESSION_ACTIVE=1
+fi
+trap 'pause_on_error "$LINENO"' ERR
 
 phase=$(state_value phase || printf 'pending')
 case "$phase" in
