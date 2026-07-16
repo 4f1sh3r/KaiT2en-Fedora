@@ -560,10 +560,17 @@ written_label=$(
 	die "unexpected Fedora volume label after writing: ${written_label:-unknown}"
 
 efi_mount="$WORK/efi"
-mkdir -p "$efi_mount"
-/sbin/mount_msdos "$efi_partition" "$efi_mount" ||
-	die 'could not mount the Fedora EFI partition'
-EFI_MOUNT=$efi_mount
+for _attempt in 1 2 3; do
+	mkdir -p "$efi_mount"
+	if [[ -e "$efi_partition" ]] &&
+		/sbin/mount_msdos "$efi_partition" "$efi_mount"; then
+		EFI_MOUNT=$efi_mount
+		break
+	fi
+	sleep 2
+done
+[[ -n "$EFI_MOUNT" ]] ||
+	die 'could not mount the Fedora EFI partition; reconnect the USB drive and retry with --reuse-media'
 
 grub_destination="$efi_mount/EFI/BOOT/grub.cfg"
 [[ -f "$grub_destination" ]] || die 'the original Fedora GRUB configuration is missing'

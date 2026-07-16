@@ -84,6 +84,8 @@ grep -Fq 'Set Secure Boot to No Security.' \
 	scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'Allow booting from external or removable media.' \
 	scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'reconnect the USB drive and retry with --reuse-media' \
+	scripts/macos/prepare-fedora-installer.sh
 ! grep -Fq 'Keep no second driver disk connected' scripts/macos/prepare-fedora-installer.sh
 ! grep -Fq 'before the intentional EFI customization' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'shasum -a 256 -c' packaging/installer/macos-release-bootstrap.sh.in
