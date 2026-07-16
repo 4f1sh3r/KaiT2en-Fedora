@@ -84,6 +84,23 @@ format_size() {
 	awk -v bytes="$1" 'BEGIN {printf "%.1f GB", bytes / 1000000000}'
 }
 
+check_startup_security() {
+	local policy
+	policy=$(/usr/sbin/nvram \
+		94b73556-2197-4702-82a8-3e1337dafbfb:AppleSecureBootPolicy \
+		2>/dev/null | awk '{print $NF}' || :)
+	if [[ "$policy" == %00 ]]; then
+		printf 'Good: Secure Boot has been disabled.\n'
+		return
+	fi
+	printf 'Warning: Secure Boot is not disabled or could not be verified.\n'
+	printf 'Before booting the USB drive:\n'
+	printf '  1. Shut down the Mac, turn it back on, and hold Command-R to enter Recovery.\n'
+	printf '  2. Open Utilities > Startup Security Utility.\n'
+	printf '  3. Set Secure Boot to No Security.\n'
+	printf '  4. Set Allowed Boot Media to Allow booting from external or removable media.\n'
+}
+
 pick_one() {
 	local label=$1
 	shift
@@ -371,6 +388,10 @@ for command in diskutil plutil shasum stat dd cpio gzip find sort cmp install \
 done
 [[ -x /sbin/mount_msdos && -x /sbin/umount ]] ||
 	die 'required macOS FAT mount tools are missing'
+[[ -x /usr/sbin/nvram ]] || die 'required macOS NVRAM tool is missing'
+
+check_startup_security
+printf '\n'
 
 if [[ -n "$ISO_PATH" ]]; then
 	[[ -f "$ISO_PATH" ]] || die "ISO file not found: $ISO_PATH"

@@ -78,6 +78,12 @@ grep -Fq 'Keyboard and trackpad should work in the Fedora installer.' \
 	scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'The KaiT2en installation will continue automatically in a terminal.' \
 	scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'Good: Secure Boot has been disabled.' \
+	scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'Set Secure Boot to No Security.' \
+	scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'Allow booting from external or removable media.' \
+	scripts/macos/prepare-fedora-installer.sh
 ! grep -Fq 'Keep no second driver disk connected' scripts/macos/prepare-fedora-installer.sh
 ! grep -Fq 'before the intentional EFI customization' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'shasum -a 256 -c' packaging/installer/macos-release-bootstrap.sh.in
