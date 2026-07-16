@@ -576,5 +576,9 @@ diskutil unmountDisk "$FEDORA_DISK" >/dev/null 2>&1 || :
 DISK_TOUCHED=0
 
 printf '\nKaiT2en Fedora installer prepared successfully.\n'
-printf 'Keep no second driver disk connected; this Fedora USB contains the input and post-install Wi-Fi setup.\n'
-printf 'The ISO was verified before the intentional EFI customization.\n'
+printf 'The ISO was verified OK.\n'
+printf '\nNext steps:\n'
+printf '  - Boot your T2 Mac from this USB drive.\n'
+printf '  - Keyboard and trackpad should work in the Fedora installer. Wi-Fi is expected after the first boot.\n'
+printf '  - Complete the Fedora installation, remove the USB drive, and boot the installed system.\n'
+printf '  - Sign in to Fedora. The KaiT2en installation will continue automatically in a terminal.\n'

@@ -68,6 +68,14 @@ grep -Fq 'ORIGINAL_ARGC=$#' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'if ((ORIGINAL_ARGC == 0)); then' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'plist_value "$disk" WholeDisk' scripts/macos/prepare-fedora-installer.sh
 ! grep -Fq 'plist_value "$disk" Whole ' scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'The ISO was verified OK.' scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'Next steps:' scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'Keyboard and trackpad should work in the Fedora installer.' \
+	scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'The KaiT2en installation will continue automatically in a terminal.' \
+	scripts/macos/prepare-fedora-installer.sh
+! grep -Fq 'Keep no second driver disk connected' scripts/macos/prepare-fedora-installer.sh
+! grep -Fq 'before the intentional EFI customization' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'shasum -a 256 -c' packaging/installer/macos-release-bootstrap.sh.in
 grep -Fq 'KAIT2EN_TTY:-/dev/tty' packaging/installer/macos-release-bootstrap.sh.in
 
