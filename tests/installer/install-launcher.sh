@@ -13,6 +13,7 @@ fake_repo="$work/repository"
 fake_state="$work/state"
 fake_bin="$work/bin"
 log="$work/commands.log"
+initial_output="$work/initial-output.log"
 mkdir -p "$fake_home" "$fake_repo/.git" "$fake_state" "$fake_bin"
 printf 'phase=reboot_pending\ntarget_kernel=%s\n' "$target" >"$fake_state/state"
 
@@ -51,11 +52,14 @@ printf 'n\n' |
 		KAIT2EN_TEST_TARGET="$target" \
 		KAIT2EN_TEST_REPOSITORY="$fake_repo" \
 		KAIT2EN_TEST_LOG="$log" \
-		bash "$launcher" >/dev/null
+		bash "$launcher" >"$initial_output"
 
 grep -Fq "git -C $fake_repo pull --ff-only origin main" "$log"
 grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
 grep -Fq 'command=/usr/local/bin/kait2en-prepare --complete' "$log"
+grep -Fq "Repository: $fake_repo" "$initial_output"
+grep -Fq 'Run kait2en-install at any time to update KaiT2en.' "$initial_output"
+grep -Fq 'Reboot once more to start the fully configured system.' "$initial_output"
 
 : >"$log"
 printf 'phase=complete\ntarget_kernel=%s\n' "$target" >"$fake_state/state"

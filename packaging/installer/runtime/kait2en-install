@@ -119,6 +119,12 @@ run_project_installer() {
 
 	printf '\nKaiT2en %s completed successfully.\n' "$result_label"
 	printf 'Review the output above before rebooting.\n'
+	if [[ "$mode" == initial ]]; then
+		printf '\nNext steps:\n'
+		printf '  - Repository: %s\n' "$repository"
+		printf '  - Run kait2en-install at any time to update KaiT2en.\n'
+		printf '  - Reboot once more to start the fully configured system.\n'
+	fi
 	offer_reboot
 }
 
@@ -143,7 +149,12 @@ phase=$(state_value phase || printf 'pending')
 case "$phase" in
 	pending)
 		printf 'Starting the KaiT2en installer (phase 1 of 2).\n'
+		printf 'Do not close this window!\n'
 		printf 'Fedora will be updated before the regular KaiT2en installation.\n'
+		printf 'Ensure that you are connected to Wi-Fi before continuing.\n'
+		printf 'Press any key to continue. '
+		IFS= read -r -n 1 _answer
+		printf '\n'
 		printf 'Administrator access is required.\n\n'
 		sudo -v
 		sudo "$prepare"

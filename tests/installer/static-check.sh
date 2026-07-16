@@ -62,6 +62,10 @@ grep -Fq 'KAIT2EN_AUTOSTART_FILE:-/etc/xdg/autostart/kait2en-install.desktop' \
 if rg -n 'kait2en-first-boot|KAIT2EN_FIRST_BOOT' packaging/installer; then
 	exit 1
 fi
+grep -Fq 'Do not close this window!' packaging/installer/runtime/kait2en-install
+grep -Fq 'Ensure that you are connected to Wi-Fi before continuing.' \
+	packaging/installer/runtime/kait2en-install
+grep -Fq 'Press any key to continue.' packaging/installer/runtime/kait2en-install
 
 # macOS Bash 3.2 treats an expanded empty array as unbound under `set -u`.
 grep -Fq 'ORIGINAL_ARGC=$#' scripts/macos/prepare-fedora-installer.sh
