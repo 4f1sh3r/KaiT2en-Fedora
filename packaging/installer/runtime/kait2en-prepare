@@ -8,6 +8,7 @@ state_dir=${KAIT2EN_STATE_DIR:-/var/lib/kait2en-installer}
 autostart_file=${KAIT2EN_AUTOSTART_FILE:-/etc/xdg/autostart/kait2en-install.desktop}
 boot_root=${KAIT2EN_BOOT_ROOT:-/boot}
 modules_root=${KAIT2EN_MODULES_ROOT:-/usr/lib/modules}
+os_release=${KAIT2EN_OS_RELEASE:-/etc/os-release}
 repository_url=https://github.com/kaiT2en/KaiT2en-Fedora.git
 transition_package=kmod-kait2en-input
 input_modules=(t2bce_dma t2hid hid_t2magicmouse t2bce_core t2bce_vhci)
@@ -135,9 +136,9 @@ if [[ ${1:-} == --complete ]]; then
 fi
 [[ $# -eq 0 ]] || die 'usage: kait2en-prepare [--complete]'
 
-[[ -r /etc/os-release ]] || die '/etc/os-release is missing'
-# shellcheck disable=SC1091
-source /etc/os-release
+[[ -r "$os_release" ]] || die "$os_release is missing"
+# shellcheck disable=SC1090,SC1091
+source "$os_release"
 [[ ${ID:-} == fedora && ${VERSION_ID:-} =~ ^[0-9]+$ ]] ||
 	die 'this guided installer requires Fedora'
 

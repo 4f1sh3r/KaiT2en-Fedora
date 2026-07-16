@@ -16,12 +16,14 @@ fake_modules="$work/modules"
 fake_bin="$work/bin"
 fake_state="$work/state"
 fake_autostart="$work/kait2en-install.desktop"
+fake_os_release="$work/os-release"
 log="$work/commands.log"
 mkdir -p "$fake_repo/.git" "$fake_repo/scripts/fedora" \
 	"$fake_transition/packaging/installer" \
 	"$fake_boot" "$fake_modules/$target" "$fake_bin"
 touch "$fake_boot/vmlinuz-$old" "$fake_boot/vmlinuz-$target"
 printf '1\n' >"$fake_transition/source-date-epoch"
+printf 'ID=fedora\nVERSION_ID=44\n' >"$fake_os_release"
 
 cat >"$fake_repo/scripts/fedora/install-dependencies.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -105,6 +107,7 @@ run_prepare() {
 		KAIT2EN_STATE_DIR="$fake_state" \
 		KAIT2EN_BOOT_ROOT="$fake_boot" \
 		KAIT2EN_MODULES_ROOT="$fake_modules" \
+		KAIT2EN_OS_RELEASE="$fake_os_release" \
 		KAIT2EN_AUTOSTART_FILE="$fake_autostart" \
 		KAIT2EN_TEST_TARGET="$target" \
 		KAIT2EN_TEST_RUNNING_RELEASE="$running_release" \
