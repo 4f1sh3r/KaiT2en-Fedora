@@ -16,6 +16,8 @@ fake_modules="$work/modules"
 fake_bin="$work/bin"
 fake_state="$work/state"
 fake_autostart="$work/kait2en-install.desktop"
+fake_prepare_launcher="$work/kait2en-prepare"
+fake_terminal_launcher="$work/kait2en-launch-terminal"
 fake_os_release="$work/os-release"
 log="$work/commands.log"
 mkdir -p "$fake_repo/.git" "$fake_repo/scripts/fedora" \
@@ -109,6 +111,8 @@ run_prepare() {
 		KAIT2EN_MODULES_ROOT="$fake_modules" \
 		KAIT2EN_OS_RELEASE="$fake_os_release" \
 		KAIT2EN_AUTOSTART_FILE="$fake_autostart" \
+		KAIT2EN_PREPARE_LAUNCHER="$fake_prepare_launcher" \
+		KAIT2EN_TERMINAL_LAUNCHER="$fake_terminal_launcher" \
 		KAIT2EN_TEST_TARGET="$target" \
 		KAIT2EN_TEST_RUNNING_RELEASE="$running_release" \
 		KAIT2EN_TEST_OLD_KERNEL="$fake_boot/vmlinuz-$old" \
@@ -130,12 +134,6 @@ grep -Fq 'rpm -e kmod-kait2en-input' "$log"
 grep -Fxq 'phase=reboot_pending' "$fake_state/state"
 grep -Fxq "target_kernel=$target" "$fake_state/state"
 
-touch "$fake_autostart"
-run_prepare 0 "$target" --complete >/dev/null
-[[ ! -e "$fake_autostart" ]]
-grep -Fxq 'phase=complete' "$fake_state/state"
-grep -Fxq "target_kernel=$target" "$fake_state/state"
-
 : >"$log"
 rm -f "$fake_state/state"
 if run_prepare 1 "$old" >/dev/null 2>&1; then
@@ -144,3 +142,14 @@ if run_prepare 1 "$old" >/dev/null 2>&1; then
 fi
 [[ ! -d "$fake_modules/$target/updates/kait2en-transition" ]]
 [[ $(tail -n 1 "$log") == "grubby --set-default $fake_boot/vmlinuz-$old" ]]
+
+printf 'phase=reboot_pending\ntarget_kernel=%s\n' "$target" >"$fake_state/state"
+touch "$fake_autostart" "$fake_prepare_launcher" "$fake_terminal_launcher"
+run_prepare 0 "$target" --complete >/dev/null
+[[ ! -e "$fake_autostart" ]]
+[[ ! -e "$fake_prepare_launcher" ]]
+[[ ! -e "$fake_terminal_launcher" ]]
+[[ ! -e "$fake_transition" ]]
+[[ ! -e "$fake_state/lock" ]]
+grep -Fxq 'phase=complete' "$fake_state/state"
+grep -Fxq "target_kernel=$target" "$fake_state/state"
