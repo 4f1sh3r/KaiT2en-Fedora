@@ -19,6 +19,7 @@ printf 'phase=reboot_pending\ntarget_kernel=%s\n' "$target" >"$fake_state/state"
 
 cat >"$fake_bin/flock" <<'EOF'
 #!/usr/bin/env bash
+printf 'flock %s\n' "$*" >>"$KAIT2EN_TEST_LOG"
 exit 0
 EOF
 cat >"$fake_bin/uname" <<'EOF'
@@ -81,7 +82,8 @@ grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
 mkdir -p "$fake_repo/packaging/installer/runtime"
 cat >"$fake_repo/packaging/installer/runtime/kait2en-install" <<'EOF'
 #!/usr/bin/env bash
-printf 'delegated to repository installer\n' >>"$KAIT2EN_TEST_LOG"
+printf 'delegated active=%s\n' \
+	"${KAIT2EN_INSTALL_SESSION_ACTIVE:-0}" >>"$KAIT2EN_TEST_LOG"
 EOF
 : >"$log"
 env \
@@ -94,4 +96,24 @@ env \
 	KAIT2EN_TEST_REPOSITORY="$fake_repo" \
 	KAIT2EN_TEST_LOG="$log" \
 	bash "$launcher" >/dev/null
-grep -Fxq 'delegated to repository installer' "$log"
+grep -Fxq 'delegated active=0' "$log"
+! grep -Fq 'flock ' "$log"
+
+cp "$launcher" "$fake_repo/packaging/installer/runtime/kait2en-install"
+: >"$log"
+printf 'phase=complete\ntarget_kernel=%s\n' "$target" >"$fake_state/state"
+printf 'n\n' |
+	env \
+		HOME="$fake_home" \
+		XDG_RUNTIME_DIR="$work" \
+		PATH="$fake_bin:/usr/bin:/bin" \
+		KAIT2EN_INSTALL_SESSION_ACTIVE=1 \
+		KAIT2EN_STATE_DIR="$fake_state" \
+		KAIT2EN_REPOSITORY="$fake_repo" \
+		KAIT2EN_TEST_TARGET="$target" \
+		KAIT2EN_TEST_REPOSITORY="$fake_repo" \
+		KAIT2EN_TEST_LOG="$log" \
+		bash "$fake_repo/packaging/installer/runtime/kait2en-install" >/dev/null
+grep -Fq "git -C $fake_repo pull --ff-only origin main" "$log"
+grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
+! grep -Fq 'flock ' "$log"
