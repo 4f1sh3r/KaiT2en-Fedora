@@ -11,7 +11,10 @@
 
 Previous: [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md) | [Back to README](../README.md)
 
-This step will install DKMS modules, scripts and apps.
+## Install.sh
+
+Install.sh will install DKMS modules, scripts and apps by running a stack
+of sub-scripts.
 
 Run this command from the KaiT2en repository root on your Fedora system:
 
@@ -19,7 +22,7 @@ Run this command from the KaiT2en repository root on your Fedora system:
 sudo bash ./scripts/fedora/install.sh
 ```
 
-This runs all required installation steps in order:
+This runs all required installation steps in order.
 
 It will take a few minutes to compile the modules and apps against the kernel.
 Stay around to enter needed confirmations while the script is running.
@@ -29,12 +32,45 @@ Please reboot after the script completed without errors.
 sudo reboot
 ```
 
+## Modules
+
+KaiT2en renames drivers it maintains because the original Fedora and older
+T2 Linux drivers must be blocked during boot. If KaiT2en used the same
+module names, the kernel arguments that block the original drivers would also
+block our replacements.
+
+The new names also make logs, `lsmod`, DKMS state and bug reports easier to
+read. The list below shows which modules are blacklisted and replaced by their
+KaiT2en equivalents:
+
+T2 Linux driver &#8594; KaiT2en driver
+
+`hid_magicmouse` &#8594; `hid_t2magicmouse` contains Asahi trackpad patches
+
+`apple-bce` &#8594; `t2bce_<module>` T2 bridge, audio, VHCI devices, DMA and mailbox
+
+`appletbdrm` &#8594; `t2bdrm` Touch Bar display DRM device
+
+`apple_gmux` &#8594; `t2gmux` GMUX handling on dual-GPU Macs
+
+`hid_apple` &#8594; `t2hid` Apple HID quirks for internal input devices
+
+`apple_mfi_fastcharge` &#8594; `t2mfi_fastcharge` fast charging on Apple USB controllers.
+
+`applesmc` &#8594; `t2smc` battery charge limit, hwmon sensors and RTC through the T2 SMC.
+
+`hid_appletb_bl` &#8594; `t2touchbar_bl` Touch Bar backlight handling.
+
+`hid_appletb_kbd` &#8594; `t2touchbar_kbd` Touch Bar keyboard mode handling.
+
+## Scripts and services
+
 Below you will find all scripts and apps that are installed when running `install.sh`.
 You dont't need to run them manually. You can do that when you only want
 to install updates partially. 
 Also devs please note [how to enable debugging](#kernel-debug-logs) on the very bottom of this document.
 
-## Automatic ACPI firmware fixes
+### Automatic ACPI firmware fixes
 
 Before rebuilding the initramfs, the installer checks for two known ACPI
 problems on Intel T2 Macs:
@@ -64,7 +100,7 @@ journalctl -b0 -k --grep=AE_AML_BUFFER_LIMIT
 journalctl -b0 -k --grep='Marking method'
 ```
 
-# Apple T2 Audio DSP
+### Apple T2 Audio DSP
 
 This is a fork of [Lemmyg's Apple-T2-Audio-DSP repo)](https://github.com/lemmyg/t2-apple-audio-dsp).
 Leave him a proper GitHub star for his work. We adapted it to make
@@ -114,7 +150,7 @@ dependency installer:
 - `lsp-plugins-lv2`
 - `lv2-swh-plugins`
 
-## Suspend helper
+### Suspend helper
 
 The installer creates and enables `kait2en-suspend.service`. It runs before suspend and
 after resume. The helper detects the local hardware and only applies fixes that
@@ -143,7 +179,7 @@ resume.
 
 If the helper does not detect matching hardware, it does not unload anything.
 
-## T2 CDC-NCM debug interface helper
+### T2 CDC-NCM debug interface helper
 
 The installer installs a udev rule that renames the internal Apple T2
 CDC-NCM interface to `t2_ncm` and tells NetworkManager to ignore it. A separate
@@ -177,7 +213,7 @@ unmanaged for NetworkManager and asks systemd to start the helper service for
 that device. The helper then forces `t2_ncm` back down for a short retry window
 so late boot activity does not leave the debug interface up.
 
-## T2-specific Apps
+## T2-specific applications
 
 The installer installs the required KaiT2en apps:
 

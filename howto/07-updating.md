@@ -28,14 +28,14 @@ code changes has settled.
 It's recommended to run `install.sh` again on updates. The script will wipe obsolete code
 and install the latest versions automatically. So if you missed to update in a long time,
 be sure to run `install.sh`.
-If you always keep track with the latest changes on Discord/Matrix and you know what
+If you always keep track with the latest changes on [Discord](https://discord.gg/AGfjRk4ydj) or [Matrix](https://matrix.to/#/%23kait2en:matrix.org) and you know what
 you're doing, you can use the single scripts. Like when you know that only kernel parameters
 changed, then you would only run `install-kernel-args.sh`.
 
 ## Updating Fedora
 
 You just update Fedora like everyone else. DKMS will notice and recompile our modules against the
-latest kernel. It's always worth visiting the [KaiT2en community on Discord](https://discord.gg/AGfjRk4ydj)to make sure you won't run into issues like kernel regressions.
+latest kernel. It's always worth visiting the [KaiT2en community on Discord](https://discord.gg/AGfjRk4ydj) or [Matrix](https://matrix.to/#/%23kait2en:matrix.org) to make sure you won't run into issues like kernel regressions.
 
 ## Murphy's law: We **WILL** mess up!
 

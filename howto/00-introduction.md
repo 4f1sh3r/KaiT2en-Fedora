@@ -49,5 +49,6 @@ them locally.
 
 So for now best luck for the installation. If you happen to run into issues or inconsistencies,
 please file an issue on GitHub or join the [KaiT2en community on Discord](https://discord.gg/AGfjRk4ydj)
+or the [KaiT2en Matrix space](https://matrix.to/#/%23kait2en:matrix.org).
 
 Next: [Get Broadcom firmware from macOS](01-get-broadcom-firmware.md)

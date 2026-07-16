@@ -32,9 +32,10 @@ In the first place we want a unified clean platform for debugging. We do not
 support ports to other distros. We know many of you prefer Arch. But we need
 our base to be as conventional as possible to get things sorted.
 
-T2 Linux Fedora can be reverted to vanilla Fedora with KaiT2en on top using
-our revert script in [05-revert-t2linux-fedora.md](howto/05-revert-t2linux-fedora.md)
-after installation of KaiT2en.
+> [!TIP]
+> T2 Linux Fedora can be reverted to vanilla Fedora with KaiT2en on top using
+> our revert script in [howto 05](howto/05-revert-t2linux-fedora.md)
+> after installation of KaiT2en.
 
 The repository is meant to be used as an offline USB kit. Copy it to a USB
 drive, keep that drive connected, and run all commands from the repository root
@@ -55,11 +56,11 @@ know which file was installed where.
 - automatically fixes Apple's broken ACPI tables that show as `AE_AML_BUFFER_LIMIT`and `AE_ALREADY_EXISTS` in journal
 - always up-to-date vanilla Fedora kernel by nature
 
-## Start here
+## Start Installation from here
 
 Read the howto documents in order:
 
-1. [Introduction](howto/00-introduction.md)
+1. [Introduction to installation](howto/00-introduction.md)
 2. [Get Broadcom firmware from macOS](howto/01-get-broadcom-firmware.md)
 3. [Prepare macOS and the Fedora installer](howto/02-prepare-macos-and-fedora-usb.md)
 4. [Install Broadcom firmware on Fedora](howto/03-install-broadcom-firmware.md)
@@ -70,38 +71,7 @@ Read the howto documents in order:
 
 ## Community
 
-Join the [KaiT2en community on Discord](https://discord.gg/AGfjRk4ydj)
-
-## Driver naming
-
-KaiT2en renames drivers it maintains because the original Fedora, upstream Linux
-and older T2 Linux drivers must be blocked during boot. If KaiT2en used the same
-module names, the kernel arguments that block the original drivers would also
-block our replacements.
-
-The new names also make logs, `lsmod`, DKMS state and bug reports easier to
-read.
-
-| KaiT2en driver | Replaces or carries | Upstream state | Function |
-| --- | --- | --- | --- |
-| `hid_t2magicmouse` | `hid_magicmouse` with T2 patches | Partial | Apple Magic Mouse, Magic Trackpad and T2 Wellspring trackpad HID support. |
-| `t2bce_<module>` | `apple-bce` | No | T2 bridge controller, VHCI devices, DMA and mailbox. |
-| `t2bdrm` | `appletbdrm` | Yes | Touch Bar display DRM device for `react-drm`. |
-| `t2gmux` | `apple_gmux` | Partial | GMUX handling on dual-GPU T2 Macs. |
-| `t2hid` | `hid_apple` | Yes | Apple HID quirks for T2 keyboards and related internal input devices. |
-| `t2mfi_fastcharge` | `apple_mfi_fastcharge` | Yes | iPhone and iPad fast charging on Apple USB controllers. |
-| `t2smc` | `applesmc`, `macsmc` pieces | No | Fan control, battery charge limit, hwmon sensors and RTC through the T2 SMC. |
-| `t2touchbar_bl` | `hid_appletb_bl` | Yes | Touch Bar backlight handling. |
-| `t2touchbar_kbd` | `hid_appletb_kbd` | Yes | Touch Bar keyboard mode handling. |
-
-## Contributing
-
-Contributions are welcome, especially when they move KaiT2en fixes closer to
-clean upstream Linux support.
-
-Please keep changes and PR desciptions focused. You may use AI for debugging, but we will notice
-slop and we will refuse to review or even merge obvious slop. We are not interested in workarounds.
-There is a distinct difference in just making broken things work and fixing things. 
+Join the KaiT2en community on [Discord](https://discord.gg/AGfjRk4ydj) or on [Matrix](https://matrix.to/#/%23kait2en:matrix.org)
 
 ## Problematic Macs
 
@@ -110,10 +80,19 @@ mostly GPU related.
 
 - MacBook Pro A1990 15,1 SMU is different from other MacBooks. Resume is broken when running with dGPU as primary GPU. Users can workaround that as described in [06-configuring-gpus.md](howto/06-configuring-gpus.md)
 - Mac Pro 7,1 needs the the Infinity Fabric Link jumpered and Wifi isn't working. Not much info here, since it's a rare bird.
-- iMac 27" 5k will only display 4k. The cause is suspected to be around ACPI, EFI, SMC, `gmux`, `vgaswitcheroo`...
+- iMac 27" 5k will only display 4k.
 - iMac 20" and 27" show inconsistent GPU behaviour on boot like sporadical black screens.
- 
-## Remaining work
+
+## Contributing
+
+Contributions are welcome, especially when they move KaiT2en fixes closer to
+clean upstream Linux support.
+
+Please keep changes and PR desciptions focused. You may use AI for debugging, but we will notice
+slop and we will refuse to review or even merge obvious slop. We are not interested in workarounds.
+There is a distinct difference in just making broken things work and fixing things.
+
+### Remaining work
 
 Though with a very few exceptions everything is working OOTB when installing KaiT2en,
 we are still using some workarounds to make thinks work. In long terms this should
