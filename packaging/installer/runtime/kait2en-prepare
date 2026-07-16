@@ -6,6 +6,8 @@ repository=${KAIT2EN_REPOSITORY:-/usr/local/src/KaiT2en-Fedora}
 transition_source=${KAIT2EN_TRANSITION_SOURCE:-/usr/share/kait2en-installer/transition-source}
 state_dir=${KAIT2EN_STATE_DIR:-/var/lib/kait2en-installer}
 autostart_file=${KAIT2EN_AUTOSTART_FILE:-/etc/xdg/autostart/kait2en-install.desktop}
+prepare_launcher=${KAIT2EN_PREPARE_LAUNCHER:-/usr/local/bin/kait2en-prepare}
+terminal_launcher=${KAIT2EN_TERMINAL_LAUNCHER:-/usr/local/bin/kait2en-launch-terminal}
 boot_root=${KAIT2EN_BOOT_ROOT:-/boot}
 modules_root=${KAIT2EN_MODULES_ROOT:-/usr/lib/modules}
 os_release=${KAIT2EN_OS_RELEASE:-/etc/os-release}
@@ -39,6 +41,16 @@ write_state() {
 	[[ -z "$kernel" ]] || printf 'target_kernel=%s\n' "$kernel" >>"$temporary"
 	chmod 0644 "$temporary"
 	mv -f "$temporary" "$state_dir/state"
+}
+
+remove_phase_one_artifacts() {
+	local transition_parent=${transition_source%/*}
+
+	rm -rf -- "$transition_source"
+	rmdir -- "$transition_parent" 2>/dev/null || :
+	rm -f -- "$state_dir/lock" "$terminal_launcher"
+	# Remove this launcher last so an interrupted cleanup can still be retried.
+	rm -f -- "$prepare_launcher"
 }
 
 cleanup() {
@@ -131,6 +143,7 @@ if [[ ${1:-} == --complete ]]; then
 		die "complete the installation while running $target_kernel"
 	rm -f "$autostart_file"
 	write_state complete "$target_kernel"
+	remove_phase_one_artifacts
 	printf '[kait2en] guided installation marked complete\n'
 	exit 0
 fi
