@@ -17,7 +17,7 @@ jobs:
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: targets
         shell: bash
         run: |
@@ -35,7 +35,7 @@ jobs:
       matrix:
         target: ${{ fromJSON(needs.targets.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Static checks
         run: bash tests/installer/static-check.sh
       - name: Validate Fedora edition catalog
@@ -47,7 +47,7 @@ jobs:
             bash tests/installer/edition-catalog.sh "${{ matrix.target }}"
       - name: Build ${{ matrix.target }}
         run: ./scripts/fedora/build-installer.sh --target "${{ matrix.target }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: installer-${{ matrix.target }}
           path: dist/*
@@ -60,8 +60,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           path: release-assets
           merge-multiple: true

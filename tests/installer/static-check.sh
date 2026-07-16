@@ -78,6 +78,11 @@ grep -Fq 'The KaiT2en installation will continue automatically in a terminal.' \
 ! grep -Fq 'before the intentional EFI customization' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'shasum -a 256 -c' packaging/installer/macos-release-bootstrap.sh.in
 grep -Fq 'KAIT2EN_TTY:-/dev/tty' packaging/installer/macos-release-bootstrap.sh.in
+[[ $(grep -Fc 'uses: actions/checkout@v5' .github/workflows/installer.yml) -eq 3 ]]
+grep -Fq 'uses: actions/upload-artifact@v6' .github/workflows/installer.yml
+grep -Fq 'uses: actions/download-artifact@v7' .github/workflows/installer.yml
+! rg -n 'uses: actions/(checkout|upload-artifact|download-artifact)@v4' \
+	.github/workflows/installer.yml
 
 patch_name=$(
 	# shellcheck disable=SC1091
