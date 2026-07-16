@@ -97,17 +97,21 @@ sudo systemctl enable kait2en-dgpu-off.service
 sudo reboot
 ```
 
-You can make this process less awkward by adding aliases:
+You can make this process less awkward by adding aliases in `.bashrc`:
 
 ```bash
+cd ~
+sudo nano .bashrc
+# under the line "# User specific aliases and functions" add:
 alias dgpu-off='sudo systemctl enable kait2en-dgpu-off.service; sleep 2; sudo reboot'
 alias dgpu-on='sudo systemctl disable kait2en-dgpu-off.service; sleep 2; sudo reboot'
 alias dgpu-status='sudo cat /sys/kernel/debug/vgaswitcheroo/switch'
+# then press ctrl+o, then press enter to confirm saving and exit with ctrl +x
 ```
 
-From now on, when you enter `dgpu-off`, it will enable the service and reboot
-while `dgpu-on` will disable it and reboot, and `dgpu-status` will show you if
-the dGPU is currently on or off.
+After logging out and in again, when you enter `dgpu-off`, it will enable the 
+service and reboot while `dgpu-on` will disable it and reboot, and `dgpu-status`
+will show you if the dGPU is currently on or off.
 
 ## MacBook Pro 15,1 A1990 dGPU suspend issues
 
