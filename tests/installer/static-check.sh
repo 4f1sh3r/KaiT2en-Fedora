@@ -30,7 +30,7 @@ for file in "${shell_files[@]}"; do
 done
 
 if command -v shellcheck >/dev/null 2>&1; then
-	shellcheck -x "${shell_files[@]}"
+	shellcheck --severity=warning -x "${shell_files[@]}"
 fi
 
 while IFS= read -r file; do

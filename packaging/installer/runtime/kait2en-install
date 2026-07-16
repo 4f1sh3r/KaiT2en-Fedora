@@ -137,7 +137,7 @@ run_initial_install() {
 }
 
 [[ $# -eq 0 ]] || die 'usage: kait2en-install'
-delegate_to_repository
+delegate_to_repository "$@"
 
 phase=$(state_value phase || printf 'pending')
 case "$phase" in
@@ -147,7 +147,7 @@ case "$phase" in
 		printf 'Administrator access is required.\n\n'
 		sudo -v
 		sudo "$prepare"
-		delegate_to_repository
+		delegate_to_repository "$@"
 		if [[ $(state_value target_kernel || :) == $(uname -r) ]]; then
 			run_initial_install
 			exit 0
