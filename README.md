@@ -8,7 +8,7 @@ KAIT2EN brings cutting edge T2 Mac support to stock Fedora using DKMS modules an
 It does not use a modified kernel. You will receive kernel updates directly from Fedora.
 
 [Install](#quick-start) |
-<a href="https://kait2en.github.io/KaiT2en-Fedora/" target="_blank" rel="noopener noreferrer">Docs</a> |
+[Docs](https://kait2en.github.io/KaiT2en-Fedora/) |
 [Before You Install](#before-you-install) |
 [Problematic Macs](#problematic-macs) |
 [Features](#features) |
@@ -23,16 +23,16 @@ For a clean automatic install, boot macOS, connect an empty USB drive and run:
 curl -fsSL https://github.com/kaiT2en/KaiT2en-Fedora/releases/latest/download/install-kait2en-fedora.sh | bash
 ```
 
-Read the <a href="https://kait2en.github.io/KaiT2en-Fedora/howto/installation/automatic/" target="_blank" rel="noopener noreferrer">automatic installation howto</a> before
+Read the [automatic installation howto](https://kait2en.github.io/KaiT2en-Fedora/howto/installation/automatic/) before
 you start. For all installation paths, start with the
-<a href="https://kait2en.github.io/KaiT2en-Fedora/howto/introduction/" target="_blank" rel="noopener noreferrer">installation introduction</a>.
+[installation introduction](https://kait2en.github.io/KaiT2en-Fedora/howto/introduction/).
 
 Useful paths:
 
-- <a href="https://kait2en.github.io/KaiT2en-Fedora/howto/installation/automatic/" target="_blank" rel="noopener noreferrer">Automatic installation</a>
-- <a href="https://kait2en.github.io/KaiT2en-Fedora/howto/installation/manual/00-get-broadcom-firmware/" target="_blank" rel="noopener noreferrer">Manual installation</a>
-- <a href="https://kait2en.github.io/KaiT2en-Fedora/howto/migration/revert-t2linux-fedora/" target="_blank" rel="noopener noreferrer">Revert T2 Linux Fedora to vanilla Fedora + KAIT2EN</a>
-- <a href="https://kait2en.github.io/KaiT2en-Fedora/howto/postinstall/updating/" target="_blank" rel="noopener noreferrer">Updating KAIT2EN</a>
+- [Automatic installation](https://kait2en.github.io/KaiT2en-Fedora/howto/installation/automatic/)
+- [Manual installation](https://kait2en.github.io/KaiT2en-Fedora/howto/installation/manual/00-get-broadcom-firmware/)
+- [Revert T2 Linux Fedora to vanilla Fedora + KAIT2EN](https://kait2en.github.io/KaiT2en-Fedora/howto/migration/revert-t2linux-fedora/)
+- [Updating KAIT2EN](https://kait2en.github.io/KaiT2en-Fedora/howto/postinstall/updating/)
 
 ## Before You Install
 
@@ -54,7 +54,7 @@ low-level hardware issues and are mostly GPU-related. These issues are not
 KAIT2EN exclusive. It's just the current state of development.
 
 - MacBook Pro A1990 15,1: resume is broken when running with the dGPU as primary
-  GPU. See the <a href="https://kait2en.github.io/KaiT2en-Fedora/howto/postinstall/configuring-gpus/" target="_blank" rel="noopener noreferrer">GPU configuration guide</a>.
+  GPU. See the [GPU configuration guide](https://kait2en.github.io/KaiT2en-Fedora/howto/postinstall/configuring-gpus/).
 - Mac Pro 7,1: needs the Infinity Fabric Link jumpered and Wi-Fi is not working.
 - iMac 27" 5K: only displays 4K.
 - iMac 20" and 27": sporadic GPU initialization issues such as black screens on
@@ -78,7 +78,7 @@ It makes suspend work and audio stutter-free.
 - `t2bce_audio` replaces `aaudio` with stutter-free audio and
   upstream-friendly UCM support.
 - A fork of `apple-t2-audio-dsp` for supported Macs.
-  See <a href="https://kait2en.github.io/KaiT2en-Fedora/howto/installation/manual/03-install-kait2en-modules-and-apps/#apple-t2-audio-dsp" target="_blank" rel="noopener noreferrer">supported devices</a>.
+  See [supported devices](https://kait2en.github.io/KaiT2en-Fedora/howto/installation/manual/03-install-kait2en-modules-and-apps/#apple-t2-audio-dsp).
 - `t2smc` replaces `applesmc` and adds RTC, hwmon, SMC sensor and battery charge
   limit support.
 - `t2-smc-control` provides a GUI for battery charge limits, RTC inspection and

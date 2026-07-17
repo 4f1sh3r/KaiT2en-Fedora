@@ -5,6 +5,8 @@
 KAIT2EN brings T2 Mac support to stock Fedora using DKMS modules, helper tools
 and installer integration.
 
+[GitHub repository](https://github.com/kaiT2en/KaiT2en-Fedora)
+
 ## Start Here
 
 - [Automatic installation](howto/installation/automatic/index.md)
