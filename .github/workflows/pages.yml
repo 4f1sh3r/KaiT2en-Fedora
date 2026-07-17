@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Existing deployment:
+  # Compatibility deployment:
   # https://kait2en.github.io/KaiT2en-Fedora/
   build:
     runs-on: ubuntu-latest
@@ -28,9 +28,11 @@ jobs:
         with:
           python-version: "3.x"
 
-      - run: pip install -r requirements-docs.txt
+      - name: Install documentation dependencies
+        run: pip install -r requirements-docs.txt
 
-      - run: mkdocs build --strict
+      - name: Build documentation
+        run: mkdocs build --strict
 
       - uses: actions/upload-pages-artifact@v5
         with:
@@ -48,7 +50,7 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v5
 
-  # Additional root deployment:
+  # Primary deployment:
   # https://kait2en.github.io/
   deploy-root:
     runs-on: ubuntu-latest
@@ -63,35 +65,8 @@ jobs:
       - name: Install documentation dependencies
         run: pip install -r requirements-docs.txt
 
-      - name: Create root-site configuration
-        shell: python
-        run: |
-          from pathlib import Path
-
-          source_path = Path("mkdocs.yml")
-          config = source_path.read_text(encoding="utf-8")
-
-          replacements = {
-              "site_url: https://kait2en.github.io/KaiT2en-Fedora/":
-                  "site_url: https://kait2en.github.io/",
-              "site_dir: site":
-                  "site_dir: site-root",
-          }
-
-          for old, new in replacements.items():
-              if old not in config:
-                  raise SystemExit(
-                      f"Expected configuration line not found: {old}"
-                  )
-              config = config.replace(old, new, 1)
-
-          Path("mkdocs-root.yml").write_text(
-              config,
-              encoding="utf-8",
-          )
-
       - name: Build root site
-        run: mkdocs build --strict --config-file mkdocs-root.yml
+        run: mkdocs build --strict
 
       - name: Publish root site
         uses: peaceiris/actions-gh-pages@v4
@@ -99,5 +74,5 @@ jobs:
           deploy_key: ${{ secrets.DOCS_DEPLOY_SSH_KEY }}
           external_repository: kaiT2en/kait2en.github.io
           publish_branch: gh-pages
-          publish_dir: ./site-root
+          publish_dir: ./site
           force_orphan: true
