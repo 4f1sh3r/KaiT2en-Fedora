@@ -107,6 +107,7 @@ struct t2smc_device {
 	bool has_chls;
 	bool has_chwa;
 	struct acpi_battery_hook batt_hook;
+	struct power_supply *battery;
 };
 
 /* -- MMIO helpers -- */
@@ -862,6 +863,8 @@ static int t2smc_set_charge_limit(struct t2smc_device *t2, u8 val)
 		return -ENODEV;
 	if (t2smc_write_charge_limit_method(t2, val))
 		return -ENODEV;
+	if (t2->battery)
+		power_supply_changed(t2->battery);
 	return 0;
 }
 
@@ -972,16 +975,25 @@ static int t2smc_battery_add(struct power_supply *battery,
 			      struct acpi_battery_hook *hook)
 {
 	struct t2smc_device *t2 = container_of(hook, struct t2smc_device, batt_hook);
+	int ret;
 
 	if (strcmp(battery->desc->name, "BAT0"))
 		return -ENODEV;
 
-	return power_supply_register_extension(battery, &t2smc_psy_ext, t2->dev, t2);
+	ret = power_supply_register_extension(battery, &t2smc_psy_ext, t2->dev, t2);
+	if (ret)
+		return ret;
+
+	t2->battery = battery;
+	return 0;
 }
 
 static int t2smc_battery_remove(struct power_supply *battery,
 				 struct acpi_battery_hook *hook)
 {
+	struct t2smc_device *t2 = container_of(hook, struct t2smc_device, batt_hook);
+
+	t2->battery = NULL;
 	power_supply_unregister_extension(battery, &t2smc_psy_ext);
 	return 0;
 }
