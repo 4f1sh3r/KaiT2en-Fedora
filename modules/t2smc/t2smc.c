@@ -20,6 +20,8 @@
 #include <linux/io.h>
 #include <linux/err.h>
 #include <linux/rtc.h>
+#include <linux/power_supply.h>
+#include <acpi/battery.h>
 
 /* MMIO register offsets for T2 SMC interface */
 #define T2SMC_IOMEM_KEY_DATA      0x0000
@@ -104,6 +106,7 @@ struct t2smc_device {
 	struct rtc_device *rtc_dev;
 	bool has_chls;
 	bool has_chwa;
+	struct acpi_battery_hook batt_hook;
 };
 
 /* -- MMIO helpers -- */
@@ -844,13 +847,31 @@ static int t2smc_write_charge_limit_method(struct t2smc_device *t2, u8 val)
 	return 0;
 }
 
+static int t2smc_get_charge_limit(struct t2smc_device *t2, u8 *val)
+{
+	if (t2smc_read_key(t2, T2SMC_CHARGE_LIMIT, val, 1))
+		return -ENODEV;
+	return 0;
+}
+
+static int t2smc_set_charge_limit(struct t2smc_device *t2, u8 val)
+{
+	if (val > 100)
+		return -EINVAL;
+	if (t2smc_write_key(t2, T2SMC_CHARGE_LIMIT, &val, 1))
+		return -ENODEV;
+	if (t2smc_write_charge_limit_method(t2, val))
+		return -ENODEV;
+	return 0;
+}
+
 static ssize_t charge_limit_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct t2smc_device *t2 = dev_get_drvdata(dev);
 	u8 val;
 
-	if (t2smc_read_key(t2, T2SMC_CHARGE_LIMIT, &val, 1))
+	if (t2smc_get_charge_limit(t2, &val))
 		return -ENODEV;
 	return sysfs_emit(buf, "%d\n", val);
 }
@@ -861,16 +882,14 @@ static ssize_t charge_limit_store(struct device *dev,
 {
 	struct t2smc_device *t2 = dev_get_drvdata(dev);
 	u8 val;
+	int ret;
 
 	if (kstrtou8(buf, 10, &val) < 0)
 		return -EINVAL;
-	if (val > 100)
-		return -EINVAL;
 
-	if (t2smc_write_key(t2, T2SMC_CHARGE_LIMIT, &val, 1))
-		return -ENODEV;
-	if (t2smc_write_charge_limit_method(t2, val))
-		return -ENODEV;
+	ret = t2smc_set_charge_limit(t2, val);
+	if (ret)
+		return ret;
 	return count;
 }
 
@@ -890,6 +909,82 @@ static const struct attribute_group *t2smc_extra_groups[] = {
 	&t2smc_bclm_group,
 	NULL,
 };
+
+/* -- Same charge limit, exposed as a standard power_supply extension on BAT0 -- */
+static int t2smc_psy_ext_get(struct power_supply *psy,
+			      const struct power_supply_ext *ext,
+			      void *data, enum power_supply_property psp,
+			      union power_supply_propval *val)
+{
+	struct t2smc_device *t2 = data;
+	u8 limit;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+		val->intval = 0;
+		return 0;
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
+		if (t2smc_get_charge_limit(t2, &limit))
+			return -ENODEV;
+		val->intval = limit;
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
+static int t2smc_psy_ext_set(struct power_supply *psy,
+			      const struct power_supply_ext *ext,
+			      void *data, enum power_supply_property psp,
+			      const union power_supply_propval *val)
+{
+	struct t2smc_device *t2 = data;
+
+	if (psp != POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD)
+		return -EINVAL;
+	if (val->intval < 0 || val->intval > 100)
+		return -EINVAL;
+	return t2smc_set_charge_limit(t2, val->intval);
+}
+
+static int t2smc_psy_ext_is_writeable(struct power_supply *psy,
+				       const struct power_supply_ext *ext,
+				       void *data, enum power_supply_property psp)
+{
+	return psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD;
+}
+
+static enum power_supply_property t2smc_psy_ext_props[] = {
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD,
+};
+
+static const struct power_supply_ext t2smc_psy_ext = {
+	.name                   = "t2smc-charge-control",
+	.properties             = t2smc_psy_ext_props,
+	.num_properties         = ARRAY_SIZE(t2smc_psy_ext_props),
+	.get_property           = t2smc_psy_ext_get,
+	.set_property           = t2smc_psy_ext_set,
+	.property_is_writeable  = t2smc_psy_ext_is_writeable,
+};
+
+static int t2smc_battery_add(struct power_supply *battery,
+			      struct acpi_battery_hook *hook)
+{
+	struct t2smc_device *t2 = container_of(hook, struct t2smc_device, batt_hook);
+
+	if (strcmp(battery->desc->name, "BAT0"))
+		return -ENODEV;
+
+	return power_supply_register_extension(battery, &t2smc_psy_ext, t2->dev, t2);
+}
+
+static int t2smc_battery_remove(struct power_supply *battery,
+				 struct acpi_battery_hook *hook)
+{
+	power_supply_unregister_extension(battery, &t2smc_psy_ext);
+	return 0;
+}
 
 /* -- RTC (48-bit 32768 Hz counter + offset) -- */
 static int t2smc_read_rtc_key(struct t2smc_device *t2, const char *key, u64 *val)
@@ -1136,6 +1231,15 @@ static int t2smc_add(struct acpi_device *adev)
 	ret = t2smc_register_hwmon(t2);
 	if (ret)
 		return ret;
+
+	if (t2->has_chls || t2->has_chwa) {
+		t2->batt_hook.name = "t2smc";
+		t2->batt_hook.add_battery = t2smc_battery_add;
+		t2->batt_hook.remove_battery = t2smc_battery_remove;
+		ret = devm_battery_hook_register(t2->dev, &t2->batt_hook);
+		if (ret)
+			return ret;
+	}
 
 	ret = t2smc_register_rtc(t2);
 	if (ret)
