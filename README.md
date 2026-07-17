@@ -47,7 +47,7 @@ Supported installer environments:
 - Ubuntu 25.10 or newer and Ubuntu derivatives that provide Node.js 20.19.0
   or newer
 - Arch Linux and supported Arch derivatives
-- GNOME, KDE Plasma , Niri or Hyprland on Wayland
+- GNOME, KDE Plasma, Niri or Hyprland on Wayland
 - Any Xorg desktop with `xprop`
 
 Ubuntu 24.04 is not supported because its repositories provide Node.js 18.
@@ -103,11 +103,12 @@ modinfo hid-appletb-bl
 Stop, disable and remove `tiny-dfr`, `mac-touchbar-plus` or any other Touch Bar
 daemon using the method appropriate for your distribution.
 
-Build from the repository root. `npm ci` uses the root lockfile and installs
-the root package together with the `linux-touchbar-control-center` workspace:
+Build the control center workspace. `npm ci` must be run from the repository root
+to use the root lockfile:
 
 ```sh
 npm ci
+cd linux-touchbar-control-center
 npm run build
 ```
 

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx --conditions=development index.tsx",
     "dev:profile": "DRM_DAMAGE_LOG=1 REACT_DRM_PROFILE=1 tsx --conditions=development index.tsx",
-    "build": "npm --prefix .. run build && tsc -p tsconfig.json",
+    "build": "npm --prefix .. run build && tsc -p tsconfig.json && rm -rf dist/assets && cp -r assets dist/",
     "start": "NODE_ENV=production node ./dist/index.js"
   },
   "dependencies": {
