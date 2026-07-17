@@ -31,6 +31,7 @@ LEGACY_MODULES=(
 )
 
 DKMS_POST_TRANSACTION_OVERRIDE="/etc/dkms/framework.conf.d/kait2en-disable-post-transaction.conf"
+DKMS_KERNEL_INSTALL_HOOK="/etc/kernel/install.d/39-kait2en-dkms-cleanup.install"
 
 restore_dkms_post_transaction() {
 	rm -f "$DKMS_POST_TRANSACTION_OVERRIDE"
@@ -44,6 +45,61 @@ disable_dkms_post_transaction() {
 	install -o root -g root -m 0644 "$tmp" "$DKMS_POST_TRANSACTION_OVERRIDE"
 	rm -f "$tmp"
 	trap restore_dkms_post_transaction EXIT
+}
+
+install_dkms_kernel_hook() {
+	local tmp
+
+	install -d -o root -g root -m 0755 /etc/kernel/install.d
+	tmp="$(mktemp)"
+	cat >"$tmp" <<'HOOK'
+#!/usr/bin/bash
+
+set -u
+
+command=${1:-}
+kernelver=${2:-}
+
+[[ "$command" == add && -n "$kernelver" ]] || exit 0
+
+modules=(
+	t2bce_dma
+	t2bce_core
+	t2bce_vhci
+	t2bce_audio
+	t2smc
+	t2bdrm
+	t2touchbar
+	hid_t2magicmouse
+	t2mfi_fastcharge
+	t2gmux
+)
+
+for name in "${modules[@]}"; do
+	for conf in /usr/src/"$name"-*/dkms.conf; do
+		[[ -f "$conf" ]] || continue
+		version="$(sed -n 's/^PACKAGE_VERSION="\([^"]*\)".*/\1/p' "$conf")"
+		[[ -n "$version" ]] || continue
+
+		if dkms status -m "$name" -v "$version" -k "$kernelver" 2>/dev/null |
+				grep -Fq ': installed'; then
+			continue
+		fi
+
+		tree="/var/lib/dkms/$name/$version/$kernelver"
+		[[ "$tree" == /var/lib/dkms/*/*/* && -d "$tree" ]] || continue
+
+		printf '[kait2en] removing stale DKMS build tree %s/%s for %s\n' \
+			"$name" "$version" "$kernelver"
+		dkms remove --no-depmod -m "$name" -v "$version" -k "$kernelver" \
+			>/dev/null 2>&1 || rm -rf "$tree"
+	done
+done
+
+exit 0
+HOOK
+	install -o root -g root -m 0755 "$tmp" "$DKMS_KERNEL_INSTALL_HOOK"
+	rm -f "$tmp"
 }
 
 remove_dkms_module_versions() {
@@ -194,6 +250,7 @@ install_module() {
 	fi
 }
 
+install_dkms_kernel_hook
 disable_dkms_post_transaction
 remove_legacy_dkms_modules
 remove_repo_dkms_modules

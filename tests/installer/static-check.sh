@@ -16,6 +16,7 @@ shell_files=(
 	packaging/installer/runtime/kait2en-launch-terminal
 	packaging/installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
+	scripts/fedora/install-dkms-modules.sh
 	scripts/macos/prepare-fedora-installer.sh
 	tests/installer/edition-catalog.sh
 	tests/installer/install-launcher.sh
