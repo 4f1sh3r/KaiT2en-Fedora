@@ -1,27 +1,14 @@
-# Revert T2 Linux Fedora to vanilla Fedora + KaiT2en
+# Revert T2 Linux Fedora to vanilla Fedora + KAIT2EN
 
-[Automatic installation](automatic-installation.md)
+[Installation introduction](../introduction.md) | Next: [Configure GPUs](../postinstall/configuring-gpus.md)
 
-Manual installation:
-
-1. [Introduction](00-introduction.md)
-2. [Get Broadcom firmware from macOS](01-get-broadcom-firmware.md)
-3. [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md)
-4. [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md)
-5. [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md)
-6. [Revert T2 Linux Fedora to vanilla + KaiT2en](05-revert-t2linux-fedora.md) (you are here)
-7. [Configure GPUs](06-configuring-gpus.md)
-8. [How to update](07-updating.md)
-
-Previous: [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md) | Next: [Configure GPUs](06-configuring-gpus.md)
-
-KaiT2en is designed for stock Fedora kernels. When you come from T2 Linux Fedora
+KAIT2EN is designed for stock Fedora kernels. When you come from T2 Linux Fedora
 you can use this guide to remove the remaining T2 Linux Fedora packaging layers
-and move back to a stock Fedora kernel. You will do this **AFTER** KaiT2en installation.
+and move back to a stock Fedora kernel. You will do this **AFTER** KAIT2EN installation.
 
 The script in this guide removes the T2 Linux Fedora COPR, support packages and configuration
-files that conflict with KaiT2en or hide bugs behind distribution-specific
-workarounds. It intentionally does not remove KaiT2en files.
+files that conflict with KAIT2EN or hide bugs behind distribution-specific
+workarounds. It intentionally does not remove KAIT2EN files.
 
 The `t2linux/fedora` package repository installs these relevant packages and
 files:
@@ -45,13 +32,13 @@ files:
 - `tiny-dfr`
 - a patched kernel from the `sharpenedblade/t2linux` COPR
 
-KaiT2en provides its own modules, UCM profile, fan/SMC tools, Touch Bar daemon,
+KAIT2EN provides its own modules, UCM profile, fan/SMC tools, Touch Bar daemon,
 T2 CDC-NCM handling and suspend helpers that are compatible to upstream mainline
 and survive suspend. Do not keep both stacks active at the same time.
 
 ## Revert script
 
-Run this from a terminal after the KaiT2en installer has completed:
+Run this from a terminal after the KAIT2EN installer has completed:
 
 ```bash
 sudo bash << 'EOF'
@@ -216,4 +203,4 @@ Reboot after the script completes:
 sudo reboot
 ```
 
-Next: [Configure GPUs](06-configuring-gpus.md)
+Next: [Configure GPUs](../postinstall/configuring-gpus.md)

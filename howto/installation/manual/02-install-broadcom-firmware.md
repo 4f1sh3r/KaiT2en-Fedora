@@ -1,19 +1,6 @@
 # Installing the Broadcom firmware on Linux
 
-[Automatic installation](automatic-installation.md)
-
-Manual installation:
-
-1. [Introduction](00-introduction.md)
-2. [Get Broadcom firmware from macOS](01-get-broadcom-firmware.md)
-3. [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md)
-4. [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md) (you are here)
-5. [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md)
-6. [Revert T2 Linux Fedora to vanilla + KaiT2en](05-revert-t2linux-fedora.md)
-7. [Configure GPUs](06-configuring-gpus.md)
-8. [How to update](07-updating.md)
-
-Previous: [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md) | Next: [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md)
+Previous: [Prepare macOS and the Fedora installer](01-prepare-macos-and-fedora-usb.md) | Next: [Install KAIT2EN modules and apps](03-install-kait2en-modules-and-apps.md)
 
 This guide installs the Broadcom Wi-Fi firmware copied from macOS.
 
@@ -49,7 +36,7 @@ uses that filename for the main firmware file.
 ## Install
 
 Copy the firmware files from macOS to the `firmware` folder in this repository.
-In Linux, open a terminal in the root folder of the KaiT2en repository on your
+In Linux, open a terminal in the root folder of the KAIT2EN repository on your
 USB drive.
 
 The `firmware` folder should contain one file of each type:
@@ -229,13 +216,13 @@ you will need to unload `hci_uart` on suspend using a systemd service because
 the Bluetooth controller will refuse to go into `D3cold` as a trade-off.
 Interestingly, this is the same behaviour the single-chip BCM4377 chip shows OOTB.
 
-The KaiT2en `firmware` folder should contain one UART Bluetooth MiniDriver file:
+The KAIT2EN `firmware` folder should contain one UART Bluetooth MiniDriver file:
 
 ```text
 *-MiniDriver-uart.hex
 ```
 
-Run this from the root folder of the KaiT2en repository on your USB drive:
+Run this from the root folder of the KAIT2EN repository on your USB drive:
 
 ```bash
 bash <(cat << 'EOF'
@@ -348,4 +335,4 @@ Known non-fatal message, but likely related to audio stutters:
 failed to write update baudrate (-16)
 ```
 
-Next: [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md)
+Next: [Install KAIT2EN modules and apps](03-install-kait2en-modules-and-apps.md)

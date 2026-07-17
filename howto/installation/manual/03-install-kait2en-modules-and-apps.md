@@ -1,26 +1,13 @@
-# Install KaiT2en modules and apps
+# Install KAIT2EN modules and apps
 
-[Automatic installation](automatic-installation.md)
-
-Manual installation:
-
-1. [Introduction](00-introduction.md)
-2. [Get Broadcom firmware from macOS](01-get-broadcom-firmware.md)
-3. [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md)
-4. [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md)
-5. [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md) (you are here)
-6. [Revert T2 Linux Fedora to vanilla + KaiT2en](05-revert-t2linux-fedora.md)
-7. [Configure GPUs](06-configuring-gpus.md)
-8. [How to update](07-updating.md)
-
-Previous: [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md) | [Back to README](../README.md)
+Previous: [Install Broadcom firmware on Fedora](02-install-broadcom-firmware.md) | [Installation introduction](../../introduction.md)
 
 ## Install.sh
 
 Install.sh will install DKMS modules, scripts and apps by running a stack
 of sub-scripts.
 
-Run this command from the KaiT2en repository root on your Fedora system:
+Run this command from the KAIT2EN repository root on your Fedora system:
 
 ```bash
 sudo bash ./scripts/fedora/install.sh
@@ -38,16 +25,16 @@ sudo reboot
 
 ## Modules
 
-KaiT2en renames drivers it maintains because the original Fedora and older
-T2 Linux drivers must be blocked during boot. If KaiT2en used the same
+KAIT2EN renames drivers it maintains because the original Fedora and older
+T2 Linux drivers must be blocked during boot. If KAIT2EN used the same
 module names, the kernel arguments that block the original drivers would also
 block our replacements.
 
 The new names also make logs, `lsmod`, DKMS state and bug reports easier to
 read. The list below shows which modules are blacklisted and replaced by their
-KaiT2en equivalents:
+KAIT2EN equivalents:
 
-T2 Linux driver &#8594; KaiT2en driver
+T2 Linux driver &#8594; KAIT2EN driver
 
 `hid_magicmouse` &#8594; `hid_t2magicmouse` contains Asahi trackpad patches
 
@@ -135,7 +122,7 @@ It generates a WirePlumber configuration at:
 ```
 
 The graph target is rewritten at install time to match the detected Apple T2
-audio PCI device and KaiT2en UCM sink/source names.
+audio PCI device and KAIT2EN UCM sink/source names.
 
 Required Fedora packages are installed by `install-dsp.sh`, not by the common
 dependency installer:
@@ -214,7 +201,7 @@ so late boot activity does not leave the debug interface up.
 
 ## T2-specific applications
 
-The installer installs the required KaiT2en apps:
+The installer installs the required KAIT2EN apps:
 
 - t2-fan-control # Adjustable fan curves with GUI
 - t2-smc-control # Battery charge limit and SMC sensors in a GUI
@@ -260,7 +247,7 @@ is copied into that user's home directory and built there.
 
 ## Kernel debug logs
 
-KaiT2en modules use `pr_debug()` for verbose driver messages. These messages
+KAIT2EN modules use `pr_debug()` for verbose driver messages. These messages
 are hidden by default, even when you watch `dmesg` or `journalctl -k`.
 
 If you want to see the verbose logging, you can either search and replace all
@@ -303,4 +290,4 @@ Turn the messages off again:
 echo 'module t2bce -p' | sudo tee /sys/kernel/debug/dynamic_debug/control
 ```
 
-Next: [Revert T2 Linux Fedora to vanilla + KaiT2en](05-revert-t2linux-fedora.md)
+Next: [Revert T2 Linux Fedora to vanilla + KAIT2EN](../../migration/revert-t2linux-fedora.md)

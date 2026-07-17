@@ -1,0 +1,42 @@
+site_name: KAIT2EN Fedora
+site_url: https://kait2en.github.io/KaiT2en-Fedora/
+repo_url: https://github.com/kaiT2en/KaiT2en-Fedora
+repo_name: kaiT2en/KAIT2EN-Fedora
+docs_dir: docs
+site_dir: site
+extra_css:
+  - stylesheets/extra.css
+markdown_extensions:
+  - attr_list
+
+theme:
+  name: material
+  logo: assets/kaiT2en-logo-tr.png
+  favicon: assets/kaiT2en-logo-tr.png
+  palette:
+    scheme: slate
+    primary: black
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Howtos:
+      - Introduction: howto/introduction.md
+      - Installation:
+          - Automatic installation: howto/installation/automatic/index.md
+          - Manual installation:
+              - Get Broadcom firmware: howto/installation/manual/00-get-broadcom-firmware.md
+              - Prepare macOS and Fedora USB: howto/installation/manual/01-prepare-macos-and-fedora-usb.md
+              - Install Broadcom firmware: howto/installation/manual/02-install-broadcom-firmware.md
+              - Install KAIT2EN modules and apps: howto/installation/manual/03-install-kait2en-modules-and-apps.md
+      - Migration:
+          - Revert T2 Linux Fedora: howto/migration/revert-t2linux-fedora.md
+      - Post-install:
+          - Configure GPUs: howto/postinstall/configuring-gpus.md
+          - Updating: howto/postinstall/updating.md

@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="../assets/kaiT2en-logo-tr.png" alt="KaiT2en logo" width="220">
+  <img src="../../../assets/kaiT2en-logo-tr.png" alt="KAIT2EN logo" width="220">
 </p>
 
 # Automatic installation
 
-[Back to README](../README.md) | [Manual installation](00-introduction.md)
+[Installation introduction](../../introduction.md)
 
 The automatic installer prepares one Fedora USB drive on macOS. Internal
 keyboard and trackpad work during Fedora installation. The matching Apple Wi-Fi
-firmware and the guided KaiT2en setup are carried into the installed system.
+firmware and the guided KAIT2EN setup are carried into the installed system.
 
 The installer currently supports Fedora Workstation, Fedora KDE Desktop and
 Fedora COSMIC Spin.
@@ -45,7 +45,7 @@ official Fedora image, finds the Apple Wi-Fi firmware used by this Mac and asks
 for an exact confirmation before erasing the USB drive.
 
 The official Fedora image itself is not modified. After writing the verified
-vanilla image, the script adds KaiT2en boot files only to the USB drive's EFI
+vanilla image, the script adds KAIT2EN boot files only to the USB drive's EFI
 partition. Separate initramfs overlays provide the temporary input drivers and
 installer integration at boot; Fedora's live system and installation payload
 remain unchanged.
@@ -55,7 +55,7 @@ Be exact when selecting the drive. All data on it will be destroyed.
 ## Install Fedora
 
 Shut down or reboot the Mac. Hold `Option` during startup and select the orange
-`EFI Boot` entry for the Fedora USB drive. The KaiT2en Fedora entry starts
+`EFI Boot` entry for the Fedora USB drive. The KAIT2EN Fedora entry starts
 automatically.
 
 Keyboard and trackpad should work in the live system and installer. Wi-Fi is not
@@ -69,15 +69,15 @@ format an existing Linux `/boot` partition so old kernels do not fill it.
 After installation finishes, remove the USB drive and boot the installed Fedora
 system.
 
-## Finish the KaiT2en installation
+## Finish the KAIT2EN installation
 
 Sign in to Fedora and connect to Wi-Fi. A terminal opens automatically and
-starts the KaiT2en installer in two phases. Do not close this window and follow
+starts the KAIT2EN installer in two phases. Do not close this window and follow
 the prompts.
 
 The first phase updates Fedora and prepares the new kernel. Reboot when asked.
 After signing in again, the second phase opens automatically and runs the
-regular KaiT2en installer. Reboot once more after it completes successfully.
+regular KAIT2EN installer. Reboot once more after it completes successfully.
 
 If the terminal does not appear, open one and run this command without `sudo`:
 
@@ -86,6 +86,6 @@ kait2en-install
 ```
 
 The installer asks for administrator access when it is needed. It can also be
-started again at any later time to update KaiT2en.
+started again at any later time to update KAIT2EN.
 
-[Back to README](../README.md) | [Manual installation](00-introduction.md)
+[Installation introduction](../../introduction.md)

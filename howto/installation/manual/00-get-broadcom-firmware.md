@@ -1,22 +1,9 @@
 # Get Broadcom firmware from macOS
 
-[Automatic installation](automatic-installation.md)
-
-Manual installation:
-
-1. [Introduction](00-introduction.md)
-2. [Get Broadcom firmware from macOS](01-get-broadcom-firmware.md) (you are here)
-3. [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md)
-4. [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md)
-5. [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md)
-6. [Revert T2 Linux Fedora to vanilla + KaiT2en](05-revert-t2linux-fedora.md)
-7. [Configure GPUs](06-configuring-gpus.md)
-8. [How to update](07-updating.md)
-
-Previous: [Introduction](00-introduction.md) | Next: [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md)
+[Installation introduction](../../introduction.md) | Next: [Prepare macOS and the Fedora installer](01-prepare-macos-and-fedora-usb.md)
 
 *When you already have T2 Linux Fedora installed and you are using our revert
-script, you can jump to [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md).*
+script, you can jump to [Install KAIT2EN modules and apps](03-install-kait2en-modules-and-apps.md).*
 
 Boot into macOS.
 Open the macOS Terminal in the root folder of this repository on your USB drive.
@@ -92,4 +79,4 @@ Copy files to 'firmware'? [y/N] y
 Done.
 ```
 
-Next: [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md)
+Next: [Prepare macOS and the Fedora installer](01-prepare-macos-and-fedora-usb.md)

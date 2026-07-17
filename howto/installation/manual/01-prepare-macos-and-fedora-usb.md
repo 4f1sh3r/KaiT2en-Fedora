@@ -1,22 +1,9 @@
 # Prepare macOS and the Fedora installer
 
-[Automatic installation](automatic-installation.md)
-
-Manual installation:
-
-1. [Introduction](00-introduction.md)
-2. [Get Broadcom firmware from macOS](01-get-broadcom-firmware.md)
-3. [Prepare macOS and the Fedora installer](02-prepare-macos-and-fedora-usb.md) (you are here)
-4. [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md)
-5. [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md)
-6. [Revert T2 Linux Fedora to vanilla + KaiT2en](05-revert-t2linux-fedora.md)
-7. [Configure GPUs](06-configuring-gpus.md)
-8. [How to update](07-updating.md)
-
-Previous: [Get Broadcom firmware from macOS](01-get-broadcom-firmware.md) | Next: [Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md)
+Previous: [Get Broadcom firmware from macOS](00-get-broadcom-firmware.md) | Next: [Install Broadcom firmware on Fedora](02-install-broadcom-firmware.md)
 
 *When you already have T2 Linux Fedora installed and you are using our revert
-script, you can jump to [Install KaiT2en modules and apps](04-install-kait2en-modules-and-apps.md).*
+script, you can jump to [Install KAIT2EN modules and apps](03-install-kait2en-modules-and-apps.md).*
 
 ## Prerequisites
 
@@ -31,7 +18,7 @@ regular wired USB keyboards/mice.
 
 ## Do this before booting the Fedora installer
 
-KaiT2en assumes that macOS stays installed. If you want to erase macOS
+KAIT2EN assumes that macOS stays installed. If you want to erase macOS
 completely, this guide is not for you. Use the regular T2 Linux documentation
 instead.
 
@@ -42,11 +29,11 @@ states that do not come back with a PRAM or SMC reset.
 
 Use two USB drives if possible:
 
-- one USB drive for the KaiT2en repository
+- one USB drive for the KAIT2EN repository
 - one USB drive for the Fedora installer
 
 Fedora Media Writer and `dd` overwrite the installer USB drive. Do not write the
-Fedora image to the USB drive that contains the KaiT2en repository unless you
+Fedora image to the USB drive that contains the KAIT2EN repository unless you
 have another copy of the repository somewhere else.
 
 ## Create space for Linux in macOS
@@ -132,7 +119,7 @@ Be exact. Writing to the wrong disk can destroy macOS or other data.
 
 Connect the Fedora installer USB drive.
 
-Also keep the KaiT2en USB drive connected if you already copied this repository
+Also keep the KAIT2EN USB drive connected if you already copied this repository
 and the firmware files to it.
 
 Shut down or reboot the Mac. Hold `Option` during startup and select the orange
@@ -152,4 +139,4 @@ https://docs.fedoraproject.org/
 ```
 
 After successful installation, continue with
-[Install Broadcom firmware on Fedora](03-install-broadcom-firmware.md).
+[Install Broadcom firmware on Fedora](02-install-broadcom-firmware.md).

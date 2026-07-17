@@ -29,3 +29,4 @@ build/
 # Local generated files
 compile_commands.json
 .vscode/settings.json
+site/

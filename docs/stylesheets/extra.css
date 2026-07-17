@@ -1,0 +1,50 @@
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0b0c0d;
+  --md-default-bg-color--light: #101214;
+  --md-default-bg-color--lighter: #15181a;
+  --md-default-bg-color--lightest: #1b1f22;
+  --md-default-fg-color: #cccccc;
+  --md-default-fg-color--light: #b6b6b6;
+  --md-default-fg-color--lighter: #969696;
+  --md-primary-fg-color: #070809;
+  --md-primary-fg-color--dark: #050607;
+  --md-code-bg-color: #151719;
+  --md-code-fg-color: #d6d6d6;
+  --md-footer-bg-color: #08090a;
+  --md-footer-bg-color--dark: #050607;
+}
+
+.md-header {
+  background-color: #070809;
+}
+
+.md-tabs {
+  background-color: #0b0d0f;
+}
+
+.md-header__button.md-logo {
+  margin: 0.2rem 0.45rem 0.2rem 0;
+  padding: 0.15rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  width: auto;
+  height: 2rem;
+}
+
+.md-typeset img {
+  border-radius: 0.2rem;
+}
+
+.md-typeset {
+  font-size: 0.8rem;
+  line-height: 1.65;
+}
+
+.md-typeset .kait2en-page-logo {
+  display: block;
+  width: 11rem;
+  max-width: 45vw;
+  margin: 0 auto 1.25rem;
+}
