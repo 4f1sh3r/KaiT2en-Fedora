@@ -11,7 +11,7 @@ Internal input devices won't work during installation of Fedora,
 because the stock kernel does not contain the needed drivers.
 We will add them in a later step.
 
-If you don't have external input devices follow the [automatic installation](howto/installation/automatic/index.md)
+If you don't have external input devices follow the [automatic installation](../automatic/index.md)
 guide instead. It provides support for internal input devices.
 
 In effect, an external keyboard and mouse is mandatory for this step.
