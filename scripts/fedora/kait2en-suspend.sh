@@ -74,7 +74,7 @@ needs_amdgpu_suspend_fix() {
 	fi
 
 	case "$model" in
-		MacBookPro15,1)
+		MacBookPro15,1|MacBookPro16,1)
 			is_loaded amdgpu
 			;;
 		*)
