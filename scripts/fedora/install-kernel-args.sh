@@ -7,6 +7,12 @@ require_repo_root
 require_fedora
 require_command grubby sed
 
+# Clean up both quoted forms previously installed by KaiT2en.
+LEGACY_ARGS=(
+	"'acpi_osi=Windows 2012'"
+	"acpi_osi='Windows 2012'"
+)
+
 REMOVE_ARGS=(
 	intel_iommu
 	iommu
@@ -28,7 +34,6 @@ ADD_ARGS=(
 	"iommu=pt"
 	"pm_async=off"
 	"acpi_osi=!Darwin"
-	"acpi_osi='Windows 2012'"
 	"pcie_ports=native"
 	"mem_sleep_default=deep"
 	"initcall_blacklist=cmos_init,magicmouse_driver_init"
@@ -40,6 +45,9 @@ ADD_ARGS+=("$MODULE_BLACKLIST")
 KERNEL_ARGS="${ADD_ARGS[*]}"
 
 info "removing old or non-default kernel arguments"
+for arg in "${LEGACY_ARGS[@]}"; do
+	grubby --update-kernel=ALL --remove-args="$arg"
+done
 for arg in "${REMOVE_ARGS[@]}"; do
 	grubby --update-kernel=ALL --remove-args="$arg"
 done
