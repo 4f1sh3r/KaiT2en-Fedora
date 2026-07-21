@@ -10,6 +10,16 @@ Thus, if you are an iMac user, this guide is not for you.
 Same for Mac Pro users, since Mac Pros have no iGPU.
 This guide is only for Macbook Pro users.
 
+## Set power saving mode for the dGPU
+
+You can do this when running the dGPU as primary or even when running
+it as secondary GPU:
+
+```
+echo manual | sudo tee /sys/class/drm/card1/device/power_dpm_force_performance_level
+echo 2 | sudo tee /sys/class/drm/card1/device/pp_power_profile_mode
+```
+
 ## Set the iGPU as primary display adapter
 
 KAIT2EN ships with vanilla gmux. So we wont have the `force_igd=y` kernel parameter.
@@ -41,6 +51,7 @@ sudo chattr +i /sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3
 ```
 
 After reboot, your Macbook will use the GPU of your choice as primary.
+
 
 ## Shutting down the dGPU
 
@@ -104,12 +115,10 @@ will show you if the dGPU is currently on or off.
 ## MacBook Pro 15,1 A1990 dGPU suspend issues
 
 On the MacBook 15,1 the SMU will die on suspend and resume with a black screen.
-There are workarounds for that on driver level: like Fred's `amdgpu` ASIC patch
-and also !ruicon is working on fixing gmux in the T2 Linux community.
-But we didn't include that in KAIT2EN modules because the patches are very WIP.
+We have submitted a patch to upstream that solves this issue.
 
-Anyways, if you want working suspend, you will need to configure iGPU as primary
-and dGPU turned off as described above.
+Until the patch is merged: if you want working suspend, you will need to configure
+iGPU as primary and dGPU turned off as described above.
 Also KAIT2EN will automatically install a script that will `modprobe -r amdgpu`
 on suspend when it finds a 15,1.
 
