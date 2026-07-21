@@ -12,7 +12,6 @@ These kernel parameters have to be set in Linux commandline:
 
 - `mem_sleep_default=deep` This is S3. S2 and 4 should also work
 - `pm_async=off` needed on some machines to make pm ordering sequential. Since V0.04 it should work without it.
-- `acpi_osi=!Darwin` for using the correct ACPI tables
 
 
 # Workarounds

@@ -33,8 +33,6 @@ ADD_ARGS=(
 	"intel_iommu=on"
 	"iommu=pt"
 	"pm_async=off"
-	"acpi_osi=!Darwin"
-	"pcie_ports=native"
 	"mem_sleep_default=deep"
 	"initcall_blacklist=cmos_init,magicmouse_driver_init"
 )

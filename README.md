@@ -122,8 +122,7 @@ We still use some workarounds to make things work. In the long term, these
 should be replaced with real fixes that can be upstreamed.
 
 - `t2bce` needs code review and comments documenting T2-specific behavior.
-- We need an OSDW quirk in upstream ACPI/Thunderbolt drivers to get away from
-  the `!Darwin` kernel parameter.
+- The T2 Thunderbolt xHCI power-management quirks need to be upstreamed.
 - MacBook Pro 15,1 needs gmux, vgaswitcheroo, amdgpu and maybe i915 work so the
   SMU survives suspend.
 - Mac Pro 7,1 has an unresolved Infinity Fabric Link issue.
