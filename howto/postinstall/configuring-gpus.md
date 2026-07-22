@@ -15,9 +15,27 @@ This guide is only for Macbook Pro users.
 You can do this when running the dGPU as primary or even when running
 it as secondary GPU:
 
-```
+```bash
 echo manual | sudo tee /sys/class/drm/card1/device/power_dpm_force_performance_level
 echo 2 | sudo tee /sys/class/drm/card1/device/pp_power_profile_mode
+```
+
+You can also create a systemd service to automatically apply power saving mode on boot:
+
+```bash
+sudo tee /etc/systemd/system/kait2en-amdgpu-profile.service > /dev/null << 'EOF'
+[Unit]
+Description=Set AMDGPU Power Profile
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo manual > /sys/class/drm/card1/device/power_dpm_force_performance_level && echo 2 > /sys/class/drm/card1/device/pp_power_profile_mode'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload && sudo systemctl enable --now kait2enamdgpu-profile.service
 ```
 
 ## Set the iGPU as primary display adapter
