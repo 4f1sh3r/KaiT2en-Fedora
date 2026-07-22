@@ -23,5 +23,4 @@ internal context is lost even though PCI keeps the controllers in D0, so the
 xHCI driver detects the failed restore and reinitializes them. ~~A future in-tree
 xHCI quirk should mark these controllers for reset on resume instead of first
 attempting to restore a context the platform does not preserve.~~ It seems like
-the failed attempt is necessary to Initalize the xHCI controller, we need to save
-the context using pci_save_state or something, to remove the warning
+the failed attempt is necessary to Initalize the xHCI controller, we need to save the context like using pci_save_state, to remove the warning.
