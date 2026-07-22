@@ -4,10 +4,10 @@
 Thunderbolt PCIe ports and their NHI on Apple T2 Macs. These device links make
 the driver core resume the NHI before ports whose PCIe tunnels it restores.
 
-The module is a quirk helper for T2 Macs with discrete Titan Ridge controllers.
-It does not bind to the Thunderbolt controller or replace the in-tree
-`thunderbolt` driver. Ice Lake systems are deliberately excluded because their
-integrated TCSS topology requires a different suspend fix.
+The module is a quirk helper and does not bind to the Thunderbolt controller or
+replace the in-tree `thunderbolt` driver. Titan Ridge controllers are matched
+through their PCIe switch topology. Ice Lake controllers use Apple's `TRP*`
+ACPI root-port names and are limited to the two Ice Lake NHI PCI IDs.
 
 Apple's Darwin ACPI path powers down the switch ports hosting the Thunderbolt
 xHCI controllers, but the controllers subsequently report a context
@@ -15,6 +15,10 @@ save/restore error. The module keeps only those downstream ports out of D3.
 It also keeps their xHCI functions in D0. This avoids slow CPU bring-up and PCIe
 bridge timeouts during resume while leaving the rest of Apple's platform
 power-management policy unchanged.
+
+On Ice Lake, the module only supplies the missing PM ordering links. It does
+not alter PCI D-states because the integrated TCSS topology remains under
+firmware power management.
 
 ## Known issue
 
