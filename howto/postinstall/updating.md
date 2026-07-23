@@ -1,6 +1,6 @@
 # How to update
 
-Previous: [Configure GPUs](configuring-gpus.md) | [Installation introduction](../introduction.md)
+Previous: [Hardware video decoding](hardware-video-decoding.md) | [Installation introduction](../introduction.md)
 
 KAIT2EN is meant to disappear. It's part of the concept. It serves the purpose
 of upstreaming code fixes. Every module and fix that gets upstreamed will disappear from
@@ -59,4 +59,4 @@ But you should always be able to use GRUB to boot into an older kernel anyways.
 But be warned that when we mess up, you could loose VHCI devices or WiFi.
 And remember we are not paid. We will waste your time and we don't accept complaints.
 
-Previous: [Configure GPUs](configuring-gpus.md) | [Installation introduction](../introduction.md)
+Previous: [Hardware video decoding](hardware-video-decoding.md) | [Installation introduction](../introduction.md)

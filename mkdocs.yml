@@ -39,4 +39,5 @@ nav:
           - Revert T2 Linux Fedora: howto/migration/revert-t2linux-fedora.md
       - Post-install:
           - Configure GPUs: howto/postinstall/configuring-gpus.md
+          - Hardware video decoding: howto/postinstall/hardware-video-decoding.md
           - Updating: howto/postinstall/updating.md
