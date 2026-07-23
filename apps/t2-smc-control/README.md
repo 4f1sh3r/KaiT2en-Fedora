@@ -10,6 +10,7 @@ https://github.com/deqrocks/t2-smc
 
 - Shows fan speeds reported by `t2smc`
 - Shows temperature sensors exposed through hwmon
+- Shows event-driven SMC battery and power-adapter telemetry
 - Shows the `t2smc` RTC when available
 - Reads and writes the battery charge limit through `battery_charge_limit`
 - Saves the selected charge limit and restores it at boot through systemd

@@ -318,6 +318,63 @@ fn read_charge_limit(hwmon: &Path) -> Option<u8> {
     fs::read_to_string(&path).ok()?.trim().parse().ok()
 }
 
+fn read_i64(path: &Path) -> Option<i64> {
+    fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+fn scaled_value(value: i64, unit: &str) -> String {
+    format!("{:.2} {unit}", value as f64 / 1_000_000.0)
+}
+
+fn read_power_telemetry(hwmon: &Path) -> Vec<(String, String)> {
+    let mut values = Vec::new();
+    let mut add = |name: &str, file: &str, format: fn(i64) -> String| {
+        if let Some(value) = read_i64(&hwmon.join(file)) {
+            values.push((name.to_string(), format(value)));
+        }
+    };
+
+    add("Power events", "power_event_count", |v| v.to_string());
+    add("SMC battery state", "smc_battery_status", |v| match v {
+        0 => "Charging".into(),
+        1 => "Discharging".into(),
+        4 => "Full".into(),
+        _ => format!("Not charging ({v})"),
+    });
+    add("Battery capacity", "smc_battery_capacity_percent", |v| {
+        format!("{v}%")
+    });
+    add("Battery voltage", "smc_battery_voltage_uv", |v| {
+        scaled_value(v, "V")
+    });
+    add("Battery current", "smc_battery_current_ua", |v| {
+        format!("{:.3} A", v as f64 / 1_000_000.0)
+    });
+    add("Battery power", "smc_battery_power_uw", |v| {
+        scaled_value(v, "W")
+    });
+    add("Battery charge", "smc_battery_charge_now_uah", |v| {
+        scaled_value(v, "Ah")
+    });
+    add("Battery full charge", "smc_battery_charge_full_uah", |v| {
+        scaled_value(v, "Ah")
+    });
+    add("Battery cycles", "smc_battery_cycle_count", |v| {
+        v.to_string()
+    });
+    add("Adapter voltage", "smc_adapter_voltage_uv", |v| {
+        scaled_value(v, "V")
+    });
+    add("Adapter current", "smc_adapter_current_ua", |v| {
+        scaled_value(v, "A")
+    });
+    add("Adapter power", "smc_adapter_power_uw", |v| {
+        scaled_value(v, "W")
+    });
+
+    values
+}
+
 fn write_charge_limit(hwmon: &Path, percent: u8) -> Result<(), String> {
     write_string(&hwmon.join("battery_charge_limit"), &percent.to_string())
 }
@@ -416,7 +473,9 @@ fn handle_cli_args() -> Option<Result<(), String>> {
         }
         "--apply-saved-charge-limit" => {
             if args.next().is_some() {
-                return Some(Err("Too many arguments for --apply-saved-charge-limit".into()));
+                return Some(Err(
+                    "Too many arguments for --apply-saved-charge-limit".into()
+                ));
             }
             Some(run_apply_saved_charge_limit())
         }
@@ -512,6 +571,61 @@ fn append_sensor_row(list: &gtk4::ListBox, name: &str, val: Option<u32>) -> gtk4
     list.append(&row);
 
     value_label
+}
+
+fn append_value_row(list: &gtk4::ListBox, name: &str, value: &str) -> gtk4::Label {
+    let row = gtk4::ListBoxRow::new();
+    row.set_selectable(false);
+
+    let line = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+    line.set_margin_top(10);
+    line.set_margin_bottom(10);
+    line.set_margin_start(12);
+    line.set_margin_end(12);
+
+    let name_label = gtk4::Label::new(Some(name));
+    name_label.set_halign(gtk4::Align::Start);
+    name_label.set_hexpand(true);
+    name_label.set_xalign(0.0);
+
+    let value_label = gtk4::Label::new(Some(value));
+    value_label.set_halign(gtk4::Align::End);
+    value_label.add_css_class("numeric");
+
+    line.append(&name_label);
+    line.append(&value_label);
+    row.set_child(Some(&line));
+    list.append(&row);
+
+    value_label
+}
+
+fn refresh_value_rows(
+    list: &gtk4::ListBox,
+    rows: &Rc<RefCell<BTreeMap<String, gtk4::Label>>>,
+    values: &[(String, String)],
+) {
+    let rebuild = {
+        let rows = rows.borrow();
+        rows.len() != values.len() || values.iter().any(|(name, _)| !rows.contains_key(name))
+    };
+
+    if rebuild {
+        let mut rows = rows.borrow_mut();
+        clear_listbox(list);
+        rows.clear();
+        for (name, value) in values {
+            rows.insert(name.clone(), append_value_row(list, name, value));
+        }
+        return;
+    }
+
+    let rows = rows.borrow();
+    for (name, value) in values {
+        if let Some(label) = rows.get(name) {
+            label.set_text(value);
+        }
+    }
 }
 
 fn refresh_sensor_rows(
@@ -668,6 +782,23 @@ fn main() {
         let rtc_frame = gtk4::Frame::new(None);
         rtc_frame.set_child(Some(&rtc_box));
 
+        // Battery and adapter telemetry
+        let power_title = gtk4::Label::new(Some("Power telemetry"));
+        power_title.set_halign(gtk4::Align::Start);
+        power_title.set_xalign(0.0);
+        power_title.add_css_class("heading");
+
+        let power_list = gtk4::ListBox::new();
+        power_list.add_css_class("boxed-list");
+        let power_rows = Rc::new(RefCell::new(BTreeMap::new()));
+        if let Some(ref h) = *hwmon.borrow() {
+            refresh_value_rows(&power_list, &power_rows, &read_power_telemetry(h));
+        }
+        let power_scroll = gtk4::ScrolledWindow::new();
+        power_scroll.set_max_content_height(260);
+        power_scroll.set_propagate_natural_height(true);
+        power_scroll.set_child(Some(&power_list));
+
         // Sensor list
         let sensors_title = gtk4::Label::new(Some("Temperatures"));
         sensors_title.set_halign(gtk4::Align::Start);
@@ -693,6 +824,8 @@ fn main() {
         vbox.set_margin_end(12);
         vbox.append(&charge_frame);
         vbox.append(&rtc_frame);
+        vbox.append(&power_title);
+        vbox.append(&power_scroll);
         vbox.append(&sensors_title);
         vbox.append(&scroll);
 
@@ -811,12 +944,16 @@ fn main() {
         let updating_poll = updating_slider.clone();
         let last_committed_poll = last_committed.clone();
         let sensor_rows_poll = sensor_rows.clone();
+        let power_rows_poll = power_rows.clone();
+        let power_list_poll = power_list.clone();
         let rtc_poll = rtc.clone();
         let rtc_value_poll = rtc_value.clone();
         let rtc_status_poll = rtc_status.clone();
         timeout_add_local(std::time::Duration::from_secs(1), move || {
             let current_hwmon = hw2.borrow().clone();
             if let Some(h) = current_hwmon {
+                let power = read_power_telemetry(&h);
+                refresh_value_rows(&power_list_poll, &power_rows_poll, &power);
                 let sensors = read_sensors(&h);
                 refresh_sensor_rows(&sensor_list, &sensor_rows_poll, &sensors);
             } else if let Some(h) = find_hwmon() {
@@ -922,5 +1059,23 @@ mod tests {
         assert_eq!(find_hwmon_in(&base), Some(supported));
 
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn formats_available_power_telemetry() {
+        let hwmon = temp_path("power");
+        fs::create_dir_all(&hwmon).unwrap();
+        fs::write(hwmon.join("power_event_count"), "2\n").unwrap();
+        fs::write(hwmon.join("smc_battery_voltage_uv"), "12100000\n").unwrap();
+
+        assert_eq!(
+            read_power_telemetry(&hwmon),
+            vec![
+                ("Power events".into(), "2".into()),
+                ("Battery voltage".into(), "12.10 V".into()),
+            ]
+        );
+
+        let _ = fs::remove_dir_all(hwmon);
     }
 }

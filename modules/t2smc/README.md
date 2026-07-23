@@ -75,6 +75,48 @@ done
 HWMON="$(dirname "$(grep -l '^t2smc$' /sys/class/hwmon/hwmon*/name)")"
 ```
 
+## Power telemetry
+
+`t2smc` leaves the system battery and charger under the control of the
+mainline ACPI SBS drivers. It exposes additional SMC telemetry on its hwmon
+device without registering another battery:
+
+```text
+power_event_count
+power_last_event_ns
+smc_battery_status
+smc_battery_capacity_percent
+smc_battery_voltage_uv
+smc_battery_current_ua
+smc_battery_power_uw
+smc_battery_charge_full_uah
+smc_battery_charge_now_uah
+smc_battery_cycle_count
+smc_adapter_voltage_uv
+smc_adapter_current_ua
+smc_adapter_power_uw
+```
+
+Files for SMC keys not available on a particular model return no data. Values
+are read on demand. There is no periodic kernel polling.
+
+The driver subscribes to the standard power-supply notifier chain. An ACPI SBS
+battery or adapter notification schedules an SMC status snapshot and increments
+`power_event_count`. `BNCR` is recorded as battery-state telemetry but is not
+used to suppress notifications: its value can remain unchanged across a charger
+connection event. This tests event-driven SMC updates without taking over the
+private SBS host-controller callback.
+
+To verify the event path, read the counter, connect or disconnect the charger,
+and read it again:
+
+```sh
+HWMON="$(dirname "$(grep -l '^t2smc$' /sys/class/hwmon/hwmon*/name)")"
+cat "$HWMON/power_event_count"
+# Connect or disconnect the charger.
+cat "$HWMON/power_event_count"
+```
+
 ### Fan control
 
 We do offer a program to control the fans on T2 MacBooks (https://github.com/deqrocks/t2-fancontrol)
