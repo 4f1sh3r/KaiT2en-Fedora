@@ -97,6 +97,7 @@ install_react_drm() {
 	local installed_node_packages=() package daemon unit group groups
 	local missing_groups=()
 	local service_dir service_file temporary_file workdir_q start_q detach_q
+	local desktop extension_uuid extension_src extension_dst
 	if ! has_t2_touchbar_model; then
 		return
 	fi
@@ -116,6 +117,12 @@ install_react_drm() {
 	for package in package.json package-lock.json system/99-react-drm.rules system/react-drm.service system/react-drm-tb-detach; do
 		[[ -r "$src/$package" ]] || fail "react-drm deployment file is missing: $package"
 	done
+	extension_uuid="window-monitor-pro@muhammed.hussien2030.gmail.com"
+	extension_src="$src/gnome-extension/window-monitor-pro"
+	for package in extension.js metadata.json; do
+		[[ -r "$extension_src/$package" ]] ||
+			fail "react-drm GNOME extension file is missing: $package"
+	done
 	[[ -x "$src/system/react-drm-tb-detach" ]] ||
 		fail "react-drm deployment helper is not executable: system/react-drm-tb-detach"
 	if [[ -e "$dst" && ! -f "$dst/package.json" ]]; then
@@ -131,6 +138,25 @@ install_react_drm() {
 			DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$target_uid/bus" \
 			"$@"
 	}
+
+	desktop=$(
+		run_as_target systemctl --user show-environment |
+			awk -F= '$1 == "XDG_CURRENT_DESKTOP" { print tolower($2); exit }'
+	)
+	if [[ "$desktop" == *gnome* ]]; then
+		require_command gnome-extensions gsettings
+		extension_dst="$target_home/.local/share/gnome-shell/extensions/$extension_uuid"
+		info "installing Window Monitor Pro for react-drm"
+		install -d -o "$target_user" -g "$target_group" -m 0755 "$extension_dst"
+		install -o "$target_user" -g "$target_group" -m 0644 \
+			"$extension_src/extension.js" \
+			"$extension_src/metadata.json" \
+			"$extension_dst/"
+		run_as_target gsettings set org.gnome.shell disable-user-extensions false
+		if ! run_as_target gnome-extensions enable "$extension_uuid"; then
+			info "Window Monitor Pro will be enabled after the next login"
+		fi
+	fi
 
 	info "installing react-drm Fedora dependencies"
 	for package in "${REACT_DRM_FEDORA_NODE_PACKAGES[@]}"; do

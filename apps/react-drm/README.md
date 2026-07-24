@@ -189,8 +189,8 @@ installed systemd service uses the compiled production build instead.
 
 ## Active window integration
 
-Application-specific controls require an active-window backend. The matching
-backend is selected automatically:
+Application-specific controls require an active-window backend. The KAIT2EN
+installer deploys the required backend and react-drm selects it automatically:
 
 - GNOME Wayland uses
   [Window Monitor Pro](https://extensions.gnome.org/extension/8549/window-monitor-pro/),
@@ -199,9 +199,11 @@ backend is selected automatically:
 - Hyprland uses its IPC socket
 - Xorg uses `xprop`
 
-Window Monitor Pro must be installed and enabled on GNOME Wayland. `xprop`
-must be installed for Xorg sessions. Unsupported Wayland desktops can still
-run the Touch Bar UI after manual installation, but application-specific
+On GNOME Wayland the KAIT2EN installer includes and enables Window Monitor Pro.
+A logout and login may be required when the extension is installed for the
+first time. Manual installations must provide Window Monitor Pro separately.
+`xprop` must be installed for Xorg sessions. Unsupported Wayland desktops can
+still run the Touch Bar UI after manual installation, but application-specific
 controls that depend on the focused window will not work.
 
 ## Media progress bar support (mpris)
@@ -210,22 +212,27 @@ The control center displays a visual playback progress bar for media players
 that expose an MPRIS2 D-Bus interface. Spotify registers its own
 `org.mpris.MediaPlayer2.spotify` service and works without additional setup.
 
-Chrome, Chromium and other Chromium-based browsers do not provide a native
-MPRIS2 service on Linux. For these browsers install the
-**Plasma Browser Integration** extension:
+Current Brave and Chromium builds expose their media sessions directly through
+MPRIS2. This also works when the browser is installed as a Flatpak. Verify the
+active service during playback with:
+
+```sh
+busctl --user list | grep org.mpris.MediaPlayer2
+```
+
+react-drm recognizes `brave` and `chromium` services directly. Some other
+Chromium-based browsers do not expose MPRIS2. For those browsers, Plasma Browser
+Integration can provide an
+`org.mpris.MediaPlayer2.plasma-browser-integration` service:
 
 - [Chrome Web Store](https://chromewebstore.google.com/detail/plasma-integration/cimiefiiaegbelhefglklhhakcgmhkai)
 - [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/plasma-integration/)
 
-Despite the name, this extension is **not KDE-specific**. It registers an
-`org.mpris.MediaPlayer2.plasma-browser-integration` D-Bus service that any
-desktop environment (GNOME, Hyprland, Xorg, …) can read. The progress bar
-appears on the Touch Bar regardless of which DE you run.
-
-No host-side package (`plasma-browser-integration` or similar) is required,
-the extension alone is sufficient. The progress bar updates live, shows album
-art embedded in the track title row, and supports seek (tap/drag on the
-progress track or use the skip-back/skip-forward buttons).
+The extension requires the native Plasma Browser Integration host supplied by
+the distribution; the extension alone cannot publish a D-Bus service. The
+progress bar works on any desktop once an MPRIS2 service is present. It updates
+live, shows album art embedded in the track title row, and supports seek
+(tap/drag on the progress track or use the skip-back/skip-forward buttons).
 
 ## Keyboard shortcuts
 
