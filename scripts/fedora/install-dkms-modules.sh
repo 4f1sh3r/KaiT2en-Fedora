@@ -19,6 +19,7 @@ MODULES=(
 	t2mfi_fastcharge
 	t2gmux
 	t2thunderbolt
+	t2smp
 )
 
 LEGACY_MODULES=(
@@ -74,6 +75,7 @@ modules=(
 	t2mfi_fastcharge
 	t2gmux
 	t2thunderbolt
+	t2smp
 )
 
 for name in "${modules[@]}"; do

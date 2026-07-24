@@ -54,6 +54,9 @@ T2 Linux driver &#8594; KAIT2EN driver
 
 `hid_appletb_kbd` &#8594; `t2touchbar_kbd` Touch Bar keyboard mode handling.
 
+KAIT2EN also installs `t2smp`. On T2 Macs it moves secondary CPU hotplug out
+of the firmware-sensitive early resume phase to avoid long resume delays.
+
 ## Scripts and services
 
 Below you will find all scripts and apps that are installed when running `install.sh`.
