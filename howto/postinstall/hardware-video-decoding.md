@@ -12,8 +12,19 @@ hardware-supported VP9 profile to avoid unnecessary CPU load.
 
 ## Install the VA-API drivers
 
-RPM Fusion provides the required VA-API drivers. If RPM Fusion is not enabled
-yet, add its Free and Nonfree repositories:
+KaiT2en can enable RPM Fusion, install the matching drivers for every detected
+Intel or AMD GPU, and report the VA-API capabilities of each render node:
+
+```bash
+sudo bash ./scripts/fedora/install-hardware-video-decoding.sh
+```
+
+The script does not run a general system upgrade. Review its output after the
+installation: H.264 and VP9 support is reported separately for every render
+node. Browser configuration is still required as described below.
+
+The same packages can be installed manually. If RPM Fusion is not enabled yet,
+add its Free and Nonfree repositories:
 
 ```bash
 sudo dnf install \
@@ -28,7 +39,7 @@ sudo dnf makecache --refresh
 sudo dnf install libva-utils
 ```
 
-This deliberately does not run a general system upgrade. Review the DNF
+These commands deliberately do not run a general system upgrade. Review the DNF
 transaction before accepting it, especially on systems using an out-of-tree
 AMDGPU module.
 
