@@ -3,6 +3,7 @@
 set -uo pipefail
 
 STATE_DIR="/run/kait2en-suspend"
+CPU_STATE_FILE="$STATE_DIR/offline-cpus"
 LOG_TAG="kait2en-suspend"
 
 log() {
@@ -58,6 +59,72 @@ restore_unloaded_modules() {
 			log "continuing after $module could not be restored"
 		fi
 	done
+}
+
+offline_secondary_cpus() {
+	local cpu online
+	local count=0
+
+	if ! : > "$CPU_STATE_FILE"; then
+		log "could not prepare CPU state file; leaving secondary CPUs online"
+		return 1
+	fi
+
+	for cpu in /sys/devices/system/cpu/cpu[1-9]*; do
+		[[ -d "$cpu" ]] || continue
+		online="$cpu/online"
+		[[ -r "$online" && -w "$online" ]] || continue
+		[[ "$(<"$online")" == "1" ]] || continue
+
+		if ! printf '0\n' > "$online"; then
+			log "could not offline ${cpu##*/}"
+			continue
+		fi
+
+		if ! printf '%s\n' "$online" >> "$CPU_STATE_FILE"; then
+			log "could not record ${cpu##*/}; bringing it back online"
+			if ! printf '1\n' > "$online"; then
+				log "could not restore ${cpu##*/}"
+			fi
+			continue
+		fi
+
+		((count++))
+	done
+
+	if (( count == 0 )); then
+		rm -f "$CPU_STATE_FILE"
+		log "no secondary CPUs were taken offline"
+	else
+		log "took $count secondary CPUs offline"
+	fi
+}
+
+restore_secondary_cpus() {
+	local online
+	local count=0
+	local failed=0
+
+	[[ -r "$CPU_STATE_FILE" ]] || return 0
+
+	while IFS= read -r online; do
+		[[ -n "$online" ]] || continue
+		if [[ ! -w "$online" ]] || ! printf '1\n' > "$online"; then
+			log "could not restore ${online%/online}"
+			failed=1
+			continue
+		fi
+		((count++))
+	done < "$CPU_STATE_FILE"
+
+	if (( failed == 0 )); then
+		if ! rm -f "$CPU_STATE_FILE"; then
+			log "could not remove the CPU state file"
+		fi
+	fi
+
+	log "restored $count secondary CPUs"
+	return "$failed"
 }
 
 current_model() {
@@ -158,10 +225,17 @@ pre_suspend() {
 			;;
 	esac
 
+	if ! offline_secondary_cpus; then
+		log "continuing suspend without the secondary CPU workaround"
+	fi
+
 	return 0
 }
 
 post_resume() {
+	if ! restore_secondary_cpus; then
+		log "continuing resume after secondary CPUs could not all be restored"
+	fi
 	restore_unloaded_modules
 	return 0
 }
