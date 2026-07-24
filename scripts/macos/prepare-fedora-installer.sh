@@ -148,13 +148,8 @@ collect_macos_firmware() {
 		grep '"RequestedFiles"' |
 		grep -oE '"[^"]+"' |
 		tr -d '"' |
-		while IFS= read -r firmware_path; do
-			case "$firmware_path" in
-				*/*.trx|*/*.clmb|*/*.txcb|*/P-*.txt)
-					printf '/usr/share/firmware/wifi/%s\n' "$firmware_path"
-					;;
-			esac
-		done |
+		grep -E '/([^/]+\.(trx|clmb|txcb)|P-[^/]+\.txt)$' |
+		sed 's|^|/usr/share/firmware/wifi/|' |
 		sort -u >"$path_list" || :
 
 	if [[ ! -s "$path_list" ]]; then

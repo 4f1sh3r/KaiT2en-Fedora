@@ -7,7 +7,7 @@ script, you can jump to [Install KAIT2EN modules and apps](03-install-kait2en-mo
 
 Boot into macOS.
 Open the macOS Terminal in the root folder of this repository on your USB drive.
-Then execute the code below. It takes some time to complete. This is normal:
+Then execute the code below:
 
 ```
 bash <(cat << 'EOF'
@@ -16,10 +16,13 @@ bash <(cat << 'EOF'
 BT_BASE="/usr/share/firmware/bluetooth"
 DEST="${1:-firmware}"
 
-WIFI_FILES=$(log show --last boot --info \
-  --predicate 'eventMessage contains "/usr/share/firmware/"' 2>/dev/null \
-  | grep "Copying" \
-  | grep -oE '"[^"]*"' | tr -d '"' | sort -u)
+WIFI_FILES=$(/usr/sbin/ioreg -l -w0 2>/dev/null \
+  | grep '"RequestedFiles"' \
+  | grep -oE '"[^"]+"' \
+  | tr -d '"' \
+  | grep -E '/([^/]+\.(trx|clmb|txcb)|P-[^/]+\.txt)$' \
+  | sed 's|^|/usr/share/firmware/wifi/|' \
+  | sort -u)
 
 BT_CHIPSET=$(system_profiler SPBluetoothDataType 2>/dev/null \
   | grep "Chipset:" \
