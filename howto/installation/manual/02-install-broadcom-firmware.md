@@ -200,11 +200,11 @@ management interface without `BCM.hcd`. Installing a MiniDriver extracted from
 macOS as this generic file has caused controller errors and power-management
 problems in testing.
 
-Other T2 Macs use BCM4377. This is a combined Wi-Fi and Bluetooth PCIe device;
-its Bluetooth support is provided by `hci_bcm4377` and does not use the UART
-`.hcd` path. The firmware package used by this chip contains the components
-needed by the combined device rather than a separately installed generic
-Bluetooth HCD file.
+Other T2 Macs use BCM4377. Wi-Fi and Bluetooth are part of the same chip but
+appear as separate PCIe functions with separate firmware. Bluetooth is handled
+by `hci_bcm4377` on PCI device `14e4:5fa0`; Wi-Fi uses `brcmfmac` on
+`14e4:4488`. The Bluetooth function uses board-specific `.bin` and `.ptb`
+firmware and does not use the UART `.hcd` path.
 
 BCM4377 currently has a separate suspend problem: the device can prevent
 suspend unless `hci_bcm4377`, `brcmfmac_wcc` and `brcmfmac` are unloaded before
