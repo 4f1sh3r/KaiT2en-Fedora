@@ -2,11 +2,10 @@
 
 Previous: [Prepare macOS and the Fedora installer](01-prepare-macos-and-fedora-usb.md) | Next: [Install KAIT2EN modules and apps](03-install-kait2en-modules-and-apps.md)
 
-This guide installs the Broadcom Wi-Fi firmware copied from macOS.
-
-It also covers UART Bluetooth firmware for Macs where Linux requests a `.hcd`
-file. BCM4377 Bluetooth devices use a different `.bin` and `.ptb` firmware path.
-Do not use the Bluetooth section below for BCM4377.
+This guide installs the Broadcom Wi-Fi firmware copied from macOS. Bluetooth
+firmware is discussed separately below because T2 Macs use different Bluetooth
+architectures and there is currently no generally valid firmware installation
+procedure for them.
 
 ## Requirements
 
@@ -182,166 +181,46 @@ journalctl -b -k --grep='brcmfmac'
 Successful output should include a firmware version and should not include
 missing `brcmfmac` firmware errors. Wi-Fi should work now.
 
-## Bluetooth (experimental, only non-BCM4377 controllers)
+## Bluetooth firmware
 
-If your Mac uses BCM4377 Bluetooth, stop here. The UART Bluetooth steps below do
-not apply to BCM4377.
+Do not install a generic `/lib/firmware/brcm/BCM.hcd`.
 
-Check this with:
-
-```bash
-journalctl -b -k --grep='BCM:.*hcd\|hci_bcm4377'
-```
-
-If the output shows something with `hci_bcm4377`, this guide does not apply to
-you and you can continue with the next document. If it shows the output below,
-the guide applies to you.
+Some T2 Macs expose Bluetooth as a separate Broadcom UART controller. On the
+tested `BCM2E7C` device Linux identifies the controller as BCM4364B0 and may log:
 
 ```text
 Bluetooth: hci0: BCM: firmware Patch file not found, tried:
 Bluetooth: hci0: BCM: 'brcm/BCM.hcd'
 ```
 
-The message means the kernel is searching for a missing patch/firmware file.
-The guide below explains how to convert the .hex file we extracted
-from macOS earlier into a .hcd file Linux understands and where to put it.
+This message alone does not prove that firmware is required. Apple's Boot Camp
+driver associates `BCM2E7C` with its UART driver but does not install an HCD RAM
+patch for that ACPI device. The controller can also reach the normal Bluetooth
+management interface without `BCM.hcd`. Installing a MiniDriver extracted from
+macOS as this generic file has caused controller errors and power-management
+problems in testing.
 
-Note, this is experimental. Using the Apple BT firmware on Linux may
-or may not work on your device. We are not sure yet why the behaviour is
-inconsistent. There are log messages below that indicate a fatal state. When you
-see those, just remove `BCM.hcd` again.
+Other T2 Macs use BCM4377. This is a combined Wi-Fi and Bluetooth PCIe device;
+its Bluetooth support is provided by `hci_bcm4377` and does not use the UART
+`.hcd` path. The firmware package used by this chip contains the components
+needed by the combined device rather than a separately installed generic
+Bluetooth HCD file.
 
-However, when it works it seems to cure BT-Audio stutters, but
-you will need to unload `hci_uart` on suspend using a systemd service because
-the Bluetooth controller will refuse to go into `D3cold` as a trade-off.
-Interestingly, this is the same behaviour the single-chip BCM4377 chip shows OOTB.
+BCM4377 currently has a separate suspend problem: the device can prevent
+suspend unless `hci_bcm4377`, `brcmfmac_wcc` and `brcmfmac` are unloaded before
+suspend and loaded again after resume. KAIT2EN handles that workaround in its
+suspend service. This behaviour does not establish that an additional
+Bluetooth firmware blob is missing.
 
-The KAIT2EN `firmware` folder should contain one UART Bluetooth MiniDriver file:
-
-```text
-*-MiniDriver-uart.hex
-```
-
-Run this from the root folder of the KAIT2EN repository on your USB drive:
-
-```bash
-bash <(cat << 'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-shopt -s nullglob
-
-source_dir="firmware"
-converter="third_party/hex2hcd/hex2hcd"
-
-die() {
-    echo "Error: $*" >&2
-    exit 1
-}
-
-pick_one() {
-    local label="$1"
-    shift
-    local files=("$@")
-
-    if (( ${#files[@]} == 0 )); then
-        die "No ${label} file found in ${source_dir}."
-    fi
-
-    if (( ${#files[@]} > 1 )); then
-        echo "Found more than one ${label} file:"
-        printf '  %s\n' "${files[@]}"
-        die "Keep only the matching file in ${source_dir} and run the script again."
-    fi
-
-    printf '%s\n' "${files[0]}"
-}
-
-if [[ ! -d "${source_dir}" || ! -x "${converter}" ]]; then
-    die "Run this script from the root of the KaiT2en repository."
-fi
-
-if journalctl -b -k --no-pager | grep -q 'hci_bcm4377'; then
-    die "This machine uses hci_bcm4377. The UART .hcd Bluetooth path does not apply."
-fi
-
-requested_hcd="$(
-    journalctl -b -k --no-pager |
-    sed -n "s/.*BCM: 'brcm\/\\([^']*\\.hcd\\)'.*/brcm\/\\1/p" |
-    head -n 1
-)"
-
-if [[ -z "${requested_hcd}" ]]; then
-    die "No missing Broadcom .hcd firmware request found in the current boot log."
-fi
-
-target_hcd="${requested_hcd#brcm/}"
-
-if [[ "${requested_hcd}" == "${target_hcd}" || "${target_hcd}" == */* ]]; then
-    die "Unexpected Bluetooth firmware path in journal: ${requested_hcd}"
-fi
-
-hex_file="$(pick_one 'UART Bluetooth MiniDriver' "${source_dir}"/*-MiniDriver-uart.hex)"
-hcd_file="${source_dir}/${target_hcd}"
-
-"${converter}" "${hex_file}" "${hcd_file}"
-
-dest_dir="/lib/firmware/brcm"
-
-echo "Found source file:"
-echo "  MiniDriver: ${hex_file}"
-echo
-echo "Kernel requested:"
-echo "  ${requested_hcd}"
-echo
-echo "Will install:"
-echo "  ${hcd_file} -> ${dest_dir}/${target_hcd}"
-echo
-
-read -r -p "Continue? [y/N] " answer
-case "${answer}" in
-    y|Y) ;;
-    *) echo "Aborted."; exit 0 ;;
-esac
-
-sudo install -d -m 0755 "${dest_dir}"
-sudo install -m 0644 "${hcd_file}" "${dest_dir}/${target_hcd}"
-
-echo
-echo "Done. Reboot and check Bluetooth."
-EOF
-)
-```
-
-After reboot, check that the firmware loaded:
+The exact controller and driver can be checked with:
 
 ```bash
-journalctl -b -k --grep='Bluetooth|BCM|hci0'
+journalctl -b -k --grep='Bluetooth|BCM|hci_bcm4377'
+find /sys/bus/acpi/devices -maxdepth 1 -type l -printf '%f\n' | grep '^BCM'
 ```
 
-The log should no longer include `firmware Patch file not found`.
-
-**How to know your BT does not work with the Apple firmware:**
-
-```text
-Frame reassembly failed (-84) # fatal, bad HCD or wrong patch stream
-command 0xfc18 tx timeout # fatal, controller no longer responds
-Reset failed (-110) # fatal follow-up
-missing Bluetooth: MGMT ver # fatal, controller did not come up
-```
-
-Known non-fatal message, but likely related to audio stutters:
-
-```text
-failed to write update baudrate (-16)
-```
-
-### In case of fatal errors
-
-If you come across fatal errors, Bluetooth won't work.
-You will need to remove the `.hcd` file from `/lib/firmware/brcm/`:
-
-```bash
-sudo rm `/lib/firmware/brcm/*.hcd
-```
+Firmware selection for other ACPI IDs must be established from the matching
+model's Boot Camp package or hardware logs. Do not infer it from another Mac's
+chip name or copy an arbitrary `.hcd` file.
 
 Next: [Install KAIT2EN modules and apps](03-install-kait2en-modules-and-apps.md)

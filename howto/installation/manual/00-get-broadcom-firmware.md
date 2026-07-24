@@ -13,7 +13,6 @@ Then execute the code below. It takes some time to complete. This is normal:
 bash <(cat << 'EOF'
 #!/bin/bash
 
-BT_BASE="/usr/share/firmware/bluetooth"
 DEST="${1:-firmware}"
 
 WIFI_FILES=$(log show --last boot --info \
@@ -21,24 +20,8 @@ WIFI_FILES=$(log show --last boot --info \
   | grep "Copying" \
   | grep -oE '"[^"]*"' | tr -d '"' | sort -u)
 
-BT_CHIPSET=$(system_profiler SPBluetoothDataType 2>/dev/null \
-  | grep "Chipset:" \
-  | grep -oE 'BCM_[0-9A-Z]+' \
-  | tr -d '_')
-BT_FILE=""
-if [[ -n "$BT_CHIPSET" && -f "$BT_BASE/${BT_CHIPSET}-MiniDriver-uart.hex" ]]; then
-  BT_FILE="$BT_BASE/${BT_CHIPSET}-MiniDriver-uart.hex"
-fi
-
 echo "[Wi-Fi]"
 echo "$WIFI_FILES"
-echo ""
-echo "[Bluetooth]"
-if [[ -n "$BT_FILE" ]]; then
-  echo "$BT_FILE"
-else
-  echo "No UART Bluetooth MiniDriver found. This is expected on some Macs."
-fi
 echo ""
 
 read -p "Copy files to '$DEST'? [y/N] " ANS
@@ -47,9 +30,6 @@ if [[ "$ANS" == "y" || "$ANS" == "Y" ]]; then
   while IFS= read -r f; do
     cp "$f" "$DEST/" && echo "  copied: $(basename "$f")"
   done <<< "$WIFI_FILES"
-  if [[ -n "$BT_FILE" ]]; then
-    cp "$BT_FILE" "$DEST/" && echo "  copied: $(basename "$BT_FILE")"
-  fi
   echo ""
   echo "Done."
 fi
@@ -66,17 +46,19 @@ As an example, running the script on a MacBook Pro 15,1, this is the expected ou
 /usr/share/firmware/wifi/C-4364__s-B2/kauai.txcb
 /usr/share/firmware/wifi/C-4364__s-B2/P-kauai_M-HRPN_V-u__m-7.5.txt
 
-[Bluetooth]
-/usr/share/firmware/bluetooth/BCM4364B0-MiniDriver-uart.hex
-
 Copy files to 'firmware'? [y/N] y
   copied: ekans.trx
   copied: kauai.clmb
   copied: kauai.txcb
   copied: P-kauai_M-HRPN_V-u__m-7.5.txt
-  copied: BCM4364B0-MiniDriver-uart.hex
 
 Done.
 ```
+
+Bluetooth firmware is not copied by this procedure. T2 Macs use more than one
+Bluetooth architecture, and the firmware exposed by macOS does not map
+unambiguously to the firmware interfaces used by the Linux drivers. See the
+Bluetooth notes in the Linux installation step before installing any Bluetooth
+firmware manually.
 
 Next: [Prepare macOS and the Fedora installer](01-prepare-macos-and-fedora-usb.md)
