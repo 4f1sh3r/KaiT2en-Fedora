@@ -90,7 +90,7 @@ txcap_file="$(pick_one '.txcb TxCap blob' "${source_dir}"/*.txcb)"
 nvram_file="$(pick_one 'P-*.txt NVRAM file' "${source_dir}"/P-*.txt)"
 
 requested_bin="$(
-    journalctl -b -k --no-pager |
+    journalctl -b -k |
     sed -n 's/.*Direct firmware load for \(brcm\/brcmfmac[^ ]*\.bin\) failed with error -2.*/\1/p' |
     head -n 1
 )"
@@ -206,21 +206,122 @@ by `hci_bcm4377` on PCI device `14e4:5fa0`; Wi-Fi uses `brcmfmac` on
 `14e4:4488`. The Bluetooth function uses board-specific `.bin` and `.ptb`
 firmware and does not use the UART `.hcd` path.
 
+### Install BCM4377 Bluetooth firmware
+
+The `firmware` folder copied from macOS contains both development and production
+firmware. Linux needs the production firmware and the matching production PTB.
+Do not use the similarly named Boot Camp header and blob files.
+
+Run this from the root folder of the KAIT2EN repository:
+
+```bash
+bash <(cat << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+shopt -s nullglob
+
+source_dir="firmware"
+dest_dir="/lib/firmware/brcm"
+
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
+pick_one() {
+    local label="$1"
+    shift
+    local files=("$@")
+
+    if (( ${#files[@]} == 0 )); then
+        die "No ${label} found in ${source_dir}."
+    fi
+    if (( ${#files[@]} > 1 )); then
+        echo "Found more than one ${label}:"
+        printf '  %s\n' "${files[@]}"
+        die "Keep only the firmware copied from this Mac and try again."
+    fi
+
+    printf '%s\n' "${files[0]}"
+}
+
+[[ -d "$source_dir" ]] ||
+    die "Run this script from the root of the KAIT2EN repository."
+
+lspci -Dn | grep -qi '14e4:5fa0' ||
+    die "No BCM4377 Bluetooth PCIe function (14e4:5fa0) was found."
+
+bin_file="$(pick_one 'BCM4377 production firmware' \
+    "$source_dir"/BCM4377*_PROD.signed.bin)"
+bin_name="${bin_file##*/}"
+name_re='^BCM([0-9]{4})([A-Z][0-9])_.*_PCIE_([^_]+)_MFG_([^_]+)_.*_PROD\.signed\.bin$'
+
+[[ "$bin_name" =~ $name_re ]] ||
+    die "Unexpected Apple Bluetooth firmware filename: ${bin_name}"
+
+chip="${BASH_REMATCH[1]}"
+stepping="${BASH_REMATCH[2]}"
+board="${BASH_REMATCH[3]}"
+vendor="${BASH_REMATCH[4]}"
+
+ptb_file="$(pick_one 'matching BCM4377 production PTB' \
+    "$source_dir"/BCM"${chip}${stepping}"__PCIE_"${board}"_MFG_"${vendor}"__PRODK_R_.ptb)"
+
+case "$vendor" in
+    GEN) vendor_suffix="" ;;
+    MUR) vendor_suffix="-m" ;;
+    USI) vendor_suffix="-u" ;;
+    *) die "Unsupported antenna vendor in Apple filename: ${vendor}" ;;
+esac
+
+target_base="brcmbt${chip}${stepping,,}-apple,${board,,}${vendor_suffix}"
+target_bin="${dest_dir}/${target_base}.bin"
+target_ptb="${dest_dir}/${target_base}.ptb"
+
+echo "Found Apple BCM4377 firmware:"
+echo "  ${bin_file}"
+echo "  ${ptb_file}"
+echo
+echo "Will install:"
+echo "  ${target_bin}"
+echo "  ${target_ptb}"
+echo
+
+read -r -p "Continue? [y/N] " answer
+case "$answer" in
+    y|Y) ;;
+    *) echo "Aborted."; exit 0 ;;
+esac
+
+sudo install -d -m 0755 "$dest_dir"
+sudo install -m 0644 "$bin_file" "$target_bin"
+sudo install -m 0644 "$ptb_file" "$target_ptb"
+
+echo
+echo "Done. Reboot and check Bluetooth."
+EOF
+)
+```
+
+For example, the generic-antenna firmware from a MacBook Air 9,1 is installed
+as:
+
+```text
+/lib/firmware/brcm/brcmbt4377b3-apple,formosa.bin
+/lib/firmware/brcm/brcmbt4377b3-apple,formosa.ptb
+```
+
+Successful firmware requests are normally only logged at debug level. Missing
+or rejected firmware is visible without additional debugging:
+
+```bash
+sudo journalctl -b -k |
+    grep -Ei 'hci_bcm4377|unable to load firmware|failed to load PTB|bootstage|RTI'
+```
+
 BCM4377 currently has a separate suspend problem: the device can prevent
 suspend unless `hci_bcm4377`, `brcmfmac_wcc` and `brcmfmac` are unloaded before
 suspend and loaded again after resume. KAIT2EN handles that workaround in its
-suspend service. This behaviour does not establish that an additional
-Bluetooth firmware blob is missing.
-
-The exact controller and driver can be checked with:
-
-```bash
-journalctl -b -k --grep='Bluetooth|BCM|hci_bcm4377'
-find /sys/bus/acpi/devices -maxdepth 1 -type l -printf '%f\n' | grep '^BCM'
-```
-
-Firmware selection for other ACPI IDs must be established from the matching
-model's Boot Camp package or hardware logs. Do not infer it from another Mac's
-chip name or copy an arbitrary `.hcd` file.
+systemd suspend service.
 
 Next: [Install KAIT2EN modules and apps](03-install-kait2en-modules-and-apps.md)
