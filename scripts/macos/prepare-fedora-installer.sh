@@ -144,14 +144,22 @@ collect_macos_firmware() {
 	local firmware_path
 
 	printf 'Looking for Apple Wi-Fi firmware used during the current macOS boot...\n'
-	(
-		log show --last boot --info \
-			--predicate 'eventMessage contains "/usr/share/firmware/"' 2>/dev/null |
-			grep 'Copying' |
-			grep -oE '"[^"]*"' |
-			tr -d '"' |
-			sort -u >"$path_list"
-	) || :
+	/usr/sbin/ioreg -l -w0 2>/dev/null |
+		grep '"RequestedFiles"' |
+		grep -oE '"[^"]+"' |
+		tr -d '"' |
+		while IFS= read -r firmware_path; do
+			case "$firmware_path" in
+				*/*.trx|*/*.clmb|*/*.txcb|*/P-*.txt)
+					printf '/usr/share/firmware/wifi/%s\n' "$firmware_path"
+					;;
+			esac
+		done |
+		sort -u >"$path_list" || :
+
+	if [[ ! -s "$path_list" ]]; then
+		die "macOS did not report active Wi-Fi firmware in IORegistry. Enable Wi-Fi, reboot macOS, and retry, or use --firmware-dir."
+	fi
 
 	while IFS= read -r firmware_path; do
 		[[ "$firmware_path" == /usr/share/firmware/wifi/* ]] || continue
@@ -394,7 +402,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 for command in diskutil plutil shasum stat dd cpio gzip find sort cmp install \
-	log awk df tr curl sudo dscl sed; do
+	ioreg awk df tr curl sudo dscl sed; do
 	command -v "$command" >/dev/null 2>&1 || die "required macOS command is missing: $command"
 done
 [[ -x /sbin/mount_msdos && -x /sbin/umount ]] ||
