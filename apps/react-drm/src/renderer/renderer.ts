@@ -451,24 +451,18 @@ class Backlight {
   }
 
   /**
-   * Apply the active level after resume and keep re-applying until the panel
-   * confirms it. The appletb_backlight node may still be absent (write no-ops)
-   * or get reset to its probe default (level 1 = "50%") as the HID interface
-   * re-enumerates during attachTouchBar()'s config reprobes. A single on() in
-   * resume() therefore races the re-bind and can leave the backlight stuck at
-   * the default. Verify against actual_brightness and retry on a short schedule.
+   * Restore the active level after resume. The backlight HID request is
+   * asynchronous and can be lost while the T2 USB path is still settling.
+   * actual_brightness cannot confirm the hardware state because this driver
+   * has no get_brightness callback, so repeat the idempotent write for a
+   * bounded interval instead.
    */
-  onVerified(adaptive: boolean, level: 0 | 1 | 2): void {
+  restoreAfterResume(adaptive: boolean, level: 0 | 1 | 2): void {
     this.stopSettle();
     const deadline = Date.now() + SETTLE_WINDOW_MS;
     const apply = (): void => {
       this.on(adaptive, level);
-      const actual = this.tbDir ? readInt(`${this.tbDir}/actual_brightness`) : -1;
-      const settled = !!this.tbFile && actual === this.activeHwLevel;
-      // Stop once the panel confirms the level, or after the window expires.
-      // Past the window the self-healing write() is the safety net: the next
-      // wake()/dim() re-resolves the node and lands the write anyway.
-      if (settled || Date.now() > deadline) this.stopSettle();
+      if (Date.now() >= deadline) this.stopSettle();
     };
     apply();
     if (!this.settleTimer) this.settleTimer = setInterval(apply, SETTLE_INTERVAL_MS);
@@ -893,7 +887,7 @@ export function render(
     if (ownKeyboardWatch) stopKeyboard = watchKeyboard(wake);
     else options.keyboardReader?.resume(); // re-open the caller's kbd fd closed in suspend()
     startTouch(); // re-open the touch fd against the re-enumerated node
-    backlight.onVerified(adaptive, activeLevel); // retry until the panel confirms — HID backlight re-binds late
+    backlight.restoreAfterResume(adaptive, activeLevel);
     startIdleTimers();
     renderCurrent(true); // display was closed during suspend — force a repaint past the dedup cache
     console.log('[react-drm] resumed');
