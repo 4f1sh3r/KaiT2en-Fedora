@@ -16,6 +16,7 @@ STEPS=(
 	install-networkmanager-rules.sh
 	install-t2-ncm-debug-service.sh
 	install-acpi-fixes.sh
+	install-plymouth-theme.sh
 	rebuild-initramfs.sh
 	install-suspend-service.sh
 	install-apps.sh
@@ -23,7 +24,11 @@ STEPS=(
 
 for step in "${STEPS[@]}"; do
 	info "running $step"
-	bash "$SCRIPT_DIR/$step"
+	if [[ "$step" == install-plymouth-theme.sh ]]; then
+		bash "$SCRIPT_DIR/$step" --defer-initramfs
+	else
+		bash "$SCRIPT_DIR/$step"
+	fi
 done
 
 info "Kait2en installation completed"

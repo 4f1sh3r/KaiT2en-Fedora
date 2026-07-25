@@ -33,6 +33,8 @@ dnf install -y \
 	libdrm-devel \
 	cairo-devel \
 	librsvg2-devel \
+	plymouth-plugin-two-step \
+	plymouth-theme-spinner \
 	nodejs \
 	npm \
 	brightnessctl \
