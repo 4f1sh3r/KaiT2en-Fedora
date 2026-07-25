@@ -2,12 +2,25 @@
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
 
+install_mode=all
+case "${1:-}" in
+	"") ;;
+	--react-drm-only) install_mode=react-drm ;;
+	*)
+		printf 'usage: %s [--react-drm-only]\n' "${0##*/}" >&2
+		exit 2
+		;;
+esac
+
 require_root
 require_repo_root
 require_fedora
 require_command \
-	awk cargo chown cut dnf env getent grep id install make mktemp npm rm rpm \
+	awk chown cut dnf env getent grep id install mktemp modinfo npm rm rpm \
 	sleep sudo systemctl tar tr udevadm usermod
+if [[ "$install_mode" == all ]]; then
+	require_command cargo make
+fi
 
 REACT_DRM_FEDORA_PACKAGES=(
 	nodejs22-bin
@@ -101,6 +114,10 @@ install_react_drm() {
 	if ! has_t2_touchbar_model; then
 		return
 	fi
+	for module in t2bdrm t2touchbar_bl; do
+		modinfo "$module" >/dev/null 2>&1 ||
+			fail "required KaiT2en kernel module is missing: $module"
+	done
 
 	target_user="${SUDO_USER:-}"
 	[[ -n "$target_user" && "$target_user" != root ]] ||
@@ -250,9 +267,15 @@ install_react_drm() {
 		fail "react-drm failed to remain active; inspect it with 'journalctl --user -u react-drm.service -b'"
 }
 
-remove_obsolete_apps
-install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-fan-control"
-install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
+if [[ "$install_mode" == all ]]; then
+	remove_obsolete_apps
+	install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-fan-control"
+	install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
+fi
 install_react_drm
 
-info "apps installed"
+if [[ "$install_mode" == react-drm ]]; then
+	info "react-drm installed"
+else
+	info "apps installed"
+fi

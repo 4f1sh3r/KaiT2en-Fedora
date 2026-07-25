@@ -218,7 +218,7 @@
         "audio.allowed-rates": [48000, 44100],
         "node.virtual": "false",
         "priority.session": 1500,
-        "state.default-volume": 1.0,
+        "state.default-volume": 0.75,
         "device.icon-name": "audio-speakers"
     },
     "playback.props": {
@@ -230,6 +230,6 @@
         "node.passive": "true",
         "audio.channels": "6",
         "audio.allowed-rates": [48000, 44100],
-        "audio.position": ["FL", "SL", "RL", "FR", "SR", "RR"]
+        "audio.position": ["AUX0", "AUX1", "AUX2", "AUX3", "AUX4", "AUX5"]
     }
 }

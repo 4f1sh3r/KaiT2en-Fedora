@@ -14,7 +14,7 @@
                     "sat_third": 1.6,
                     "blend": 1.0,
                     "ceil": 220.0,
-                    "floor": 140.0,
+                    "floor": 140.0
                 }
             },
             {
@@ -194,7 +194,7 @@
             {"output": "fwoofer_bp:out_l", "input": "fwoofer_lim:in_l"},
             {"output": "fwoofer_bp:out_r", "input": "fwoofer_lim:in_r"},
             {"output": "rwoofer_bp:out_l", "input": "rwoofer_lim:in_l"},
-            {"output": "rwoofer_bp:out_r", "input": "rwoofer_lim:in_r"},
+            {"output": "rwoofer_bp:out_r", "input": "rwoofer_lim:in_r"}
         ],
         "inputs": [
             "bassex:in_l",
@@ -230,7 +230,7 @@
         "device.api": "dsp",
         "node.virtual": "false",
         "priority.session": 1500,
-        "state.default-volume": 0.343,
+        "state.default-volume": 0.75,
         "device.icon-name": "audio-speakers"
     },
     "playback.props": {
@@ -242,6 +242,6 @@
         "node.passive": "true",
         "audio.channels": "4",
         "audio.allowed-rates": [96000, 88200, 48000, 44100],
-        "audio.position": ["FL", "FR", "RL", "RR"]
+        "audio.position": ["AUX0", "AUX1", "AUX2", "AUX3"]
     }
 }
