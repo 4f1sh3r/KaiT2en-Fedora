@@ -531,16 +531,18 @@ printf 'Fedora ISO:     %s\n' "$ISO_PATH"
 printf 'Target disk:    %s (%s, %s)\n' "$FEDORA_DISK" \
 	"${media_name:-unknown}" "$(format_size "$disk_size")"
 if ((REUSE_MEDIA == 1)); then
-	printf 'The existing Fedora image will be reused. Type REUSE %s to continue: ' \
-		"${FEDORA_DISK##*/}"
-	read -r confirmation
-	[[ "$confirmation" == "REUSE ${FEDORA_DISK##*/}" ]] || die 'cancelled'
+	confirm_phrase="REUSE ${FEDORA_DISK##*/}"
+	confirm_prompt="The existing Fedora image will be reused. Type '$confirm_phrase' to continue: "
 else
-	printf 'All data on %s will be erased. Type ERASE %s to continue: ' \
-		"$FEDORA_DISK" "${FEDORA_DISK##*/}"
-	read -r confirmation
-	[[ "$confirmation" == "ERASE ${FEDORA_DISK##*/}" ]] || die 'cancelled'
+	confirm_phrase="ERASE ${FEDORA_DISK##*/}"
+	confirm_prompt="All data on $FEDORA_DISK will be erased. Type '$confirm_phrase' to continue: "
 fi
+while :; do
+	printf '%s' "$confirm_prompt"
+	read -r confirmation
+	[[ "$confirmation" == "$confirm_phrase" ]] && break
+	printf "That did not match '%s', please try again (Ctrl-C to cancel).\n" "$confirm_phrase"
+done
 
 DISK_TOUCHED=1
 diskutil unmountDisk "$FEDORA_DISK" >/dev/null
