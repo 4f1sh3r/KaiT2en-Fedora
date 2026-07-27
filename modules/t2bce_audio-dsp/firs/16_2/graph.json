@@ -9,12 +9,12 @@
                 "name": "bassex",
                 "control": {
                     "bypass": 0,
-                    "amt": 1.4,
-                    "sat_second": 1.05,
-                    "sat_third": 1.6,
-                    "blend": 1.0,
-                    "ceil": 220.0,
-                    "floor": 140.0
+                    "amt": 3.0,
+                    "sat_second": 1.5,
+                    "sat_third": 1.5,
+                    "blend": 0.75,
+                    "ceil": 150.0,
+                    "floor": 40.0
                 }
             },
             {
@@ -146,7 +146,7 @@
                     "mode": 0,
                     "ce_0": 1,
                     "sla_0": 5.0,
-                    "scr_0": 1.75,
+                    "cr_0": 1.75,
                     "al_0": 0.625,
                     "at_0": 1.0,
                     "rt_0": 100,

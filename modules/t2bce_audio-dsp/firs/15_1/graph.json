@@ -9,40 +9,12 @@
                 "name": "virtualbass",
                 "control": {
                     "bypass": 0,
-                    "amt": 1.0,
+                    "amt": 3.0,
                     "sat_second": 1.5,
-                    "sat_third": 2.0,
-                    "blend": 1.0,
+                    "sat_third": 1.5,
+                    "blend": 0.75,
                     "ceil": 150.0,
-                    "floor": 60.0
-                }
-            },
-            {
-                "type": "lv2",
-                "plugin": "http://lsp-plug.in/plugins/lv2/compressor_stereo",
-                "name": "compressor",
-                "control": {
-                    "enabled": 1,
-                    "g_in": 1.0,
-                    "g_out": 1.0,
-                    "al": 0.1258925,
-                    "at": 20.0,
-                    "rrl": 0.00001,
-                    "rt": 200.0,
-                    "cr": 3.0,
-                    "kn": 0.251197,
-                    "sla": 10.0,
-                    "mk": 4.0
-                }
-            },
-            {
-                "type": "lv2",
-                "name": "limiter",
-                "plugin": "http://plugin.org.uk/swh-plugins/fastLookaheadLimiter",
-                "control": {
-                    "ingain": 0,
-                    "limit": -1,
-                    "release": 0.8
+                    "floor": 40.0
                 }
             },
             {
@@ -130,29 +102,40 @@
                     "channel": 0,
                     "gain": 1.0
                 }
+            },
+            {
+                "type": "lv2",
+                "plugin": "http://lsp-plug.in/plugins/lv2/compressor_stereo",
+                "name": "woofer_lim",
+                "control": {
+                    "sla": 5.0,
+                    "al": 1.0,
+                    "at": 1.0,
+                    "rt": 100.0,
+                    "cr": 15.0,
+                    "kn": 0.5
+                }
             }
         ],
         "links": [
-            {"output": "virtualbass:out_l", "input": "compressor:in_l"},
-            {"output": "virtualbass:out_r", "input": "compressor:in_r"},
-            {"output": "compressor:out_l", "input": "limiter:in_1"},
-            {"output": "compressor:out_r", "input": "limiter:in_2"},
-            {"output": "limiter:out_1", "input": "ell:in"},
-            {"output": "limiter:out_2", "input": "elr:in"},
+            {"output": "virtualbass:out_l", "input": "ell:in"},
+            {"output": "virtualbass:out_r", "input": "elr:in"},
             {"output": "ell:out", "input": "copyL:In"},
             {"output": "elr:out", "input": "copyR:In"},
             {"output": "copyL:Out", "input": "convLT:In"},
             {"output": "copyL:Out", "input": "convLW:In"},
             {"output": "copyR:Out", "input": "convRT:In"},
-            {"output": "copyR:Out", "input": "convRW:In"}
+            {"output": "copyR:Out", "input": "convRW:In"},
+            {"output": "convLW:Out", "input": "woofer_lim:in_l"},
+            {"output": "convRW:Out", "input": "woofer_lim:in_r"}
         ],
         "inputs": [
             "virtualbass:in_l",
             "virtualbass:in_r"
         ],
         "outputs": [
-            "convLW:Out",
-            "convRW:Out",
+            "woofer_lim:out_l",
+            "woofer_lim:out_r",
             "convLT:Out",
             "convRT:Out"
         ],
