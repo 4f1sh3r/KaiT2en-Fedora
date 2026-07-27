@@ -49,6 +49,16 @@ done
 [[ ${EUID:-$(id -u)} -eq 0 ]] ||
 	die "run this command with sudo, the kernel log is not readable otherwise"
 
+wireless_interface() {
+	local path
+	for path in /sys/class/net/*/wireless; do
+		path=${path%/wireless}
+		printf '%s\n' "${path##*/}"
+		return 0
+	done
+	printf 'NONE\n'
+}
+
 pick_target() {
 	local candidate
 	# A second USB stick shows up here once the live desktop mounts it.
@@ -176,10 +186,13 @@ capture storage lsblk -f
 		"$([[ -f /run/systemd/system/kait2en-live-wifi.service ]] && echo yes || echo NO)"
 	printf '  unit known to systemd:   %s\n' \
 		"$(systemctl cat kait2en-live-wifi.service >/dev/null 2>&1 && echo yes || echo NO)"
-	printf '  wireless interface:      %s\n' \
-		"$(ls -d /sys/class/net/*/wireless 2>/dev/null | head -n 1 || echo NONE)"
+	printf '  wireless interface:      %s\n' "$(wireless_interface)"
 	printf '  Apple firmware in place: %s\n' \
 		"$(ls /usr/lib/firmware/brcm/*.apple,* 2>/dev/null | wc -l) file(s)"
+	printf '  firmware names in place:\n'
+	for firmware_path in /usr/lib/firmware/brcm/*.apple,*; do
+		printf '    %s\n' "${firmware_path##*/}"
+	done
 } >"$out/summary.txt"
 
 archive="$target/$stem.tar.gz"

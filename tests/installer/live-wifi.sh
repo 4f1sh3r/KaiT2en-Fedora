@@ -15,6 +15,9 @@ vendor=u
 version=7.7
 prefix="brcmfmac${chip}-pcie"
 identity="${board}-${module}-${vendor}-${version}"
+# macOS names the blobs and the NVRAM after the board plus the antenna variant,
+# but the .trx file after the bare board.
+board_files="${board}-X3"
 alloc_line="brcmfmac: brcmf_fw_alloc_request: using brcm/$prefix for chip BCM4364/4"
 
 make_case() {
@@ -22,11 +25,11 @@ make_case() {
 	local case_dir="$work/$name"
 
 	mkdir -p "$case_dir/bin" "$case_dir/root" "$case_dir/source"
-	printf firmware >"$case_dir/source/bcm4364.trx"
-	printf clm >"$case_dir/source/${board}.clmb"
-	printf txcap >"$case_dir/source/${board}.txcb"
+	printf firmware >"$case_dir/source/${board}.trx"
+	printf clm >"$case_dir/source/${board_files}.clmb"
+	printf txcap >"$case_dir/source/${board_files}.txcb"
 	printf nvram \
-		>"$case_dir/source/P-${board}_M-${module}_V-${vendor}__m-${version}.txt"
+		>"$case_dir/source/P-${board_files}_M-${module}_V-${vendor}__m-${version}.txt"
 
 	printf '%s\n' '#!/bin/sh' "printf '%s\\n' \"\$*\" >>\"$case_dir/modprobe.log\"" \
 		>"$case_dir/bin/modprobe"
@@ -62,8 +65,9 @@ expect_common_files() {
 	local destination=$1 expected_bin=$2
 
 	[[ -f "$destination/$expected_bin" ]]
-	[[ -f "$destination/${prefix}.apple,${board}.clm_blob" ]]
-	[[ -f "$destination/${prefix}.apple,${board}.txcap_blob" ]]
+	[[ -f "$destination/${prefix}.apple,${board_files}.clm_blob" ]]
+	[[ -f "$destination/${prefix}.apple,${board_files}.txcap_blob" ]]
+	# The antenna variant must never end up in front of the module details.
 	[[ -f "$destination/${prefix}.apple,${identity}.txt" ]]
 	[[ $(find "$destination" -maxdepth 1 -type f | wc -l) -eq 4 ]]
 }

@@ -74,6 +74,15 @@ fi
 [[ "$nvram_board" == "$clm_stem" ]] ||
 	die 'NVRAM board name does not match .clmb/.txcb board name'
 
+# macOS names the blobs and the NVRAM after the board plus the antenna variant
+# of this Mac, for example trinidad-X3. brcmfmac asks either for
+# <board>-<module>-<vendor>-<version> or for <board>-<antenna>, never for both
+# parts at once, so the antenna variant must not be pasted in front of the
+# module details. The .trx file carries the bare board name both forms build on.
+board_base=$(basename "$trx_file" .trx)
+[[ "$clm_stem" == "$board_base" || "$clm_stem" == "$board_base"-* ]] ||
+	die "board name '$clm_stem' does not extend the .trx board name '$board_base'"
+
 kernel_log() {
 	journalctl -b -k --no-pager 2>/dev/null || :
 	dmesg 2>/dev/null || :
@@ -105,7 +114,7 @@ detect_requested_bin() {
 	) || :
 	[[ -n "$prefix" ]] || return 1
 	printf '%s.apple,%s-%s-%s-%s.bin\n' "$prefix" \
-		"$nvram_board" "$nvram_module" "$nvram_vendor" "$nvram_version"
+		"$board_base" "$nvram_module" "$nvram_vendor" "$nvram_version"
 }
 
 if [[ -n ${KAIT2EN_FIRMWARE_REQUEST:-} ]]; then
@@ -126,7 +135,7 @@ target_prefix=${target_bin%%.apple,*}
 
 target_clm="${target_prefix}.apple,${clm_stem}.clm_blob"
 target_txcap="${target_prefix}.apple,${txcap_stem}.txcap_blob"
-target_nvram="${target_prefix}.apple,${nvram_board}-${nvram_module}-${nvram_vendor}-${nvram_version}.txt"
+target_nvram="${target_prefix}.apple,${board_base}-${nvram_module}-${nvram_vendor}-${nvram_version}.txt"
 dest_dir="$root/usr/lib/firmware/brcm"
 
 install -d -m 0755 "$dest_dir"
