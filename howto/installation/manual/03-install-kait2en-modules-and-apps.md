@@ -96,21 +96,29 @@ journalctl -b0 -k --grep='Marking method'
 
 ### Apple T2 Audio DSP
 
-This is a fork of [Lemmyg's Apple-T2-Audio-DSP repo)](https://github.com/lemmyg/t2-apple-audio-dsp).
+This is a fork of [Lemmyg's Apple-T2-Audio-DSP repo](https://github.com/lemmyg/t2-apple-audio-dsp).
 Leave him a proper GitHub star for his work. We adapted it to make
 it work on Fedora. Most FIR files originate from lemmyg's
 `t2-apple-audio-dsp`; the MacBook Pro 15,1 FIRs were generated from UMIK-1
-measurements of that model by deqrocks.
+measurements of that model by deqrocks. The MacBook Air 8,1, 8,2 and 9,1
+profiles use J313 FIRs from Asahi Linux's
+[`asahi-audio`](https://github.com/AsahiLinux/asahi-audio) project. The MacBook
+Pro 15,4, 16,2 and 16,3 profiles use its J293/J493 FIRs.
 
 This is PipeWire/WirePlumber DSP graphs and FIR files for Apple T2 audio.
 The profiles in `firs/` are installed by `scripts/fedora/install-dsp.sh`.
 
 Supported profiles:
 
-- `MacBookPro16,1`
-- `MacBookPro16,4`
+- `MacBookAir8,1`
+- `MacBookAir8,2`
 - `MacBookAir9,1`
 - `MacBookPro15,1`
+- `MacBookPro15,4`
+- `MacBookPro16,1`
+- `MacBookPro16,2`
+- `MacBookPro16,3`
+- `MacBookPro16,4`
 
 The installer copies the matching files to:
 

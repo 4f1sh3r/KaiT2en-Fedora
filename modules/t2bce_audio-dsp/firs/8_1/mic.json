@@ -1,6 +1,6 @@
 {
-    "node.description": "MacBook Air 9,1 DSP Mic",
-    "media.name": "MacBook Air 9,1 DSP Mic",
+    "node.description": "MacBook Air 8,1 DSP Mic",
+    "media.name": "MacBook Air 8,1 DSP Mic",
     "filter.graph": {
         "nodes": [
             {
@@ -78,7 +78,7 @@
         ]
     },
     "capture.props": {
-        "node.name": "effect_input.t2-91-mic",
+        "node.name": "effect_input.t2-81-mic",
         "audio.channels": "3",
         "audio.position": ["FL", "FR", "LFE"],
         "audio.allowed-rates": [48000],
@@ -91,7 +91,7 @@
         "node.pause-on-idle": "true"
     },
     "playback.props": {
-        "node.name": "audio_effect.t2-91-mic",
+        "node.name": "audio_effect.t2-81-mic",
         "media.class": "Audio/Source",
         "priority.session": 2005,
         "node.pause-on-idle": "true",
