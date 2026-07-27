@@ -14,6 +14,7 @@ shell_files=(
 	packaging/installer/runtime/install-wifi-firmware.sh
 	packaging/installer/runtime/kait2en-install
 	packaging/installer/runtime/kait2en-launch-terminal
+	packaging/installer/runtime/kait2en-live-wifi
 	packaging/installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
 	scripts/fedora/install-dkms-modules.sh
@@ -23,6 +24,7 @@ shell_files=(
 	tests/installer/static-check.sh
 	tests/installer/prepare-install.sh
 	tests/installer/release-bootstrap.sh
+	tests/installer/live-wifi.sh
 	tests/installer/terminal-launcher.sh
 	tests/installer/wifi-firmware.sh
 )
@@ -63,6 +65,19 @@ grep -Fq 'KAIT2EN_AUTOSTART_FILE:-/etc/xdg/autostart/kait2en-install.desktop' \
 if rg -n 'kait2en-first-boot|KAIT2EN_FIRST_BOOT' packaging/installer; then
 	exit 1
 fi
+# The live Wi-Fi helpers must ride along in the input initramfs and must stay
+# inside /run, which never reaches the installed system.
+grep -Fq 'usr/lib/kait2en/kait2en-live-wifi' packaging/installer/build-in-container.sh
+grep -Fq 'usr/lib/kait2en/kait2en-live-wifi.service' \
+	packaging/installer/build-in-container.sh
+grep -Fq 'usr/lib/kait2en/install-wifi-firmware.sh' \
+	packaging/installer/build-in-container.sh
+grep -Fq 'runtime_units=/run/systemd/system' \
+	packaging/installer/initramfs/90-kait2en-updates.sh
+grep -Fq 'ExecStart=/run/kait2en/kait2en-live-wifi' \
+	packaging/installer/runtime/kait2en-live-wifi.service
+! rg -n 'kait2en-live-wifi' packaging/installer/anaconda-addon
+
 grep -Fq 'Do not close this window!' packaging/installer/runtime/kait2en-install
 grep -Fq 'Ensure that you are connected to Wi-Fi before continuing.' \
 	packaging/installer/runtime/kait2en-install
@@ -107,6 +122,7 @@ patch_name=$(
 git apply --unidiff-zero --check "packaging/installer/patches/$patch_name"
 
 bash tests/installer/wifi-firmware.sh
+bash tests/installer/live-wifi.sh
 bash tests/installer/prepare-install.sh
 bash tests/installer/install-launcher.sh
 bash tests/installer/release-bootstrap.sh

@@ -1,7 +1,8 @@
 # KaiT2en Fedora installer USB
 
 This kit prepares one Fedora USB stick on macOS. It adds the T2 keyboard and
-trackpad drivers and carries the Apple Wi-Fi firmware into the installed system.
+trackpad drivers, brings up Wi-Fi in the live system, and carries the Apple
+Wi-Fi firmware into the installed system.
 
 For a published release, download, verify, and start the complete kit with:
 
@@ -21,7 +22,10 @@ The repository checkout method remains available below for development builds.
    choose the external USB drive. The script downloads and verifies Fedora
    before asking for the final `ERASE diskN` confirmation.
 3. Boot the T2 Mac from that USB drive and install Fedora normally. Format an
-   existing Linux `/boot` partition when doing a clean reinstall.
+   existing Linux `/boot` partition when doing a clean reinstall. Wi-Fi is
+   available in the live system itself, which also makes the stick usable for
+   rescue work. Run `sudo /run/kait2en/kait2en-live-wifi` if no wireless network
+   shows up there.
 4. Connect to Wi-Fi after the first login. One guided KaiT2en installer opens
    automatically and updates Fedora. Reboot when its first phase succeeds.
    If no terminal appears, open one and run `kait2en-install` without
