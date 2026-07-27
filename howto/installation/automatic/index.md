@@ -7,8 +7,9 @@
 [Installation introduction](../../introduction.md)
 
 The automatic installer prepares one Fedora USB drive on macOS. Internal
-keyboard and trackpad work during Fedora installation. The matching Apple Wi-Fi
-firmware and the guided KAIT2EN setup are carried into the installed system.
+keyboard, trackpad, and Wi-Fi work in the live system and during Fedora
+installation. The matching Apple Wi-Fi firmware and the guided KAIT2EN setup are
+carried into the installed system.
 
 The installer currently supports Fedora Workstation, Fedora KDE Desktop and
 Fedora COSMIC Spin.
@@ -58,9 +59,14 @@ Shut down or reboot the Mac. Hold `Option` during startup and select the orange
 `EFI Boot` entry for the Fedora USB drive. The KAIT2EN Fedora entry starts
 automatically.
 
-Keyboard and trackpad should work in the live system and installer. Wi-Fi is not
-expected to work in the live system; it becomes available after Fedora is
-installed.
+Keyboard, trackpad, and Wi-Fi should work in the live system and installer. The
+live system installs the Apple Wi-Fi firmware from the USB drive for itself, so
+you can connect to a network before or instead of installing Fedora. If no
+wireless network appears, open a terminal and run this command:
+
+```bash
+sudo /run/kait2en/kait2en-live-wifi
+```
 
 Install Fedora normally. Use manual partitioning and select the Linux partition
 you created in macOS. Do not erase the whole disk or macOS. When reinstalling,

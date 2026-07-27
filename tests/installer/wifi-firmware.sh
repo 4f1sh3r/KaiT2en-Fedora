@@ -32,6 +32,25 @@ run_case() {
 run_case bcm4364 4364b3 trinidad-X3 HRPN u 7.7 X3
 run_case bcm4377 4377b3 bali-X0 HRPN u 8.0 X0
 
+# Newer kernels try the board-specific candidates quietly and warn only about
+# the last one. The helper then names the file from the chip prefix the driver
+# reports plus the identity of the NVRAM file.
+detect="$work/detect"
+mkdir -p "$detect/bin" "$detect/source" "$detect/root"
+printf firmware >"$detect/source/bcm4364.trx"
+printf clm >"$detect/source/trinidad.clmb"
+printf txcap >"$detect/source/trinidad.txcb"
+printf nvram >"$detect/source/P-trinidad_M-HRPN_V-u__m-7.7.txt"
+printf '%s\n' '#!/bin/sh' 'exit 0' >"$detect/bin/journalctl"
+printf '%s\n' '#!/bin/sh' \
+	'echo "brcmfmac: brcmf_fw_alloc_request: using brcm/brcmfmac4364b3-pcie for chip BCM4364/4"' \
+	>"$detect/bin/dmesg"
+chmod 0755 "$detect/bin/journalctl" "$detect/bin/dmesg"
+PATH="$detect/bin:$PATH" bash "$helper" \
+	--source "$detect/source" --root "$detect/root" >/dev/null
+[[ -f "$detect/root/usr/lib/firmware/brcm/brcmfmac4364b3-pcie.apple,trinidad-HRPN-u-7.7.bin" ]]
+[[ -f "$detect/root/usr/lib/firmware/brcm/brcmfmac4364b3-pcie.apple,trinidad.clm_blob" ]]
+
 # A generic fallback name is intentionally rejected. The helper must use the
 # hardware-specific filename emitted by brcmfmac, exactly like the manual guide.
 mkdir -p "$work/reject/source" "$work/reject/root"
