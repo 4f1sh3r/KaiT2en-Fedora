@@ -68,6 +68,17 @@ wireless network appears, open a terminal and run this command:
 sudo /run/kait2en/kait2en-live-wifi
 ```
 
+If that does not help, collect diagnostics for a bug report:
+
+```bash
+sudo /run/kait2en/kait2en-live-diagnostics --rerun
+```
+
+This retries the Wi-Fi setup, records what happened, and writes one archive.
+It lands on a second USB drive when one is mounted, otherwise in `/tmp`; the
+path is printed at the end. The archive contains host names, MAC addresses, and
+the names of nearby wireless networks, so look at it before passing it on.
+
 Install Fedora normally. Use manual partitioning and select the Linux partition
 you created in macOS. Do not erase the whole disk or macOS. When reinstalling,
 format an existing Linux `/boot` partition so old kernels do not fill it.
