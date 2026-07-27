@@ -55,6 +55,10 @@ done < <(git ls-files 'packaging/installer/anaconda-addon/*.py' \
 	packaging/installer/runtime/kait2en-prepare
 grep -Fq '"$transition_source" "$target_kernel" "$work/rpm"' \
 	packaging/installer/runtime/kait2en-prepare
+# The transition modules only live in the initramfs, so they must be forced in.
+grep -Fq 'dracut --force --force-drivers' \
+	packaging/installer/runtime/kait2en-prepare
+! grep -Fq -- '--add-drivers' packaging/installer/runtime/kait2en-prepare
 grep -Fq '"etc", "xdg", "autostart"' \
 	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
 ! rg -n 'find_regular_user|home\.lstrip|os\.chown' \
