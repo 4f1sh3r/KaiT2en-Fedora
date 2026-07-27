@@ -132,9 +132,20 @@ if [[ "${nvram_board}" != "${clm_stem}" ]]; then
     die "NVRAM board name does not match .clmb/.txcb board name."
 fi
 
+# macOS names the blobs and the NVRAM after the board plus the antenna variant
+# of this Mac, for example trinidad-X3. brcmfmac asks either for
+# <board>-<module>-<vendor>-<version> or for <board>-<antenna>, never for both
+# parts at once, so the antenna variant must not be pasted in front of the
+# module details. The .trx file carries the bare board name both forms build on.
+board_base="$(basename "${trx_file}" .trx)"
+
+if [[ "${clm_stem}" != "${board_base}" && "${clm_stem}" != "${board_base}-"* ]]; then
+    die "Board name ${clm_stem} does not extend the .trx board name ${board_base}."
+fi
+
 target_clm="${target_prefix}.apple,${clm_stem}.clm_blob"
 target_txcap="${target_prefix}.apple,${txcap_stem}.txcap_blob"
-target_nvram="${target_prefix}.apple,${nvram_board}-${nvram_module}-${nvram_vendor}-${nvram_version}.txt"
+target_nvram="${target_prefix}.apple,${board_base}-${nvram_module}-${nvram_vendor}-${nvram_version}.txt"
 
 dest_dir="/lib/firmware/brcm"
 
