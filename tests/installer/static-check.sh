@@ -93,7 +93,7 @@ grep -Fq 'plist_value "$disk" WholeDisk' scripts/macos/prepare-fedora-installer.
 ! grep -Fq 'plist_value "$disk" Whole ' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'The ISO was verified OK.' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'Next steps:' scripts/macos/prepare-fedora-installer.sh
-grep -Fq 'Keyboard and trackpad should work in the Fedora installer.' \
+grep -Fq 'Select the orange EFI Boot entry for this USB drive.' \
 	scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'The KaiT2en installation will continue automatically in a terminal.' \
 	scripts/macos/prepare-fedora-installer.sh
