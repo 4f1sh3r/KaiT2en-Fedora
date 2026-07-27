@@ -22,7 +22,8 @@ if [ -d "$firmware_source" ]; then
 
     # /run survives the switch root, so the live session can install this
     # firmware for itself. Nothing placed here reaches the installed system.
-    for helper in install-wifi-firmware.sh kait2en-live-wifi; do
+    for helper in install-wifi-firmware.sh kait2en-live-wifi \
+        kait2en-live-diagnostics; do
         if [ -f "$helper_source/$helper" ]; then
             cp "$helper_source/$helper" "$target_directory/$helper"
             chmod 0755 "$target_directory/$helper"

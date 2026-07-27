@@ -14,6 +14,7 @@ shell_files=(
 	packaging/installer/runtime/install-wifi-firmware.sh
 	packaging/installer/runtime/kait2en-install
 	packaging/installer/runtime/kait2en-launch-terminal
+	packaging/installer/runtime/kait2en-live-diagnostics
 	packaging/installer/runtime/kait2en-live-wifi
 	packaging/installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
@@ -71,6 +72,8 @@ grep -Fq 'usr/lib/kait2en/kait2en-live-wifi' packaging/installer/build-in-contai
 grep -Fq 'usr/lib/kait2en/kait2en-live-wifi.service' \
 	packaging/installer/build-in-container.sh
 grep -Fq 'usr/lib/kait2en/install-wifi-firmware.sh' \
+	packaging/installer/build-in-container.sh
+grep -Fq 'usr/lib/kait2en/kait2en-live-diagnostics' \
 	packaging/installer/build-in-container.sh
 grep -Fq 'runtime_units=/run/systemd/system' \
 	packaging/installer/initramfs/90-kait2en-updates.sh

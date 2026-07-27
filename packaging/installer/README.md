@@ -25,7 +25,8 @@ The repository checkout method remains available below for development builds.
    existing Linux `/boot` partition when doing a clean reinstall. Wi-Fi is
    available in the live system itself, which also makes the stick usable for
    rescue work. Run `sudo /run/kait2en/kait2en-live-wifi` if no wireless network
-   shows up there.
+   shows up there, and `sudo /run/kait2en/kait2en-live-diagnostics --rerun` to
+   write one diagnostics archive to a second USB drive.
 4. Connect to Wi-Fi after the first login. One guided KaiT2en installer opens
    automatically and updates Fedora. Reboot when its first phase succeeds.
    If no terminal appears, open one and run `kait2en-install` without
