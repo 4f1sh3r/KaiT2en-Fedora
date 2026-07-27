@@ -132,9 +132,15 @@ if [[ "${nvram_board}" != "${clm_stem}" ]]; then
     die "NVRAM board name does not match .clmb/.txcb board name."
 fi
 
+board_base="$(basename "${trx_file}" .trx)"
+
+if [[ "${clm_stem}" != "${board_base}" && "${clm_stem}" != "${board_base}-"* ]]; then
+    die "Board name ${clm_stem} does not extend the .trx board name ${board_base}."
+fi
+
 target_clm="${target_prefix}.apple,${clm_stem}.clm_blob"
 target_txcap="${target_prefix}.apple,${txcap_stem}.txcap_blob"
-target_nvram="${target_prefix}.apple,${nvram_board}-${nvram_module}-${nvram_vendor}-${nvram_version}.txt"
+target_nvram="${target_prefix}.apple,${board_base}-${nvram_module}-${nvram_vendor}-${nvram_version}.txt"
 
 dest_dir="/lib/firmware/brcm"
 
