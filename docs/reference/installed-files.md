@@ -136,6 +136,31 @@ table passes validation with `iasl`:
 The backup contains every managed file that existed before deployment and a
 manifest.
 
+## Apple firmware from the installer USB drive
+
+The guided installer copies Apple's own firmware for this Mac from the USB drive
+into the installed system, renamed to the file names the Linux drivers ask for:
+
+```text
+/usr/lib/firmware/brcm/brcmfmac<chip>-pcie.apple,<board>*
+```
+
+Macs with the BCM4377 PCIe Bluetooth controller (`14e4:5fa0`) additionally get
+the two Bluetooth blobs. Every other T2 Mac drives Bluetooth over UART and gets
+nothing here:
+
+```text
+/usr/lib/firmware/brcm/brcmbt<chip><stepping>-apple,<board>[-<vendor>].bin
+/usr/lib/firmware/brcm/brcmbt<chip><stepping>-apple,<board>[-<vendor>].ptb
+```
+
+The exact names are taken from what the driver asked for in the kernel log. The
+outcome of the Bluetooth step is recorded in the installed system at:
+
+```text
+/var/log/kait2en/bluetooth-firmware.log
+```
+
 ## Desktop applications
 
 `t2-fan-control` and `t2-smc-control` are built from the checkout and installed
