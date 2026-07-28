@@ -14,26 +14,80 @@ You can do this when running the dGPU as primary or even when running
 it as secondary GPU:
 
 ```bash
-echo manual | sudo tee /sys/class/drm/card1/device/power_dpm_force_performance_level
-echo 2 | sudo tee /sys/class/drm/card1/device/pp_power_profile_mode
+for vendor in /sys/class/drm/card*/device/vendor; do
+    [[ -r "$vendor" && "$(cat "$vendor")" == "0x1002" ]] || continue
+    device="${vendor%/vendor}"
+    echo manual | sudo tee "$device/power_dpm_force_performance_level"
+    echo 2 | sudo tee "$device/pp_power_profile_mode"
+done
 ```
 
-You can also create a systemd service to automatically apply power saving mode on boot:
+You can also create a systemd service to automatically apply power saving mode
+on boot. Install a helper that discovers the AMDGPU device before writing its
+controls:
 
 ```bash
+sudo install -d -m 0755 /usr/local/libexec/kait2en
+sudo tee /usr/local/libexec/kait2en/set-amdgpu-power-profile >/dev/null <<'EOF'
+#!/bin/sh
+set -eu
+
+found=0
+for vendor in /sys/class/drm/card*/device/vendor; do
+    [ -r "$vendor" ] || continue
+    [ "$(cat "$vendor")" = "0x1002" ] || continue
+    device=${vendor%/vendor}
+    found=1
+
+    if ! grep -Eq '^[[:space:]]*2[[:space:]]+POWER_SAVING' \
+        "$device/pp_power_profile_mode"; then
+        echo "AMDGPU device ${device##*/} does not expose POWER_SAVING as profile 2" >&2
+        exit 1
+    fi
+
+    printf '%s\n' manual >"$device/power_dpm_force_performance_level"
+    printf '%s\n' 2 >"$device/pp_power_profile_mode"
+done
+
+if [ "$found" -eq 0 ]; then
+    echo "no AMDGPU device was found" >&2
+    exit 1
+fi
+EOF
+sudo chmod 0755 /usr/local/libexec/kait2en/set-amdgpu-power-profile
+
 sudo tee /etc/systemd/system/kait2en-amdgpu-profile.service > /dev/null << 'EOF'
 [Unit]
 Description=Set AMDGPU Power Profile
-After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'echo manual > /sys/class/drm/card1/device/power_dpm_force_performance_level && echo 2 > /sys/class/drm/card1/device/pp_power_profile_mode'
+ExecStart=/usr/local/libexec/kait2en/set-amdgpu-power-profile
 
 [Install]
 WantedBy=multi-user.target
 EOF
-sudo systemctl daemon-reload && sudo systemctl enable --now kait2en-amdgpu-profile.service
+
+sudo tee /etc/systemd/system/kait2en-amdgpu-profile-resume.service > /dev/null <<'EOF'
+[Unit]
+Description=Restore AMDGPU Power Profile after resume
+Before=sleep.target
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/true
+ExecStop=/usr/local/libexec/kait2en/set-amdgpu-power-profile
+
+[Install]
+WantedBy=sleep.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable kait2en-amdgpu-profile.service
+sudo systemctl enable kait2en-amdgpu-profile-resume.service
+sudo systemctl restart kait2en-amdgpu-profile.service
 ```
 
 ## Set the iGPU as primary display adapter
