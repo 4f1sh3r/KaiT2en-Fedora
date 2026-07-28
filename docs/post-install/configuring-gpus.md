@@ -33,7 +33,7 @@ ExecStart=/bin/sh -c 'echo manual > /sys/class/drm/card1/device/power_dpm_force_
 [Install]
 WantedBy=multi-user.target
 EOF
-sudo systemctl daemon-reload && sudo systemctl enable --now kait2enamdgpu-profile.service
+sudo systemctl daemon-reload && sudo systemctl enable --now kait2en-amdgpu-profile.service
 ```
 
 ## Set the iGPU as primary display adapter
