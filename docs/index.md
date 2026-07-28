@@ -7,6 +7,7 @@
 ## Documentation
 
 - [Installation](installation.md)
+- [Audio DSP](post-install/audio-dsp.md)
 - [Configure GPUs](post-install/configuring-gpus.md)
 - [Hardware video decoding](post-install/hardware-video-decoding.md)
 - [Updating KAIT2EN](post-install/updating.md)

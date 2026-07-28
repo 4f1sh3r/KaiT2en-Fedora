@@ -94,6 +94,8 @@ rule on these models: `MacBookAir8,1`, `MacBookAir8,2`, `MacBookAir9,1`,
 ```
 
 Every other model exits the DSP step without creating these files.
+See [Audio DSP](../post-install/audio-dsp.md) for the supported-model table,
+audio behavior and diagnostics.
 
 ## System configuration and services
 
