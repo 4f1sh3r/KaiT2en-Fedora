@@ -116,8 +116,8 @@ script performs exactly these two independent checks:
   currently loaded, it unloads `amdgpu`. After resume it loads the module again.
 - If a Broadcom PCI device with vendor ID `0x14e4` and device ID `0x5f69`,
   `0x5f71`, `0x5f72` or `0x5fa0` is present, it unloads `brcmfmac_wcc`,
-  `brcmfmac` and `hci_bcm4377` in that order. After resume it loads them in
-  reverse order.
+  `brcmfmac` and `hci_bcm4377` in that order. After resume it loads `brcmfmac`
+  and `brcmfmac_wcc`, waits five seconds, then loads `hci_bcm4377`.
 
 If neither condition matches, the service logs that the fixes are not needed
 and does not unload a module. State files for modules successfully unloaded by
