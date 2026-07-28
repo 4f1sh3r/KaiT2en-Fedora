@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# Collect everything needed to debug KaiT2en Wi-Fi in the Fedora live session
-# and write it to a single archive. Runs from the USB stick itself, so it also
-# works when the live session has no network at all.
+# Collect everything needed to debug KaiT2en Wi-Fi and Bluetooth in the Fedora
+# live session and write it to a single archive. Runs from the USB stick itself,
+# so it also works when the live session has no network at all.
 #
 # The archive contains host names, MAC addresses, and the names of nearby
 # wireless networks. Look at it before passing it on.
@@ -11,12 +11,13 @@ set -Eeuo pipefail
 shopt -s nullglob
 
 live_script=${KAIT2EN_LIVE_SCRIPT:-/run/kait2en/kait2en-live-wifi}
+live_bt_script=${KAIT2EN_LIVE_BT_SCRIPT:-/run/kait2en/kait2en-live-bluetooth}
 rerun=0
 target=
 
 usage() {
 	printf 'Usage: %s [--rerun] [OUTPUT_DIRECTORY]\n' "${0##*/}"
-	printf '  --rerun  run the live Wi-Fi setup again and record what it does\n'
+	printf '  --rerun  run the live Wi-Fi and Bluetooth setup again and record it\n'
 }
 
 die() {
@@ -57,6 +58,52 @@ wireless_interface() {
 		return 0
 	done
 	printf 'NONE\n'
+}
+
+bluetooth_controller() {
+	local path
+	for path in /sys/class/bluetooth/hci*; do
+		printf '%s\n' "${path##*/}"
+		return 0
+	done
+	printf 'NONE\n'
+}
+
+# Only BCM4377 (14e4:5fa0) loads Bluetooth firmware from disk.
+bcm4377_present() {
+	local device
+	for device in /sys/bus/pci/devices/*; do
+		[[ -r "$device/vendor" && -r "$device/device" ]] || continue
+		[[ $(<"$device/vendor") == 0x14e4 ]] || continue
+		[[ $(<"$device/device") == 0x5fa0 ]] || continue
+		printf 'yes (%s)\n' "${device##*/}"
+		return 0
+	done
+	printf 'no\n'
+}
+
+kernel_log() {
+	journalctl -b -k --no-pager 2>/dev/null || :
+	dmesg 2>/dev/null || :
+}
+
+bluetooth_request() {
+	local found
+	found=$(
+		kernel_log |
+			sed -n "s|.*Unable to load firmware; tried '\(brcm/brcmbt[^']*\)'.*|\1|p" |
+			head -n 1
+	) || :
+	printf '%s\n' "${found:-NONE}"
+}
+
+# Without a board type hci_bcm4377 never asks for firmware, and no file helps.
+board_type_status() {
+	if kernel_log | grep -Fq 'unable to determine board type'; then
+		printf 'NO - this model is missing from the kernel table\n'
+	else
+		printf 'yes\n'
+	fi
 }
 
 pick_target() {
@@ -108,15 +155,19 @@ capture_file() {
 }
 
 if ((rerun == 1)); then
-	printf 'Running the live Wi-Fi setup again...\n'
-	{
-		printf '### %s\n\n' "$live_script"
-		if [[ -x "$live_script" ]]; then
-			bash "$live_script" 2>&1 || printf '\n[exit status %s]\n' "$?"
-		else
-			printf '[missing: %s]\n' "$live_script"
-		fi
-	} >"$out/rerun.txt"
+	printf 'Running the live Wi-Fi and Bluetooth setup again...\n'
+	: >"$out/rerun.txt"
+	for script in "$live_script" "$live_bt_script"; do
+		{
+			printf '### %s\n\n' "$script"
+			if [[ -x "$script" ]]; then
+				bash "$script" 2>&1 || printf '\n[exit status %s]\n' "$?"
+			else
+				printf '[missing: %s]\n' "$script"
+			fi
+			printf '\n'
+		} >>"$out/rerun.txt"
+	done
 	sed 's/^/  /' "$out/rerun.txt"
 fi
 
@@ -133,14 +184,18 @@ capture kait2en-runtime ls -laR /run/kait2en
 capture kait2en-runtime sh -c 'sha256sum /run/kait2en/* 2>/dev/null'
 capture kait2en-runtime ls -laR /run/systemd/system
 capture_file kait2en-runtime /run/systemd/system/kait2en-live-wifi.service
+capture_file kait2en-runtime /run/systemd/system/kait2en-live-bluetooth.service
 capture kait2en-unit systemctl status kait2en-live-wifi.service --no-pager --full
 capture kait2en-unit systemctl cat kait2en-live-wifi.service --no-pager
+capture kait2en-unit systemctl status kait2en-live-bluetooth.service --no-pager --full
+capture kait2en-unit systemctl cat kait2en-live-bluetooth.service --no-pager
 capture kait2en-unit sh -c 'systemctl list-unit-files --no-pager | grep -i kait2en'
 capture kait2en-unit systemd-analyze unit-paths
 capture kait2en-unit systemctl list-units --failed --no-pager
 
 # Logs
 capture journal-kait2en journalctl -b -u kait2en-live-wifi.service --no-pager
+capture journal-kait2en journalctl -b -u kait2en-live-bluetooth.service --no-pager
 capture journal-kait2en sh -c 'journalctl -b --no-pager | grep -i kait2en'
 capture journal-kernel journalctl -b -k --no-pager
 capture journal-networkmanager journalctl -b -u NetworkManager --no-pager
@@ -156,6 +211,21 @@ capture wireless ls -la /sys/bus/pci/drivers/brcmfmac
 capture wireless ls -la /usr/lib/firmware/brcm
 capture wireless ls -la /lib/firmware/brcm
 capture_file wireless /sys/module/firmware_class/parameters/path
+
+# Bluetooth hardware, driver, firmware
+capture bluetooth sh -c \
+	'{ journalctl -b -k --no-pager 2>/dev/null; dmesg 2>/dev/null; } |
+		grep -Ei "bcm4377|brcmbt|unable to load firmware|failed to load PTB|board type|bluetooth"'
+capture bluetooth modinfo hci_bcm4377
+capture bluetooth ls -la /sys/bus/pci/drivers/hci_bcm4377
+capture bluetooth ls -la /sys/class/bluetooth
+capture bluetooth sh -c 'ls -la /usr/lib/firmware/brcm/brcmbt* 2>/dev/null'
+capture bluetooth ls -laR /run/kait2en/apple-firmware/bluetooth
+capture bluetooth sh -c \
+	'sha256sum /run/kait2en/apple-firmware/bluetooth/* 2>/dev/null'
+capture bluetooth systemctl status bluetooth --no-pager --full
+capture bluetooth sh -c 'bluetoothctl list 2>/dev/null'
+capture_file bluetooth /sys/class/dmi/id/product_name
 
 # Network state
 capture network ip -d addr
@@ -173,9 +243,11 @@ capture storage df -h
 capture storage lsblk -f
 
 {
-	printf 'KaiT2en live Wi-Fi diagnostics\n'
+	printf 'KaiT2en live Wi-Fi and Bluetooth diagnostics\n'
 	printf 'collected: %s\n' "$(date -Is)"
 	printf 'kernel:    %s\n' "$(uname -r)"
+	printf 'model:     %s\n' \
+		"$(cat /sys/class/dmi/id/product_name 2>/dev/null || printf unknown)"
 	printf 'rerun:     %s\n' "$rerun"
 	printf '\nQuick checks:\n'
 	printf '  firmware on the stick:   %s\n' \
@@ -191,6 +263,21 @@ capture storage lsblk -f
 		"$(ls /usr/lib/firmware/brcm/*.apple,* 2>/dev/null | wc -l) file(s)"
 	printf '  firmware names in place:\n'
 	for firmware_path in /usr/lib/firmware/brcm/*.apple,*; do
+		printf '    %s\n' "${firmware_path##*/}"
+	done
+	printf '\nBluetooth:\n'
+	printf '  BCM4377 controller:      %s\n' "$(bcm4377_present)"
+	printf '  BT firmware on stick:    %s\n' \
+		"$([[ -d /run/kait2en/apple-firmware/bluetooth ]] && echo yes || echo NO)"
+	printf '  BT helper in /run:       %s\n' \
+		"$([[ -x /run/kait2en/kait2en-live-bluetooth ]] && echo yes || echo NO)"
+	printf '  BT unit registered:      %s\n' \
+		"$(systemctl cat kait2en-live-bluetooth.service >/dev/null 2>&1 && echo yes || echo NO)"
+	printf '  driver asked for:        %s\n' "$(bluetooth_request)"
+	printf '  board type known:        %s\n' "$(board_type_status)"
+	printf '  Bluetooth controller:    %s\n' "$(bluetooth_controller)"
+	printf '  BT firmware in place:\n'
+	for firmware_path in /usr/lib/firmware/brcm/brcmbt*; do
 		printf '    %s\n' "${firmware_path##*/}"
 	done
 } >"$out/summary.txt"
