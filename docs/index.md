@@ -4,10 +4,10 @@
 
 [GitHub repository](https://github.com/kaiT2en/KaiT2en-Fedora)
 
-## Howtos
+## Documentation
 
-- [Installation](howto/installation/index.md)
-- [File locations](howto/postinstall/file-locations.md)
-- [Configure GPUs](howto/postinstall/configuring-gpus.md)
-- [Hardware video decoding](howto/postinstall/hardware-video-decoding.md)
-- [Updating KAIT2EN](howto/postinstall/updating.md)
+- [Installation](installation.md)
+- [Configure GPUs](post-install/configuring-gpus.md)
+- [Hardware video decoding](post-install/hardware-video-decoding.md)
+- [Updating KAIT2EN](post-install/updating.md)
+- [Installed files](reference/installed-files.md)

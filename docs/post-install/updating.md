@@ -1,7 +1,5 @@
 # How to update
 
-Previous: [Hardware video decoding](hardware-video-decoding.md) | [Installation](../installation/index.md)
-
 KAIT2EN is meant to disappear. It's part of the concept. It serves the purpose
 of upstreaming code fixes. Every module and fix that gets upstreamed will disappear from
 the repo. Until we are left with a few T2 specific apps and other things that can't be upstreamed.
@@ -46,5 +44,3 @@ you don't have an external keyboard/mouse around. Like when you are travelling.
 But you should always be able to use GRUB to boot into an older kernel anyways.
 But be warned that when we mess up, you could loose VHCI devices or WiFi.
 And remember we are not paid. We will waste your time and we don't accept complaints.
-
-Previous: [Hardware video decoding](hardware-video-decoding.md) | [Installation](../installation/index.md)

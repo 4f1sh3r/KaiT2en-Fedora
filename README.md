@@ -13,7 +13,7 @@ You will receive kernel updates directly from Fedora and the latest T2 modules f
 
 ## Install
 
-Follow the [installation howto](https://kait2en.github.io/howto/installation/).
+Follow the [installation guide](https://kait2en.github.io/installation/).
 
 ## Community
 

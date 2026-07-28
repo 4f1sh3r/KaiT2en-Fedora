@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../../assets/kaiT2en-logo-tr.png" alt="KAIT2EN logo" width="220">
+  <img src="../assets/kaiT2en-logo-tr.png" alt="KAIT2EN logo" width="220">
 </p>
 
 # Installation
@@ -104,5 +104,3 @@ kait2en-install
 
 The installer asks for administrator access when it is needed. It can also be
 started again at any later time to update KAIT2EN.
-
-Next: [File locations](../postinstall/file-locations.md)

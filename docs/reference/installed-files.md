@@ -1,6 +1,4 @@
-# File locations
-
-Previous: [Installation](../installation/index.md) | Next: [Configure GPUs](configuring-gpus.md)
+# Installed files
 
 KAIT2EN keeps Fedora's vanilla kernel and installs T2 hardware support as a
 separate layer. The changes we are doing to your system are documented here to
@@ -165,5 +163,3 @@ desktop reported by the user's systemd environment contains `gnome`, it also
 installs Window Monitor Pro below `~/.local/share/gnome-shell/extensions/` for
 application-aware controls. Every other DMI product name exits this step before
 installing react-drm dependencies or files.
-
-Previous: [Installation](../installation/index.md) | Next: [Configure GPUs](configuring-gpus.md)

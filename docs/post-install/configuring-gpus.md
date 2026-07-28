@@ -1,7 +1,5 @@
 # How to configure GPUs
 
-[File locations](file-locations.md) | Next: [Hardware video decoding](hardware-video-decoding.md)
-
 If a Mac has a dGPU, it will use it for boot and it will also use it as primary
 display adapter by default. An iMac is no exception in that aspect, but it is
 not able to switch between internal and dedicated GPU because the display lines
@@ -139,5 +137,3 @@ Until the patch is merged: if you want working suspend, you will need to configu
 iGPU as primary and dGPU turned off as described above.
 Also KAIT2EN will automatically install a script that will `modprobe -r amdgpu`
 on suspend when it finds a 15,1.
-
-Previous: [File locations](file-locations.md) | Next: [Hardware video decoding](hardware-video-decoding.md)

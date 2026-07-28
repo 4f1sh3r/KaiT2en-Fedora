@@ -26,10 +26,10 @@ theme:
 
 nav:
   - Home: index.md
-  - Howtos:
-      - Installation: howto/installation/index.md
-      - Post-install:
-          - File locations: howto/postinstall/file-locations.md
-          - Configure GPUs: howto/postinstall/configuring-gpus.md
-          - Hardware video decoding: howto/postinstall/hardware-video-decoding.md
-          - Updating: howto/postinstall/updating.md
+  - Installation: installation.md
+  - Post-install:
+      - Configure GPUs: post-install/configuring-gpus.md
+      - Hardware video decoding: post-install/hardware-video-decoding.md
+      - Updating: post-install/updating.md
+  - Reference:
+      - Installed files: reference/installed-files.md
