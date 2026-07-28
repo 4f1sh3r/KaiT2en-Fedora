@@ -104,3 +104,5 @@ kait2en-install
 
 The installer asks for administrator access when it is needed. It can also be
 started again at any later time to update KAIT2EN.
+
+Next: [File locations](../postinstall/file-locations.md)

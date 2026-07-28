@@ -7,6 +7,7 @@
 ## Howtos
 
 - [Installation](howto/installation/index.md)
+- [File locations](howto/postinstall/file-locations.md)
 - [Configure GPUs](howto/postinstall/configuring-gpus.md)
 - [Hardware video decoding](howto/postinstall/hardware-video-decoding.md)
 - [Updating KAIT2EN](howto/postinstall/updating.md)

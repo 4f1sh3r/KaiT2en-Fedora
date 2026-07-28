@@ -1,6 +1,6 @@
 # How to configure GPUs
 
-[Installation](../installation/index.md) | Next: [Hardware video decoding](hardware-video-decoding.md)
+[File locations](file-locations.md) | Next: [Hardware video decoding](hardware-video-decoding.md)
 
 If a Mac has a dGPU, it will use it for boot and it will also use it as primary
 display adapter by default. An iMac is no exception in that aspect, but it is
@@ -140,4 +140,4 @@ iGPU as primary and dGPU turned off as described above.
 Also KAIT2EN will automatically install a script that will `modprobe -r amdgpu`
 on suspend when it finds a 15,1.
 
-Previous: [Installation](../installation/index.md) | Next: [Hardware video decoding](hardware-video-decoding.md)
+Previous: [File locations](file-locations.md) | Next: [Hardware video decoding](hardware-video-decoding.md)
