@@ -129,12 +129,15 @@ table passes validation with `iasl`:
 
 ```text
 /usr/local/lib/firmware/acpi/*.aml
+/usr/local/lib/firmware/acpi/.kait2en-*.sha256
 /etc/dracut.conf.d/t2-acpi-fix.conf
 /var/backups/t2-acpi-fix/<timestamp>/
 ```
 
 The backup contains every managed file that existed before deployment and a
-manifest.
+manifest. KAIT2EN only replaces or removes an ACPI table when its ownership
+marker contains the table's current SHA-256 checksum. Existing unmarked tables
+and modified managed tables are left unchanged and reported as conflicts.
 
 ## Desktop applications
 
