@@ -1,12 +1,10 @@
 <p align="center">
-  <img src="../../../assets/kaiT2en-logo-tr.png" alt="KAIT2EN logo" width="220">
+  <img src="../../assets/kaiT2en-logo-tr.png" alt="KAIT2EN logo" width="220">
 </p>
 
-# Automatic installation
+# Installation
 
-[Installation introduction](../../introduction.md)
-
-The automatic installer prepares one Fedora USB drive on macOS. Internal
+The installer prepares one Fedora USB drive on macOS. Internal
 keyboard, trackpad, and Wi-Fi work in the live system and during Fedora
 installation. The matching Apple Wi-Fi firmware and the guided KAIT2EN setup are
 carried into the installed system.
@@ -21,6 +19,8 @@ You need:
 - a T2 Mac with macOS still installed
 - an empty USB drive
 - an internet connection in macOS
+
+Back up important data before changing partitions or boot settings.
 
 Keep macOS installed. It is the clean source for Apple firmware and can recover
 T2/bridgeOS hardware states.
@@ -79,7 +79,7 @@ It lands on a second USB drive when one is mounted, otherwise in `/tmp`; the
 path is printed at the end. The archive contains host names, MAC addresses, and
 the names of nearby wireless networks, so look at it before passing it on.
 
-Install Fedora normally. Use manual partitioning and select the Linux partition
+Install Fedora normally. Use custom partitioning and select the Linux partition
 you created in macOS. Do not erase the whole disk or macOS. When reinstalling,
 format an existing Linux `/boot` partition so old kernels do not fill it.
 
@@ -104,5 +104,3 @@ kait2en-install
 
 The installer asks for administrator access when it is needed. It can also be
 started again at any later time to update KAIT2EN.
-
-[Installation introduction](../../introduction.md)
