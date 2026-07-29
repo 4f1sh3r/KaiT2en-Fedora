@@ -894,6 +894,8 @@ static int apple_backlight_init(struct hid_device *hdev)
 	else
 		brightness = min_t(int, brightness,
 				   le16_to_cpu(rep->backlight_on_max));
+	hid_info(hdev, "restoring keyboard backlight brightness %d\n",
+		 brightness);
 
 	ret = apple_backlight_set(hdev, brightness, 0);
 	if (ret < 0) {
@@ -1036,9 +1038,12 @@ static void apple_remove(struct hid_device *hdev)
 
 	if (asc->quirks & APPLE_RDESC_BATTERY)
 		timer_delete_sync(&asc->battery_timer);
-	if (asc->backlight)
+	if (asc->backlight) {
+		hid_info(hdev, "caching keyboard backlight brightness %u\n",
+			 asc->backlight->cdev.brightness);
 		WRITE_ONCE(apple_backlight_resume_brightness,
 			   asc->backlight->cdev.brightness);
+	}
 
 	hid_hw_stop(hdev);
 }
