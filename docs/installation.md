@@ -68,13 +68,25 @@ wireless network appears, open a terminal and run this command:
 sudo /run/kait2en/kait2en-live-wifi
 ```
 
+Macs whose Bluetooth controller sits on PCIe (BCM4377) also get their Apple
+Bluetooth firmware in the live system, so a Bluetooth keyboard or mouse can be
+paired before installing. Retry that with:
+
+```bash
+sudo /run/kait2en/kait2en-live-bluetooth
+```
+
+Every other T2 Mac drives Bluetooth over UART and needs no firmware file, so
+this command reports that there is nothing to do.
+
 If that does not help, collect diagnostics for a bug report:
 
 ```bash
 sudo /run/kait2en/kait2en-live-diagnostics --rerun
 ```
 
-This retries the Wi-Fi setup, records what happened, and writes one archive.
+This retries the Wi-Fi and Bluetooth setup, records what happened, and writes
+one archive.
 It lands on a second USB drive when one is mounted, otherwise in `/tmp`; the
 path is printed at the end. The archive contains host names, MAC addresses, and
 the names of nearby wireless networks, so look at it before passing it on.
