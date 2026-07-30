@@ -10,74 +10,19 @@ hardware-supported VP9 profile to avoid unnecessary CPU load.
 
 ## Install the VA-API drivers
 
-KaiT2en can enable RPM Fusion, install the matching drivers for every detected
-Intel or AMD GPU, and report the VA-API capabilities of each render node:
+Run the installer from the KAIT2EN repository:
 
 ```bash
 sudo bash ./scripts/fedora/install-hardware-video-decoding.sh
 ```
 
-The script does not run a general system upgrade. Review its output after the
-installation: H.264 and VP9 support is reported separately for every render
-node. Browser configuration is still required as described below.
+The script enables RPM Fusion, installs the appropriate VA-API drivers for every
+detected Intel and AMD GPU, and checks each render node. Review the final output:
+H.264 and VP9 decoding and encoding are reported as `available` or `missing` for
+each GPU.
 
-The same packages can be installed manually. If RPM Fusion is not enabled yet,
-add its Free and Nonfree repositories:
-
-```bash
-sudo dnf install \
-  "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-  "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
-```
-
-Refresh package metadata and install the diagnostic utility:
-
-```bash
-sudo dnf makecache --refresh
-sudo dnf install libva-utils
-```
-
-These commands deliberately do not run a general system upgrade. Review the DNF
-transaction before accepting it, especially on systems using an out-of-tree
-AMDGPU module.
-
-For an AMD GPU, install the Freeworld Mesa VA-API driver:
-
-```bash
-sudo dnf install mesa-va-drivers-freeworld
-```
-
-For a modern Intel iGPU, replace Fedora's restricted iHD driver with the full
-Intel media driver:
-
-```bash
-sudo dnf swap libva-intel-media-driver intel-media-driver
-```
-
-Install both drivers on a hybrid Intel/AMD system.
-
-## Verify the decoder
-
-DRM card and render-node numbers can change between boots. Locate each render
-node by its PCI path:
-
-```bash
-for dev in /dev/dri/renderD*; do
-    echo "=== $dev ==="
-    udevadm info -q property -n "$dev" |
-        grep -E 'DEVNAME|ID_PATH'
-done
-```
-
-Then inspect the required node. Replace `renderD128` with the node found above:
-
-```bash
-vainfo --display drm --device /dev/dri/renderD128 |
-    grep -E 'Driver version|H264|HEVC|VP9|MPEG2'
-```
-
-The output must list the codec that the browser should decode. On a hybrid
-system, test both render nodes.
+No general system upgrade is performed. Browser configuration is still required
+as described below.
 
 ## Brave and YouTube
 
