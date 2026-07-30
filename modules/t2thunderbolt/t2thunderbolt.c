@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/platform_data/x86/apple.h>
+#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 
 #define PCI_DEVICE_ID_INTEL_TITAN_RIDGE_2C_NHI 0x15e8
@@ -32,14 +33,17 @@ struct t2thunderbolt_no_d3 {
 	struct list_head list;
 	struct pci_dev *pdev;
 	bool already_set;
+	bool runtime_pm_forbidden;
 };
 
 static LIST_HEAD(t2thunderbolt_links);
 static LIST_HEAD(t2thunderbolt_no_d3_devices);
 
-static int t2thunderbolt_disable_d3(struct pci_dev *pdev, const char *name)
+static int t2thunderbolt_disable_d3(struct pci_dev *pdev, const char *name,
+				    bool forbid_runtime_pm)
 {
 	struct t2thunderbolt_no_d3 *entry;
+	int ret;
 
 	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
 	if (!entry)
@@ -48,6 +52,26 @@ static int t2thunderbolt_disable_d3(struct pci_dev *pdev, const char *name)
 	entry->pdev = pci_dev_get(pdev);
 	entry->already_set = pdev->dev_flags & PCI_DEV_FLAGS_NO_D3;
 	pdev->dev_flags |= PCI_DEV_FLAGS_NO_D3;
+
+	/*
+	 * The module may load after PCI runtime PM has already put the device
+	 * into D3hot.  PCI_DEV_FLAGS_NO_D3 only affects the next transition, so
+	 * resume the device once before returning it to normal runtime-PM use.
+	 */
+	ret = pm_runtime_resume_and_get(&pdev->dev);
+	if (ret < 0) {
+		if (!entry->already_set)
+			pdev->dev_flags &= ~PCI_DEV_FLAGS_NO_D3;
+		pci_dev_put(entry->pdev);
+		kfree(entry);
+		return ret;
+	}
+	if (forbid_runtime_pm) {
+		pm_runtime_forbid(&pdev->dev);
+		entry->runtime_pm_forbidden = true;
+	}
+	pm_runtime_put(&pdev->dev);
+
 	list_add_tail(&entry->list, &t2thunderbolt_no_d3_devices);
 	pci_info(pdev, "D3 disabled for Thunderbolt %s\n", name);
 
@@ -72,7 +96,8 @@ static int t2thunderbolt_disable_titan_ridge_d3(void)
 		while ((xhci = pci_get_device(PCI_VENDOR_ID_INTEL, ids[i],
 					      xhci))) {
 			ret = t2thunderbolt_disable_d3(xhci,
-						      "xHCI controller");
+							      "xHCI controller",
+							      true);
 			if (ret) {
 				pci_dev_put(xhci);
 				return ret;
@@ -83,7 +108,8 @@ static int t2thunderbolt_disable_titan_ridge_d3(void)
 			    pci_pcie_type(upstream) ==
 				    PCI_EXP_TYPE_DOWNSTREAM) {
 				ret = t2thunderbolt_disable_d3(upstream,
-							      "xHCI port");
+								      "xHCI port",
+								      false);
 				if (ret) {
 					pci_dev_put(xhci);
 					return ret;
@@ -211,6 +237,8 @@ static void t2thunderbolt_restore_d3(void)
 
 	list_for_each_entry_safe(entry, tmp, &t2thunderbolt_no_d3_devices,
 				 list) {
+		if (entry->runtime_pm_forbidden)
+			pm_runtime_allow(&entry->pdev->dev);
 		if (!entry->already_set)
 			entry->pdev->dev_flags &= ~PCI_DEV_FLAGS_NO_D3;
 		pci_dev_put(entry->pdev);
