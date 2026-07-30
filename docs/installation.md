@@ -4,13 +4,25 @@
 
 # Installation
 
-The installer prepares one Fedora USB drive on macOS. Internal
-keyboard, trackpad, and Wi-Fi work in the live system and during Fedora
-installation. The matching Apple Wi-Fi firmware and the guided KAIT2EN setup are
-carried into the installed system.
+The installation starts in macOS and continues in Fedora:
+
+1. In macOS Recovery, disable Secure Boot and allow booting from external media.
+2. In macOS, create a separate partition for Fedora.
+3. Boot macOS and run the KAIT2EN installer.
+4. Choose a supported Fedora edition and an empty USB drive.
+5. The installer downloads and verifies the official Fedora image.
+6. It collects the Apple Wi-Fi firmware from your Mac and, where required, the
+   PCIe Bluetooth firmware.
+7. It writes the unchanged Fedora image to the USB drive, then adds separate
+   KAIT2EN boot files for keyboard, trackpad, firmware, and installer support.
+8. Boot the USB drive and install Fedora. After the first login, the guided
+   KAIT2EN setup installs the remaining drivers and system integration.
+9. After another reboot, you can enjoy KAIT2EN on top of vanilla Fedora.
 
 The installer currently supports Fedora Workstation, Fedora KDE Desktop and
-Fedora COSMIC Spin.
+Fedora COSMIC Spin. We strongly recommend installing Workstation (Gnome)
+because that is what we devs use ourselves. KDE and Cosmic are generally more
+problematic. We can't help you with that because we don't use it.
 
 ## Before you start
 
@@ -25,13 +37,38 @@ Back up important data before changing partitions or boot settings.
 Keep macOS installed. It is the clean source for Apple firmware and can recover
 T2/bridgeOS hardware states.
 
-Open Disk Utility in macOS and create a real `exFAT` partition for Fedora. Do
-not add an APFS volume, delete the EFI partition or delete macOS. Fedora will
-reformat the new partition during installation.
+### Disable Apple Secure Boot
 
-Apple Secure Boot must be disabled and booting from external media must be
-allowed. The installer checks the current setting and shows the short Recovery
-steps when it needs to be changed.
+- Shut down the Mac.
+- Turn it on and immediately hold `Command-R` until macOS Recovery starts.
+- Select a macOS administrator account and enter its password when prompted.
+- From the menu bar, open `Utilities` > `Startup Security Utility`.
+- Select the macOS system disk if the utility asks for one.
+- Set the following options:
+
+   `Secure Boot: No Security`
+
+   `Allowed Boot Media: Allow booting from external or removable media`
+
+- Close Startup Security Utility and restart into macOS.
+
+Apple Secure Boot cannot boot standard Fedora while it is enabled. The installer
+checks the current setting and warns when it cannot confirm that Secure Boot is
+disabled.
+
+### Create space for Fedora
+
+Open Disk Utility in macOS. Select the internal macOS disk or container, choose
+`Partition`, and add a real `exFAT` partition for Fedora. Do not add an APFS
+volume. Fedora will reformat this partition during installation; `exFAT` only
+makes it easy to identify.
+
+Choose the size carefully because resizing the partitions later is not a small
+maintenance task. Keep at least `50 GB` for macOS so there is enough space for
+updates, firmware work, and recovery tasks. Give the remaining space you want
+to use for Linux to the new partition.
+
+Do not delete the EFI partition or macOS.
 
 ## Create the Fedora USB drive
 
@@ -61,35 +98,12 @@ automatically.
 
 Keyboard, trackpad, and Wi-Fi should work in the live system and installer. The
 live system installs the Apple Wi-Fi firmware from the USB drive for itself, so
-you can connect to a network before or instead of installing Fedora. If no
-wireless network appears, open a terminal and run this command:
-
-```bash
-sudo /run/kait2en/kait2en-live-wifi
-```
+you can connect to a network before or instead of installing Fedora.
 
 Macs whose Bluetooth controller sits on PCIe (BCM4377) also get their Apple
 Bluetooth firmware in the live system, so a Bluetooth keyboard or mouse can be
-paired before installing. Retry that with:
-
-```bash
-sudo /run/kait2en/kait2en-live-bluetooth
-```
-
-Every other T2 Mac drives Bluetooth over UART and needs no firmware file, so
-this command reports that there is nothing to do.
-
-If that does not help, collect diagnostics for a bug report:
-
-```bash
-sudo /run/kait2en/kait2en-live-diagnostics --rerun
-```
-
-This retries the Wi-Fi and Bluetooth setup, records what happened, and writes
-one archive.
-It lands on a second USB drive when one is mounted, otherwise in `/tmp`; the
-path is printed at the end. The archive contains host names, MAC addresses, and
-the names of nearby wireless networks, so look at it before passing it on.
+paired before installing. Every other T2 Mac drives Bluetooth over UART and
+needs no separate firmware file.
 
 Install Fedora normally. Use custom partitioning and select the Linux partition
 you created in macOS. Do not erase the whole disk or macOS. When reinstalling,
@@ -97,6 +111,32 @@ format an existing Linux `/boot` partition so old kernels do not fill it.
 
 After installation finishes, remove the USB drive and boot the installed Fedora
 system.
+
+### If hardware is missing in the live system
+
+KAIT2EN supports the known T2 configurations, but Apple shipped several
+controller and firmware variants. If keyboard, trackpad, Wi-Fi, or PCIe
+Bluetooth support is missing, collect diagnostics before continuing with the
+installation.
+
+The individual helpers can be run manually to see the Wi-Fi or Bluetooth setup
+result directly:
+
+```bash
+sudo /run/kait2en/kait2en-live-wifi
+sudo /run/kait2en/kait2en-live-bluetooth
+```
+
+For a complete diagnostic archive, run:
+
+```bash
+sudo /run/kait2en/kait2en-live-diagnostics --rerun
+```
+
+This reruns the firmware setup while recording what happened. The archive lands
+on a second USB drive when one is mounted, otherwise in `/tmp`; the path is
+printed at the end. It contains host names, MAC addresses, and the names of
+nearby wireless networks, so inspect it before attaching it to a bug report.
 
 ## Finish the KAIT2EN installation
 
