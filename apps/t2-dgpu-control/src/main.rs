@@ -234,6 +234,7 @@ fn build_ui(app: &adw::Application) {
 
     let update_apply = {
         let apply = apply.clone();
+        let message = message.clone();
         let power_off = power_off.clone();
         let selected_gpu = selected_gpu.clone();
         let saved_gpu = saved_gpu.clone();
@@ -250,6 +251,7 @@ fn build_ui(app: &adw::Application) {
                 || power_saving.is_active() != saved_power_saving.get();
             apply.set_sensitive(changed);
             if changed {
+                message.set_visible(false);
                 reboot.set_sensitive(false);
             }
         }

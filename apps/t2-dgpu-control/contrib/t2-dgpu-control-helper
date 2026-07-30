@@ -89,6 +89,15 @@ apply_configuration() {
 
 set_power_profile() {
 	local mode=$1 class dev driver found=0 vendor
+	local dgpu_state
+
+	if [[ -r "$SWITCH_PATH" ]]; then
+		dgpu_state=$(awk -F: '$2 == "DIS" { print $4; exit }' "$SWITCH_PATH")
+		if [[ "$dgpu_state" == Off ]]; then
+			printf 't2-dgpu-control: dGPU is powered off; the runtime AMDGPU profile was not changed\n'
+			return 0
+		fi
+	fi
 
 	for dev in /sys/bus/pci/devices/*; do
 		[[ -r "$dev/vendor" && -r "$dev/class" ]] || continue
