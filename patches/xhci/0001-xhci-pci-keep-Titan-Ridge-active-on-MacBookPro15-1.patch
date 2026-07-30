@@ -1,0 +1,53 @@
+From 9759fb9bdc0c160cf6a6943fbe25b83e40abb569 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Thu, 30 Jul 2026 22:43:16 +0200
+Subject: [PATCH] xhci-pci: keep Titan Ridge active on MacBookPro15,1
+
+On the MacBookPro15,1, the Titan Ridge xHCI controllers do not report
+SuperSpeed connect events after runtime suspend when the firmware follows
+its OSDW path. USB 2 devices routed through the PCH controller and
+DisplayPort continue to work, while USB 3 mass-storage hotplug remains
+completely silent. Writing on to the xHCI power/control attribute restores
+detection.
+
+We mark the Titan Ridge 4C xHCI controllers as unable to enter D3 during
+xHCI quirk setup. The common xHCI PCI probe then keeps its runtime-PM
+reference because pci_choose_state() returns D0, so the controller remains
+able to report hotplug events.
+
+The quirk is limited to the MacBookPro15,1 and has been tested on its 2018
+and 2019 revisions. Suspend and repeated resume continue to work.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ drivers/usb/host/xhci-pci.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/usb/host/xhci-pci.c b/drivers/usb/host/xhci-pci.c
+index 6b3fcba44b08..6bc1a3c786c1 100644
+--- a/drivers/usb/host/xhci-pci.c
++++ b/drivers/usb/host/xhci-pci.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include <linux/pci.h>
++#include <linux/dmi.h>
+ #include <linux/slab.h>
+ #include <linux/module.h>
+ #include <linux/acpi.h>
+@@ -347,6 +348,12 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
+ 		xhci->quirks |= XHCI_INTEL_HOST;
+ 		xhci->quirks |= XHCI_AVOID_BEI;
+ 	}
++
++	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
++	    pdev->device == PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_XHCI &&
++	    dmi_match(DMI_PRODUCT_NAME, "MacBookPro15,1"))
++		pdev->dev_flags |= PCI_DEV_FLAGS_NO_D3;
++
+ 	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
+ 			pdev->device == PCI_DEVICE_ID_INTEL_PANTHERPOINT_XHCI) {
+ 		xhci->quirks |= XHCI_EP_LIMIT_QUIRK;
+-- 
+2.55.0
+
