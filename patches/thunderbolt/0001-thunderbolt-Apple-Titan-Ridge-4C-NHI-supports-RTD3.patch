@@ -1,0 +1,81 @@
+From df4e03a4cd19e6610c64eaeb7a5e96e0c0505d3c Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Thu, 30 Jul 2026 14:38:54 +0200
+Subject: [PATCH] thunderbolt: Apple Titan Ridge 4C NHI supports RTD3
+
+The MacBookPro15,1 grants native Thunderbolt control to the operating
+system, so its JHL7540 host routers use the software connection manager.
+The software connection manager currently enables runtime PM only for
+USB4 host routers. This leaves both Titan Ridge NHIs and their host
+routers active in D0 while idle.
+
+The firmware connection manager already propagates RTD3 support to the
+host router, and the Ice Lake path enables it unconditionally. We
+similarly mark the Apple Titan Ridge 4C NHI as RTD3-capable in the PCI
+frontend and let the software connection manager enable runtime PM from
+that quirk.
+
+Both controllers then runtime-suspend to D3hot on a MacBookPro15,1,
+reducing idle power consumption by approximately 3 W.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ drivers/thunderbolt/nhi.h | 1 +
+ drivers/thunderbolt/pci.c | 5 +++++
+ drivers/thunderbolt/tb.c  | 5 +++--
+ 3 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/thunderbolt/nhi.h b/drivers/thunderbolt/nhi.h
+index d488eadadfce..6510431a8134 100644
+--- a/drivers/thunderbolt/nhi.h
++++ b/drivers/thunderbolt/nhi.h
+@@ -121,6 +121,7 @@ struct tb_nhi_ops {
+ /* Host interface quirks */
+ #define QUIRK_AUTO_CLEAR_INT	BIT(0)
+ #define QUIRK_E2E		BIT(1)
++#define QUIRK_FORCE_RTD3	BIT(2)
+ 
+ /*
+  * Minimal number of vectors when we use MSI-X. Two for control channel
+diff --git a/drivers/thunderbolt/pci.c b/drivers/thunderbolt/pci.c
+index bbd186c29ef7..4da37e83bb9b 100644
+--- a/drivers/thunderbolt/pci.c
++++ b/drivers/thunderbolt/pci.c
+@@ -15,6 +15,7 @@
+ #include <linux/iommu.h>
+ #include <linux/module.h>
+ #include <linux/delay.h>
++#include <linux/platform_data/x86/apple.h>
+ #include <linux/property.h>
+ #include <linux/string_helpers.h>
+ #include <linux/suspend.h>
+@@ -61,6 +62,10 @@ static void nhi_pci_check_quirks(struct tb_nhi_pci *nhi_pci)
+ 			 */
+ 			nhi->quirks |= QUIRK_E2E;
+ 			break;
++		case PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_NHI:
++			if (x86_apple_machine)
++				nhi->quirks |= QUIRK_FORCE_RTD3;
++			break;
+ 		}
+ 	}
+ }
+diff --git a/drivers/thunderbolt/tb.c b/drivers/thunderbolt/tb.c
+index 76323255439a..2345ea3fe867 100644
+--- a/drivers/thunderbolt/tb.c
++++ b/drivers/thunderbolt/tb.c
+@@ -3012,8 +3012,9 @@ static int tb_start(struct tb *tb, bool reset)
+ 	 * implement the necessary router operations.
+ 	 */
+ 	tb->root_switch->no_nvm_upgrade = !tb_switch_is_usb4(tb->root_switch);
+-	/* All USB4 routers support runtime PM */
+-	tb->root_switch->rpm = tb_switch_is_usb4(tb->root_switch);
++	/* USB4 routers and quirked NHIs support runtime PM */
++	tb->root_switch->rpm = tb_switch_is_usb4(tb->root_switch) ||
++			       (tb->nhi->quirks & QUIRK_FORCE_RTD3);
+ 
+ 	ret = tb_switch_configure(tb->root_switch);
+ 	if (ret) {
+-- 
+2.55.0
+
