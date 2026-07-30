@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=T2 GPU Control
+Comment=Configure graphics hardware in T2 MacBook Pro models
+Exec=t2-dgpu-control
+Icon=org.t2dgpucontrol.gtk
+Terminal=false
+Type=Application
+Categories=Settings;HardwareSettings;
+Keywords=GPU;graphics;Apple;T2;
+

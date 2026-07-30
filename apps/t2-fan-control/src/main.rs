@@ -484,7 +484,7 @@ fn build_ui(app: &Application) {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("T2 Fan Control")
-        .default_width(248)
+        .default_width(348)
         .default_height(640)
         .build();
     window.set_resizable(true);

@@ -836,7 +836,7 @@ fn main() {
 
         let window = adw::ApplicationWindow::new(app);
         window.set_title(Some("SMC Control"));
-        window.set_default_size(460, 560);
+        window.set_default_size(460, 760);
         window.set_content(Some(&root));
 
         let updating_slider = Rc::new(RefCell::new(false));

@@ -68,6 +68,14 @@ initcall_blacklist=cmos_init,magicmouse_driver_init
 module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux
 ```
 
+On MacBook Pro models where PCI discovery finds an AMD display device, the
+installer additionally enables GuC submission and HuC firmware loading for the
+Intel GPU:
+
+```text
+i915.enable_guc=3
+```
+
 KAIT2EN does not install a custom kernel or a separate GRUB configuration file.
 
 ## Audio configuration
@@ -167,16 +175,22 @@ outcome of the Bluetooth step is recorded in the installed system at:
 ## Desktop applications
 
 `t2-fan-control` and `t2-smc-control` are built from the checkout and installed
-system-wide under `/usr/local`.
+system-wide under `/usr/local`. `t2-dgpu-control` is installed only when DMI
+identifies a MacBook Pro and PCI discovery finds both Intel and AMD display
+devices.
 
 | Application | Installed files |
 | --- | --- |
 | T2 Fan Control | `/usr/local/bin/t2-fancontrol-gtk`, `/usr/local/share/applications/org.t2fancontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2fancontrol.gtk.svg`, `/usr/local/lib/systemd/system/t2-fancontrol.service` |
 | T2 SMC Control | `/usr/local/bin/t2-smc-control`, `/usr/local/share/applications/org.t2smccontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2smccontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-t2-smc-charge-limit.service` |
+| T2 GPU Control | `/usr/local/bin/t2-dgpu-control`, `/usr/local/libexec/t2-dgpu-control-helper`, `/usr/local/share/applications/org.t2dgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2dgpucontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-dgpu-off.service`, `/usr/local/lib/systemd/system/kait2en-dgpu-suspend.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile-resume.service`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.policy` |
 
 T2 SMC Control creates `/etc/t2-smc-control/config.txt` only after a charge
 limit is saved. Its system service restores that value at boot. T2 Fan Control's
 service starts immediately and persists fan curves across boot and resume.
+T2 GPU Control enables its units only when the corresponding options are
+applied in the app. Its privileged helper validates the hybrid GPU layout and
+accepts only the fixed operations exposed by the UI.
 
 `react-drm` is installed for the desktop user only when the DMI product name is
 one of `MacBookPro15,1`, `MacBookPro15,2`, `MacBookPro15,3`, `MacBookPro15,4`,

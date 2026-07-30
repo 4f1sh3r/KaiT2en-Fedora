@@ -22,6 +22,23 @@ has_intel_pci_device() {
 	return 1
 }
 
+has_macbook_dgpu() {
+	local class model path vendor
+
+	[[ -r /sys/class/dmi/id/product_name ]] || return 1
+	read -r model </sys/class/dmi/id/product_name
+	[[ "$model" == MacBookPro* ]] || return 1
+
+	for path in /sys/bus/pci/devices/*; do
+		[[ -r "$path/vendor" && -r "$path/class" ]] || continue
+		read -r vendor <"$path/vendor"
+		read -r class <"$path/class"
+		[[ "$vendor" == 0x1002 && "$class" == 0x03* ]] && return 0
+	done
+
+	return 1
+}
+
 repair_empty_grub_cmdline() {
 	local arg cmdline escaped
 	local -a args kept_args=()
@@ -69,6 +86,7 @@ REMOVE_ARGS=(
 	nvme_core.default_ps_max_latency_us
 	apple_gmux.force_igd
 	t2gmux.force_igd
+	i915.enable_guc
 	mem_sleep_default
 	initcall_blacklist
 	module_blacklist
@@ -79,12 +97,17 @@ ADD_ARGS=(
 	"iommu=pt"
 	"pm_async=off"
 	"mem_sleep_default=deep"
-	"initcall_blacklist=cmos_init,magicmouse_driver_init"
 )
 
+INITCALL_BLACKLIST="initcall_blacklist=cmos_init,magicmouse_driver_init"
 MODULE_BLACKLIST="module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux"
 
-ADD_ARGS+=("$MODULE_BLACKLIST")
+if has_macbook_dgpu; then
+	info "MacBook Pro with AMD dGPU detected; enabling GuC and HuC firmware"
+	ADD_ARGS+=("i915.enable_guc=3")
+fi
+
+ADD_ARGS+=("$INITCALL_BLACKLIST" "$MODULE_BLACKLIST")
 
 if has_intel_pci_device 0x15e8 0x15eb; then
 	info "Titan Ridge detected; removing obsolete ACPI OSI and PCIe port overrides"

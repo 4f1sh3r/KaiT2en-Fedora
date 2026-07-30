@@ -8,179 +8,26 @@ Thus, if you are an iMac user, this guide is not for you.
 Same for Mac Pro users, since Mac Pros have no iGPU.
 This guide is only for Macbook Pro users.
 
-## Set power saving mode for the dGPU
+## Choose the boot GPU
 
-You can do this when running the dGPU as primary or even when running
-it as secondary GPU:
+KaiT2en installs **T2 GPU Control** on MacBook Pro models that have both Intel
+and AMD graphics. Open it from the application menu to choose the primary GPU
+for the next boot.
 
-```bash
-for vendor in /sys/class/drm/card*/device/vendor; do
-    [[ -r "$vendor" && "$(cat "$vendor")" == "0x1002" ]] || continue
-    device="${vendor%/vendor}"
-    echo manual | sudo tee "$device/power_dpm_force_performance_level"
-    echo 2 | sudo tee "$device/pp_power_profile_mode"
-done
-```
+When the integrated GPU is selected, the app can also power off the discrete
+GPU after boot. This saves a tremendous ammount of (battery) power.
+The dGPU cannot accelerate applications while it is powered off.
+Before suspend, the app's service powers the dGPU back on so its existing
+AMDGPU binding can pass through suspend and resume. It restores the powered-off
+state afterwards without unloading the driver or rebuilding vgaswitcheroo.
 
-You can also create a systemd service to automatically apply power saving mode
-on boot. Install a helper that discovers the AMDGPU device before writing its
-controls:
+The AMDGPU power-saving option applies the driver's `POWER_SAVING` profile at
+boot and restores it after resume. GPU discovery is dynamic, so it does not
+depend on whether AMDGPU appears as `card1`, `card2`, or another DRM device.
 
-```bash
-sudo install -d -m 0755 /usr/local/libexec/kait2en
-sudo tee /usr/local/libexec/kait2en/set-amdgpu-power-profile >/dev/null <<'EOF'
-#!/bin/sh
-set -eu
-
-found=0
-for vendor in /sys/class/drm/card*/device/vendor; do
-    [ -r "$vendor" ] || continue
-    [ "$(cat "$vendor")" = "0x1002" ] || continue
-    device=${vendor%/vendor}
-    found=1
-
-    if ! grep -Eq '^[[:space:]]*2[[:space:]]+POWER_SAVING' \
-        "$device/pp_power_profile_mode"; then
-        echo "AMDGPU device ${device##*/} does not expose POWER_SAVING as profile 2" >&2
-        exit 1
-    fi
-
-    printf '%s\n' manual >"$device/power_dpm_force_performance_level"
-    printf '%s\n' 2 >"$device/pp_power_profile_mode"
-done
-
-if [ "$found" -eq 0 ]; then
-    echo "no AMDGPU device was found" >&2
-    exit 1
-fi
-EOF
-sudo chmod 0755 /usr/local/libexec/kait2en/set-amdgpu-power-profile
-
-sudo tee /etc/systemd/system/kait2en-amdgpu-profile.service > /dev/null << 'EOF'
-[Unit]
-Description=Set AMDGPU Power Profile
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/libexec/kait2en/set-amdgpu-power-profile
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo tee /etc/systemd/system/kait2en-amdgpu-profile-resume.service > /dev/null <<'EOF'
-[Unit]
-Description=Restore AMDGPU Power Profile after resume
-Before=sleep.target
-StopWhenUnneeded=yes
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/true
-ExecStop=/usr/local/libexec/kait2en/set-amdgpu-power-profile
-
-[Install]
-WantedBy=sleep.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable kait2en-amdgpu-profile.service
-sudo systemctl enable kait2en-amdgpu-profile-resume.service
-sudo systemctl restart kait2en-amdgpu-profile.service
-```
-
-## Set the iGPU as primary display adapter
-
-KAIT2EN ships with vanilla gmux. So we wont have the `force_igd=y` kernel parameter.
-Instead of forcing the iGPU from GRUB, we simply do the equivalent using efivars.
-Run this in a terminal:
-
-```bash
-# 1. remove the immutable-flag
-sudo chattr -i /sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9
-
-# 2. write the iGPU value 
-printf '\x07\x00\x00\x00\x01\x00\x00\x00' | sudo tee /sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9
-
-# 3. add the immutable flag again so that macOS won't overwrite it
-sudo chattr +i /sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9
-```
-
-For making the dGPU primary again we only have to change one bit:
-
-```bash
-# 1. remove the immutable-flag
-sudo chattr -i /sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9
-
-# 2. write the dGPU value 
-printf '\x07\x00\x00\x00\x00\x00\x00\x00' | sudo tee /sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9
-
-# 3. add the immutable flag again so that macOS won't overwrite it
-sudo chattr +i /sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9
-```
-
-After reboot, your Macbook will use the GPU of your choice as primary.
-
-
-## Shutting down the dGPU
-
-To save on power draw, we can electrically shut down the dGPU if we don't need it.
-We will create a systemd service that will run on boot and do that for us using
-vgaswitcheroo. On a Macbook 15,1 this will save us 12W on idle and literally split
-power consumption in half.
-
-Open a terminal and run:
-
-```bash
-sudo tee /etc/systemd/system/kait2en-dgpu-off.service >/dev/null <<'EOF'
-[Unit]
-Description=turns the dedicated gpu off on boot
-
-[Service]
-ExecStart=/bin/sh -c "echo OFF > /sys/kernel/debug/vgaswitcheroo/switch"
-
-[Install]
-WantedBy=multi-user.target
-
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable kait2en-dgpu-off.service 
-```
-
-When rebooting, the dGPU will be turned off.
-The trade-off for less power draw is, that we won't be able to use the dGPU
-to accelerate games and apps. If you want to use it again, you will need to
-disable the service and reboot:
-
-```bash
-sudo systemctl disable kait2en-dgpu-off.service 
-sudo reboot
-```
-
-And of course the other way around when you want to enable the service again:
-
-```bash
-sudo systemctl enable kait2en-dgpu-off.service 
-sudo reboot
-```
-
-You can make this process less awkward by adding aliases in `.bashrc`:
-
-```bash
-cd ~
-sudo nano .bashrc
-# under the line "# User specific aliases and functions" add:
-alias dgpu-off='sudo systemctl enable kait2en-dgpu-off.service; sleep 2; sudo reboot'
-alias dgpu-on='sudo systemctl disable kait2en-dgpu-off.service; sleep 2; sudo reboot'
-alias dgpu-status='sudo cat /sys/kernel/debug/vgaswitcheroo/switch'
-# then press ctrl+o, then press enter to confirm saving and exit with ctrl +x
-```
-
-After logging out and in again, when you enter `dgpu-off`, it will enable the
-service and reboot while `dgpu-on` will disable it and reboot, and `dgpu-status`
-will show you if the dGPU is currently on or off.
+**Apply Changes** stores the selected boot configuration. **Reboot** remains a
+separate action so an accidental click does not immediately restart the system.
+The helper refuses to power off the dGPU unless the integrated GPU is active.
 
 ## MacBook Pro 15,1 A1990 dGPU suspend issues
 
