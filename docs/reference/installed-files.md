@@ -110,25 +110,21 @@ audio behavior and diagnostics.
 | Path | Purpose |
 | --- | --- |
 | `/etc/systemd/system/kait2en-suspend.service` | Calls the suspend helper before `sleep.target` and again after resume |
-| `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Applies the two conditions described below |
+| `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Handles the BCM4377 suspend workaround described below |
 | `/etc/udev/rules.d/90-kait2en-t2-network.rules` | Renames the internal T2 debug interface to `t2_ncm` and excludes it from NetworkManager |
 | `/etc/systemd/system/kait2en-t2-ncm-down.service` | Starts when `t2_ncm` appears |
 | `/usr/local/libexec/kait2en/kait2en-t2-ncm-down.sh` | Keeps the internal debug interface down |
 | `/usr/share/plymouth/themes/kait2en/` | Fedora's spinner theme with the KAIT2EN watermark |
 | `/boot/initramfs-<running-kernel>.img` | Rebuilt by Dracut after modules and ACPI handling are complete |
 
-`kait2en-suspend.service` is enabled on every installation. Before suspend, its
-script performs exactly these two independent checks:
-
-- If `/sys/class/dmi/id/product_name` is `MacBookPro15,1` and `amdgpu` is
-  currently loaded, it unloads `amdgpu`. After resume it loads the module again.
-- If a Broadcom PCI device with vendor ID `0x14e4` and device ID `0x5f69`,
-  `0x5f71`, `0x5f72` or `0x5fa0` is present, it unloads `brcmfmac_wcc`,
+`kait2en-suspend.service` is enabled on every installation. Before suspend, it
+checks for a Broadcom PCI device with vendor ID `0x14e4` and device ID `0x5f69`,
+`0x5f71`, `0x5f72` or `0x5fa0`. If one is present, it unloads `brcmfmac_wcc`,
   `brcmfmac` and `hci_bcm4377` in that order. After resume it loads `brcmfmac`
   and `brcmfmac_wcc`, waits five seconds, then loads `hci_bcm4377`.
 
-If neither condition matches, the service logs that the fixes are not needed
-and does not unload a module. State files for modules successfully unloaded by
+If the controller is absent, the service logs that the fix is not needed and
+does not unload a module. State files for modules successfully unloaded by
 the helper exist only until resume below `/run/kait2en-suspend/`.
 
 The installer checks the running kernel log for two known Apple ACPI firmware

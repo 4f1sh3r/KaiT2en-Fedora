@@ -51,10 +51,6 @@ try_load() {
 }
 
 restore_unloaded_modules() {
-	if ! try_load amdgpu; then
-		log "continuing after amdgpu could not be restored"
-	fi
-
 	if ! try_load brcmfmac; then
 		log "continuing after brcmfmac could not be restored"
 	fi
@@ -69,29 +65,6 @@ restore_unloaded_modules() {
 	if ! try_load hci_bcm4377; then
 		log "continuing after hci_bcm4377 could not be restored"
 	fi
-}
-
-current_model() {
-	[[ -r /sys/class/dmi/id/product_name ]] || return 1
-	cat /sys/class/dmi/id/product_name
-}
-
-needs_amdgpu_suspend_fix() {
-	local model
-
-	if ! model="$(current_model)"; then
-		log "could not determine the Mac model"
-		return 2
-	fi
-
-	case "$model" in
-		MacBookPro15,1)
-			is_loaded amdgpu
-			;;
-		*)
-			return 1
-			;;
-	esac
 }
 
 has_bcm4377() {
@@ -130,22 +103,6 @@ pre_suspend() {
 		log "could not create state directory $STATE_DIR; skipping suspend fixes"
 		return 0
 	fi
-
-	needs_amdgpu_suspend_fix
-	status=$?
-	case "$status" in
-		0)
-			if ! try_unload amdgpu; then
-				log "continuing suspend without the amdgpu fix"
-			fi
-			;;
-		1)
-			log "amdgpu suspend fix not needed"
-			;;
-		*)
-			log "amdgpu suspend fix detection failed; skipping it"
-			;;
-	esac
 
 	has_bcm4377
 	status=$?

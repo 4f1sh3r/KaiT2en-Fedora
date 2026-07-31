@@ -20,39 +20,9 @@ A fixed t2bce doesn't fix suspend. While it was broken for many years, developer
 The below units will help you around the roughest cliffs. Note that you can combine them into one unit. Also note the minus sign in for example `ExecStart=-/usr/bin...` will let the systemd unit continue in case of error. For example if you haven't tiny-dfr installed, the service should still continue to execute - with cosmetic errors in journal. Feel free to remove what you don't need.
 The code blocks are full commands. They will create the units and activate them. Copy them, modify them to your needs if you want and execute them. But don't forget the important bits like daemon-reload and systemctl enable.
 
-## Notes for dGPU models
+## Notes for MacBookPro15,1 graphics
 
-On dGPU Macs, suspend may still fail or resume may take very long unless the iGPU is set as the default GPU.
-The 15,1 is notorious for a dead dGPU on resume (black screen with running fans). Do this:
-
-```bash
-echo "options t2gmux force_igd=y" | sudo tee /etc/modprobe.d/t2gmux.conf
-```
-
-Then create a systemd service to unload amdgpu when suspending by copy/pasting the whole code block below:
-```
-sudo tee /etc/systemd/system/amdgpu-suspend-fix.service >/dev/null <<'EOF'
-[Unit]
-Description=Unload and Reload Modules amdgpu for Suspend and Resume
-Before=sleep.target
-StopWhenUnneeded=yes
-
-[Service]
-User=root
-Type=oneshot
-RemainAfterExit=yes
-
-ExecStart=-/usr/bin/rmmod -f amdgpu
-
-ExecStop=-/usr/bin/modprobe amdgpu
-
-[Install]
-WantedBy=sleep.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable amdgpu-suspend-fix.service
-```
+We have upstreamed a patch for the 15,1 dGPU which will ship with kernel 7.3. Until release, suspend will not work unless you patch amdgpu yourself. The patch file is located in the patches folder.
 
 
 ## Notes for Macbooks with Touchbar

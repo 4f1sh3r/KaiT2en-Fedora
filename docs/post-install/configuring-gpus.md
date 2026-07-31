@@ -31,10 +31,10 @@ The helper refuses to power off the dGPU unless the integrated GPU is active.
 
 ## MacBook Pro 15,1 A1990 dGPU suspend issues
 
-On the MacBook 15,1 the SMU will die on suspend and resume with a black screen.
-We have submitted a patch to upstream that solves this issue.
+The AMDGPU driver cannot reliably resume the Radeon GPU in
+the MacBookPro15,1. Suspend can therefore fail or resume to a black screen,
+regardless of the configuration selected in T2 GPU Control.
 
-Until the patch is merged: if you want working suspend, you will need to configure
-iGPU as primary and dGPU turned off as described above.
-Also KAIT2EN will automatically install a script that will `modprobe -r amdgpu`
-on suspend when it finds a 15,1.
+Our upstream fix has been accepted and will be released with Linux 7.3.
+Until then you can patch AMDGPU yourself using the patch in the patches
+folder.
