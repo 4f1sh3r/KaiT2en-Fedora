@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly SWITCH_PATH=/sys/kernel/debug/vgaswitcheroo/switch
+
+((EUID == 0)) || exit 1
+[[ -r "$SWITCH_PATH" ]] || exit 1
+
+cat "$SWITCH_PATH"

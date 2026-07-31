@@ -10,6 +10,7 @@ use gtk4 as gtk;
 
 const APP_ID: &str = "org.t2dgpucontrol.gtk";
 const HELPER: &str = "/usr/local/libexec/t2-dgpu-control-helper";
+const STATUS_HELPER: &str = "/usr/local/libexec/t2-dgpu-control-status";
 const EFI_VAR: &str =
     "/sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9";
 const DGPU_OFF_SERVICE: &str = "kait2en-dgpu-off.service";
@@ -34,35 +35,38 @@ impl Gpu {
     }
 }
 
-fn current_gpu() -> Gpu {
-    let Ok(cards) = fs::read_dir("/sys/class/drm") else {
-        return Gpu::Unknown;
+fn switcheroo_status() -> (Gpu, String) {
+    let Ok(output) = Command::new("pkexec").arg(STATUS_HELPER).output() else {
+        return (Gpu::Unknown, "Unavailable".into());
     };
-
-    for card in cards.flatten() {
-        let name = card.file_name();
-        let name = name.to_string_lossy();
-        if !name.starts_with("card") || !name[4..].chars().all(|c| c.is_ascii_digit()) {
-            continue;
-        }
-        if fs::read_to_string(card.path().join("device/boot_vga"))
-            .ok()
-            .is_none_or(|value| value.trim() != "1")
-        {
-            continue;
-        }
-
-        return match fs::read_to_string(card.path().join("device/vendor"))
-            .unwrap_or_default()
-            .trim()
-        {
-            "0x8086" => Gpu::Integrated,
-            "0x1002" => Gpu::Discrete,
-            _ => Gpu::Unknown,
-        };
+    if !output.status.success() {
+        return (Gpu::Unknown, "Unavailable".into());
     }
 
-    Gpu::Unknown
+    let mut active = Gpu::Unknown;
+    let mut discrete_state = None;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let fields: Vec<_> = line.split(':').collect();
+        if fields.len() < 4 {
+            continue;
+        }
+        let gpu = match fields[1] {
+            "IGD" => Gpu::Integrated,
+            "DIS" => Gpu::Discrete,
+            _ => continue,
+        };
+        if fields[2] == "+" {
+            active = gpu;
+        }
+        if gpu == Gpu::Discrete {
+            discrete_state = Some(fields[3].to_owned());
+        }
+    }
+
+    (
+        active,
+        discrete_state.unwrap_or_else(|| "Unavailable".into()),
+    )
 }
 
 fn configured_gpu() -> Gpu {
@@ -117,7 +121,7 @@ fn set_status(label: &gtk::Label, message: &str, error: bool) {
 }
 
 fn build_ui(app: &adw::Application) {
-    let current = current_gpu();
+    let (current, discrete_state) = switcheroo_status();
     let configured = configured_gpu();
     let configured_power_off = service_enabled(DGPU_OFF_SERVICE);
     let configured_suspend_restore = service_enabled(DGPU_SUSPEND_SERVICE);
@@ -132,7 +136,7 @@ fn build_ui(app: &adw::Application) {
         .application(app)
         .title("T2 GPU Control")
         .default_width(520)
-        .default_height(670)
+        .default_height(720)
         .build();
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -141,7 +145,7 @@ fn build_ui(app: &adw::Application) {
     let page = adw::PreferencesPage::new();
     let status_group = adw::PreferencesGroup::builder().title("GPU status").build();
     let current_row = adw::ActionRow::builder()
-        .title("Current boot GPU")
+        .title("Current active GPU")
         .subtitle(current.label())
         .build();
     let next_row = adw::ActionRow::builder()
@@ -156,9 +160,14 @@ fn build_ui(app: &adw::Application) {
             "Remains powered on"
         })
         .build();
+    let discrete_state_row = adw::ActionRow::builder()
+        .title("Discrete GPU state")
+        .subtitle(discrete_state)
+        .build();
     status_group.add(&current_row);
     status_group.add(&next_row);
     status_group.add(&power_row);
+    status_group.add(&discrete_state_row);
     page.add(&status_group);
 
     let config_group = adw::PreferencesGroup::builder()
@@ -230,7 +239,8 @@ fn build_ui(app: &adw::Application) {
     }
     power_off.set_active(configured_power_off && initial_gpu == Gpu::Integrated);
     power_off.set_sensitive(initial_gpu == Gpu::Integrated);
-    power_saving.set_active(configured_power_saving);
+    power_saving.set_active(configured_power_saving && !power_off.is_active());
+    power_saving.set_sensitive(!power_off.is_active());
 
     let update_apply = {
         let apply = apply.clone();
@@ -272,19 +282,31 @@ fn build_ui(app: &adw::Application) {
     {
         let selected_gpu = selected_gpu.clone();
         let power_off = power_off.clone();
+        let power_saving = power_saving.clone();
         let update_apply = update_apply.clone();
         discrete.connect_toggled(move |button| {
             if button.is_active() {
                 selected_gpu.set(Gpu::Discrete);
                 power_off.set_active(false);
                 power_off.set_sensitive(false);
+                power_saving.set_active(false);
+                power_saving.set_sensitive(true);
                 update_apply();
             }
         });
     }
     {
+        let power_saving = power_saving.clone();
         let update_apply = update_apply.clone();
-        power_off.connect_active_notify(move |_| update_apply());
+        power_off.connect_active_notify(move |button| {
+            if button.is_active() {
+                power_saving.set_active(false);
+                power_saving.set_sensitive(false);
+            } else {
+                power_saving.set_sensitive(true);
+            }
+            update_apply();
+        });
     }
     {
         let update_apply = update_apply.clone();
@@ -383,6 +405,9 @@ fn build_ui(app: &adw::Application) {
 fn main() {
     if !Path::new(HELPER).exists() {
         eprintln!("Privileged helper is not installed at {HELPER}");
+    }
+    if !Path::new(STATUS_HELPER).exists() {
+        eprintln!("Status helper is not installed at {STATUS_HELPER}");
     }
 
     let app = adw::Application::builder().application_id(APP_ID).build();

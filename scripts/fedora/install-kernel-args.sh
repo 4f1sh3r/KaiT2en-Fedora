@@ -104,7 +104,7 @@ MODULE_BLACKLIST="module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_applet
 
 if has_macbook_dgpu; then
 	info "MacBook Pro with AMD dGPU detected; enabling GuC and HuC firmware"
-	ADD_ARGS+=("i915.enable_guc=3")
+	ADD_ARGS+=("i915.enable_guc=2")
 fi
 
 ADD_ARGS+=("$INITCALL_BLACKLIST" "$MODULE_BLACKLIST")
