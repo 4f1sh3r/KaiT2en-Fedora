@@ -1,0 +1,120 @@
+name: Feature board and Discord sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - data/features.yml
+      - scripts/upstream/**
+      - .github/workflows/upstream-discord.yml
+
+  pull_request:
+    paths:
+      - data/features.yml
+      - scripts/upstream/**
+      - .github/workflows/upstream-discord.yml
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report what would change without touching Discord
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# No cancel-in-progress: an interrupted run could post messages without
+# committing the state file, and the next run would post them again.
+concurrency:
+  group: upstream-discord
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install documentation dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Validate the feature board data
+        run: python scripts/upstream/schema.py
+
+      - name: Build documentation
+        run: mkdocs build --strict
+
+  discord:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      # The secret lives on kaiT2en/KaiT2en-Fedora; on a fork it is empty and
+      # skipping is the correct outcome, not a failure.
+      - name: Check for webhook secret
+        id: webhook
+        env:
+          DISCORD_UPSTREAM_WEBHOOK: ${{ secrets.DISCORD_UPSTREAM_WEBHOOK }}
+        run: |
+          if [ -z "${DISCORD_UPSTREAM_WEBHOOK}" ]; then
+            echo "::notice::DISCORD_UPSTREAM_WEBHOOK is not set, skipping the Discord sync"
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Sync to Discord
+        if: steps.webhook.outputs.configured == 'true'
+        env:
+          DISCORD_UPSTREAM_WEBHOOK: ${{ secrets.DISCORD_UPSTREAM_WEBHOOK }}
+        run: |
+          python scripts/upstream/sync_discord.py \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Commit message-id state
+        if: steps.webhook.outputs.configured == 'true' && !inputs.dry_run
+        run: |
+          # --porcelain, not `git diff`: on the first run the state file is
+          # still untracked.
+          if [ -z "$(git status --porcelain -- data/discord-state.json)" ]; then
+            echo "No state change to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/discord-state.json
+          git commit -m "upstream: update Discord message state [skip ci]"
+          # Pushes with GITHUB_TOKEN do not trigger workflows, so this cannot loop.
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}), rebasing onto the latest ${GITHUB_REF_NAME}."
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+          done
+          echo "::error::Could not push the Discord message state."
+          exit 1
