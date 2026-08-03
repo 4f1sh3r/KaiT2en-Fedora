@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "messages": {
+    "keyboard-backlight-reenumeration": {
+      "message_id": "1533867342445023285",
+      "hash": "c7a10f3fb838ee7bdff20f16adc3cd6dc0c9cfc119c172d0d02170c2d4592b1c"
+    },
+    "thunderbolt-device-links": {
+      "message_id": "1533867349558431747",
+      "hash": "50b92851fb543f4f1b6c60b3eb7c5eeccd24867f54ec4c5122a94f22db8d6553"
+    },
+    "display-brightness-after-reboot": {
+      "message_id": "1533867353144688771",
+      "hash": "0301d1f8aea4fcdacc2ad6ff0eaa9274da0452b8568380de5ad66239ae94a6ca"
+    },
+    "thunderbolt-controller-power-15-1": {
+      "message_id": "1533867356722299000",
+      "hash": "e59c22af55c529d3abca496b3f862bc970cc648de018dd9db6bf6772176285ef"
+    },
+    "volume-slider-crackling": {
+      "message_id": "1533867360895635536",
+      "hash": "f5e151595313c9d7556186823e8b8bc3db43261a64c464d40daf0cd4536f481b"
+    },
+    "fn-double-press-layer-switch": {
+      "message_id": "1533867364733685770",
+      "hash": "732e5a5ed513580dcf5c3831b300bf6fc6176d0d11d5a72fab1de210d24e59fc"
+    },
+    "dgpu-wakeup-15-1": {
+      "message_id": "1533867368055308565",
+      "hash": "f100083ad43874e786d0df75b1249b4b9340e7ba1033f2769903f66b5f3c0b45"
+    },
+    "keyboard-backlight-brightness": {
+      "message_id": "1533867371406819511",
+      "hash": "6fcf2cbc8b6cf67405c210ca3ac3148bb22ee1073845ec39ef773b3c1a8326cd"
+    },
+    "keyboard-backlight-after-resume": {
+      "message_id": "1533867375181565982",
+      "hash": "245055465f4158a1d2a49ebcc45a86fe0f35f1de5f8c6450c33b4c89858c01f8"
+    }
+  }
+}
