@@ -81,6 +81,7 @@ REMOVE_ARGS=(
 	intel_iommu
 	iommu
 	pm_async
+	pcie_ports
 	pcie_aspm
 	pcie_aspm.policy
 	nvme_core.default_ps_max_latency_us
@@ -96,6 +97,7 @@ ADD_ARGS=(
 	"intel_iommu=on"
 	"iommu=pt"
 	"pm_async=off"
+	"pcie_ports=native"
 	"mem_sleep_default=deep"
 )
 
@@ -110,13 +112,13 @@ fi
 ADD_ARGS+=("$INITCALL_BLACKLIST" "$MODULE_BLACKLIST")
 
 if has_intel_pci_device 0x15e8 0x15eb; then
-	info "Titan Ridge detected; removing obsolete ACPI OSI and PCIe port overrides"
-	REMOVE_ARGS+=(acpi_osi pcie_ports)
+	info "Titan Ridge detected; removing obsolete ACPI OSI overrides"
+	REMOVE_ARGS+=(acpi_osi)
 elif has_intel_pci_device 0x8a0d 0x8a17; then
 	info "Ice Lake Thunderbolt detected; removing obsolete ACPI OSI overrides"
 	REMOVE_ARGS+=(acpi_osi)
 else
-	warn "unknown Thunderbolt generation; leaving ACPI OSI and PCIe port arguments unchanged"
+	warn "unknown Thunderbolt generation; leaving ACPI OSI arguments unchanged"
 fi
 
 KERNEL_ARGS="${ADD_ARGS[*]}"
