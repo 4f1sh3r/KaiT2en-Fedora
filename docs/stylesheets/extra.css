@@ -205,6 +205,10 @@
   background: #121517;
 }
 
+.md-typeset .board-table tr[hidden] {
+  display: none;
+}
+
 .board-cell-state,
 .board-cell-upstream,
 .board-cell-updated {
