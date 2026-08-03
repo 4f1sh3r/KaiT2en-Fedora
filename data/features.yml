@@ -42,7 +42,7 @@ items:
   - id: package-c-states
     title: "Package C-states"
     state: in-progress
-    upstream: preparing
+    upstream: downstream
     project: KAIT2EN Fedora
     subsystem: Power management
     authors:
