@@ -42,6 +42,29 @@ require_command() {
 	done
 }
 
+wait_for_stable_service() {
+	local unit=$1 max_checks=$2 required_checks=$3 interval=$4
+	local attempt active_checks=0
+	shift 4
+
+	for ((attempt = 1; attempt <= max_checks; attempt++)); do
+		if "$@" is-active --quiet "$unit"; then
+			active_checks=$((active_checks + 1))
+			if ((active_checks >= required_checks)); then
+				return 0
+			fi
+		else
+			active_checks=0
+		fi
+
+		if ((attempt < max_checks)); then
+			sleep "$interval"
+		fi
+	done
+
+	return 1
+}
+
 kernel_release() {
 	printf '%s\n' "${KERNEL_RELEASE:-$(uname -r)}"
 }

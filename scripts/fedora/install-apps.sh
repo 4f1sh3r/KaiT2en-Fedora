@@ -262,8 +262,9 @@ install_react_drm() {
 		run_as_target systemctl --user stop react-drm.service
 	fi
 	run_as_target systemctl --user enable --now react-drm.service
-	sleep 2
-	run_as_target systemctl --user is-active --quiet react-drm.service ||
+	# 46 checks span 45 full seconds; earlier restart cycles reset the window.
+	wait_for_stable_service react-drm.service 120 46 1 \
+		run_as_target systemctl --user ||
 		fail "react-drm failed to remain active; inspect it with 'journalctl --user -u react-drm.service -b'"
 }
 

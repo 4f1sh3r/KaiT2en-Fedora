@@ -21,11 +21,13 @@ shell_files=(
 	packaging/installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
 	scripts/fedora/install-dkms-modules.sh
+	scripts/fedora/lib.sh
 	scripts/macos/prepare-fedora-installer.sh
 	tests/installer/edition-catalog.sh
 	tests/installer/install-launcher.sh
 	tests/installer/static-check.sh
 	tests/installer/prepare-install.sh
+	tests/installer/react-drm-service.sh
 	tests/installer/release-bootstrap.sh
 	tests/installer/bt-firmware.sh
 	tests/installer/live-bluetooth.sh
@@ -155,6 +157,7 @@ bash tests/installer/bt-firmware.sh
 bash tests/installer/live-wifi.sh
 bash tests/installer/live-bluetooth.sh
 bash tests/installer/prepare-install.sh
+bash tests/installer/react-drm-service.sh
 bash tests/installer/install-launcher.sh
 bash tests/installer/release-bootstrap.sh
 bash tests/installer/terminal-launcher.sh
