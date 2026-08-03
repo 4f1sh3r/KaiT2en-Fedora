@@ -3,7 +3,10 @@
 # logind delay inhibitor, re-attach on resume) — the unit only adds
 # start-at-login and the logout detach (ExecStopPost), which switches the
 # device back to config 1 so the firmware fn strip comes back.
-# KillSignal: the app treats SIGINT as its shutdown signal and ignores SIGTERM.
+# KillSignal: the app treats SIGINT as its graceful shutdown signal.
+# SuccessExitStatus also lists SIGKILL: a second signal (or systemd's own
+# escalation after TimeoutStopSec) force-kills a shutdown wedged on the DRM
+# device, and that is a shutdown, not a unit failure.
 # TimeoutStopSec covers the detach helper's ETIMEDOUT retries (the first
 # SET_CONFIG after a host config switch routinely times out and is retried).
 # Runs the COMPILED app (node dist/index.js), not the TypeScript sources — build
@@ -22,7 +25,7 @@ WorkingDirectory=%h/react-drm/linux-touchbar-control-center
 ExecStart=node %h/react-drm/linux-touchbar-control-center/dist/index.js
 ExecStopPost=-%h/react-drm/system/react-drm-tb-detach
 KillSignal=SIGINT
-SuccessExitStatus=130 137 SIGINT
+SuccessExitStatus=SIGINT SIGKILL
 TimeoutStartSec=180
 TimeoutStopSec=150
 Restart=on-failure

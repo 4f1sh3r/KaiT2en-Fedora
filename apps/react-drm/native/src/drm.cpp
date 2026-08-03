@@ -5,8 +5,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <cerrno>
 #include <cstring>
 #include <stdexcept>
+#include <system_error>
 
 DrmDevice::DrmDevice(const std::string& path) {
   fd_ = open(path.c_str(), O_RDWR | O_CLOEXEC);
@@ -124,8 +126,11 @@ void DrmDevice::setup() {
   memset(map_, 0, map_size_);
 
   // --- Activate the display ---
-  if (drmModeSetCrtc(fd_, crtc_id_, fb_id_, 0, 0, &conn_id_, 1, &mode_) < 0)
-    throw std::runtime_error("drmModeSetCrtc failed — display may be in use by a compositor");
+  if (drmModeSetCrtc(fd_, crtc_id_, fb_id_, 0, 0, &conn_id_, 1, &mode_) < 0) {
+    const int error = errno;
+    throw std::system_error(error, std::generic_category(),
+                            "drmModeSetCrtc failed — display may be in use by a compositor");
+  }
 }
 
 void DrmDevice::dirty(const drmModeClip* clips, uint32_t count) {

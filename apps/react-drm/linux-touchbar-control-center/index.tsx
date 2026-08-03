@@ -65,9 +65,18 @@ async function main() {
     });
   }
 
+  let shuttingDown = false;
   function shutdown() {
+    // A clean shutdown touches the DRM device (suspend -> close) and runs the
+    // React effect cleanups, both of which can block on wedged T2 hardware.
+    // A second Ctrl+C / signal must therefore always get out, even mid-close.
+    if (shuttingDown) { process.kill(process.pid, 'SIGKILL'); return; }
+    shuttingDown = true;
+    try { result.suspend(); } catch {}
     try { result.unmount(); } catch {}
-    process.kill(process.pid, 'SIGKILL');
+    // stdout is a pipe to journald under react-drm.service and Node writes to
+    // it asynchronously; exiting straight away would drop the shutdown logs.
+    setImmediate(() => process.exit(0));
   }
 
   process.on('SIGINT', shutdown);
