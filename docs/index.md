@@ -6,6 +6,7 @@
 
 ## Documentation
 
+- [Features & status](features.md)
 - [Installation](installation.md)
 - [Audio DSP](post-install/audio-dsp.md)
 - [Configure GPUs](post-install/configuring-gpus.md)

@@ -6,6 +6,15 @@ docs_dir: docs
 site_dir: site
 extra_css:
   - stylesheets/extra.css
+extra_javascript:
+  - javascripts/feature-board.js
+hooks:
+  - scripts/upstream/mkdocs_hook.py
+# mkdocs serve only watches docs/ and this file. Data edits rebuild live;
+# editing the renderers below needs a serve restart, the modules stay cached.
+watch:
+  - data
+  - scripts/upstream
 markdown_extensions:
   - attr_list
 
@@ -26,6 +35,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Features & status: features.md
   - Installation: installation.md
   - Post-install:
       - Audio DSP: post-install/audio-dsp.md

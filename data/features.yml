@@ -1,0 +1,200 @@
+# Single source of truth for the "Features & status" page and for the upstream
+# announcements in the #upstream-work Discord channel.
+#
+# Required: id, title, state, upstream, updated
+# Optional: authors, link, help, notes, project, subsystem, version
+#
+# state:    in-progress | planned | available    — what a user gets today
+# upstream: downstream | preparing | submitted | merged | revoked | rejected | stale
+#
+# The two are independent: audio DSP is worked on but will never go upstream, and
+# a merged kernel patch may not be user-visible at all.
+#
+# `link` makes both the title and the upstream label clickable. It is either an
+# https:// URL or a page below docs/, e.g. post-install/audio-dsp.md. Once
+# something has been submitted upstream, link (the patch or MR) and authors are
+# required. `help` states what help is needed and puts the row into the
+# "Help wanted" filter.
+#
+# `id` is the anchor for the Discord message and must stay stable — renaming one
+# announces the item a second time. Only rows that have been submitted upstream
+# are announced at all.
+
+items:
+  # --- Being worked on -------------------------------------------------------
+
+  - id: audio-dsp
+    title: "Audio DSP"
+    state: in-progress
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2bce_audio
+    authors:
+      - deqrocks
+    link: post-install/audio-dsp.md
+    updated: "2026-08-03"
+    notes: >-
+      Speaker protection and FIR filter profiles that make the internal speakers
+      usable at full volume. Tied to Apple's hardware, so this stays downstream.
+    help: >-
+      Measurements and listening tests on machines other than the 15,1.
+
+  - id: package-c-states
+    title: "Package C-states"
+    state: in-progress
+    upstream: preparing
+    project: KAIT2EN Fedora
+    subsystem: Power management
+    authors:
+      - deqrocks
+    updated: "2026-08-03"
+    notes: >-
+      Getting the platform into deep package C-states so idle power draw and
+      battery life come closer to macOS.
+    help: >-
+      Powertop and turbostat readings from different T2 models.
+
+  - id: keyboard-backlight-reenumeration
+    title: "Keyboard backlight after re-enumeration"
+    state: in-progress
+    upstream: submitted
+    project: upower
+    authors:
+      - deqrocks
+    link: "https://gitlab.freedesktop.org/upower/upower/-/merge_requests/335"
+    updated: "2026-07-29"
+    notes: The backlight did not come back on after the keyboard re-enumerated.
+
+  - id: thunderbolt-device-links
+    title: "Thunderbolt device links"
+    state: in-progress
+    upstream: submitted
+    version: v7
+    project: Linux kernel
+    subsystem: Thunderbolt
+    authors:
+      - ruiCON
+    link: "https://lore.kernel.org/all/20260731161842.12636-1-atharvatiwarilinuxdev@gmail.com/"
+    updated: "2026-07-31"
+
+  # --- Available -------------------------------------------------------------
+
+  - id: display-brightness-after-reboot
+    title: "Display brightness restored after reboot"
+    state: available
+    upstream: merged
+    project: systemd
+    subsystem: udev
+    authors:
+      - deqrocks
+    link: "https://github.com/systemd/systemd/pull/43255"
+    updated: "2026-08-02"
+    notes: >-
+      The backlight had no stable path ID, so the brightness setting was lost on
+      every reboot.
+
+  - id: thunderbolt-controller-power-15-1
+    title: "Thunderbolt controller stays powered (15,1)"
+    state: available
+    upstream: revoked
+    version: v1
+    project: Linux kernel
+    subsystem: USB / xHCI
+    authors:
+      - deqrocks
+    link: "https://lore.kernel.org/all/20260730210655.15514-1-dev@deq.rocks/"
+    updated: "2026-07-30"
+    notes: Withdrawn upstream, still carried downstream in patches/xhci.
+
+  - id: volume-slider-crackling
+    title: "Volume slider without DSP crackling"
+    state: available
+    upstream: merged
+    project: GNOME Shell
+    subsystem: Quick Settings
+    authors:
+      - deqrocks
+    link: "https://gitlab.gnome.org/GNOME/gnome-shell/-/merge_requests/4302"
+    updated: "2026-07-27"
+    notes: >-
+      Dragging the Quick Settings volume slider caused audible crackles on
+      PipeWire DSP sinks.
+
+  - id: fn-double-press-layer-switch
+    title: "Fn double press switches F-keys and media controls"
+    state: available
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: HID / Touch Bar
+    authors:
+      - AdityaGarg8
+      - deqrocks
+    link: "https://lore.kernel.org/all/20260722141221.13844-1-dev@deq.rocks/"
+    updated: "2026-07-22"
+
+  - id: dgpu-wakeup-15-1
+    title: "dGPU wakes up on MacBookPro15,1"
+    state: available
+    upstream: merged
+    version: v1
+    project: Linux kernel
+    subsystem: PCI / amdgpu
+    authors:
+      - deqrocks
+    link: "https://lore.kernel.org/all/20260722125734.6541-1-dev@deq.rocks/"
+    updated: "2026-07-22"
+    notes: The SMU was dead after resume, leaving the discrete GPU unusable.
+
+  - id: keyboard-backlight-brightness
+    title: "Keyboard backlight brightness levels"
+    state: available
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: HID / Input
+    authors:
+      - deqrocks
+    link: "https://lore.kernel.org/linux-input/20260718151241.7496-1-dev@deq.rocks/"
+    updated: "2026-07-18"
+    notes: The backlight reports were parsed with the wrong endianness.
+
+  - id: keyboard-backlight-after-resume
+    title: "Keyboard backlight after resume"
+    state: available
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: HID / Input
+    authors:
+      - deqrocks
+    link: "https://lore.kernel.org/linux-input/20260718121527.15924-1-dev@deq.rocks/T/#t"
+    updated: "2026-07-18"
+    notes: >-
+      The butterfly keyboard backlight came back on at 0% after resume, and now
+      uses the same LED naming as the magic keyboards.
+
+  - id: react-drm-control-center
+    title: "Touch Bar control center (react-drm)"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2bdrm / react-drm
+    authors:
+      - deqrocks
+    updated: "2026-08-03"
+    notes: >-
+      Replaces the standard Touch Bar interface: function keys, media and
+      brightness controls, application-aware panels and system information.
+
+  - id: hybrid-graphics
+    title: "Hybrid graphics and dGPU power management"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2gmux / amdgpu
+    authors:
+      - deqrocks
+    link: post-install/configuring-gpus.md
+    updated: "2026-08-03"
+    notes: GPU switching, power profiles and the ACPI sequences the 15,1 and 16,1 need.
