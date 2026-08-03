@@ -37,7 +37,7 @@ items:
       Speaker protection and FIR filter profiles that make the internal speakers
       usable at full volume. Tied to Apple's hardware, so this stays downstream.
     help: >-
-      Measurements and listening tests on machines other than the 15,1.
+      FIRs from machines not yet supported.
 
   - id: package-c-states
     title: "Package C-states"
@@ -104,7 +104,7 @@ items:
       - deqrocks
     link: "https://lore.kernel.org/all/20260730210655.15514-1-dev@deq.rocks/"
     updated: "2026-07-30"
-    notes: Withdrawn upstream, still carried downstream in patches/xhci.
+    notes: Withdrawn upstream, still investigating.
 
   - id: volume-slider-crackling
     title: "Volume slider without DSP crackling"
@@ -197,4 +197,4 @@ items:
       - deqrocks
     link: post-install/configuring-gpus.md
     updated: "2026-08-03"
-    notes: GPU switching, power profiles and the ACPI sequences the 15,1 and 16,1 need.
+    notes: Runtime GPU switching.
