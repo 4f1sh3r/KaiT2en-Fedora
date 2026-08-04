@@ -31,11 +31,11 @@
     },
     "keyboard-backlight-brightness": {
       "message_id": "1533951156437520404",
-      "hash": "6fcf2cbc8b6cf67405c210ca3ac3148bb22ee1073845ec39ef773b3c1a8326cd"
+      "hash": "b05360dea560c0de84d4c015affb11cde450ba9eb88cc0756f1f617c356baa5b"
     },
     "keyboard-backlight-after-resume": {
       "message_id": "1533951161063968828",
-      "hash": "245055465f4158a1d2a49ebcc45a86fe0f35f1de5f8c6450c33b4c89858c01f8"
+      "hash": "832e5f845e68fd980f17282c81ad27a028aa1c9c11c3b235acf9763495705b65"
     }
   }
 }
