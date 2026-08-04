@@ -84,7 +84,6 @@ device without registering another battery:
 ```text
 power_event_count
 power_last_event_ns
-smc_battery_status
 smc_battery_capacity_percent
 smc_battery_voltage_uv
 smc_battery_current_ua
@@ -102,10 +101,7 @@ are read on demand. There is no periodic kernel polling.
 
 The driver subscribes to the standard power-supply notifier chain. An ACPI SBS
 battery or adapter notification schedules an SMC status snapshot and increments
-`power_event_count`. `BNCR` is recorded as battery-state telemetry but is not
-used to suppress notifications: its value can remain unchanged across a charger
-connection event. This tests event-driven SMC updates without taking over the
-private SBS host-controller callback.
+`power_event_count`.
 
 To verify the event path, read the counter, connect or disconnect the charger,
 and read it again:

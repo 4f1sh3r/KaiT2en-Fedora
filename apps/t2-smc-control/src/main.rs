@@ -335,12 +335,6 @@ fn read_power_telemetry(hwmon: &Path) -> Vec<(String, String)> {
     };
 
     add("Power events", "power_event_count", |v| v.to_string());
-    add("SMC battery state", "smc_battery_status", |v| match v {
-        0 => "Charging".into(),
-        1 => "Discharging".into(),
-        4 => "Full".into(),
-        _ => format!("Not charging ({v})"),
-    });
     add("Battery capacity", "smc_battery_capacity_percent", |v| {
         format!("{v}%")
     });
