@@ -2,6 +2,10 @@
 
 # KAIT2EN Fedora Documentation
 
+KAIT2EN brings cutting edge T2 Mac support to stock Fedora using DKMS modules.
+You will receive kernel updates directly from Fedora and the latest T2 modules
+from us.
+
 [GitHub repository](https://github.com/kaiT2en/KaiT2en-Fedora)
 
 ## Documentation
