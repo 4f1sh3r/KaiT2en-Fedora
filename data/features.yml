@@ -149,7 +149,7 @@ items:
   - id: keyboard-backlight-brightness
     title: "Keyboard backlight brightness levels"
     state: available
-    upstream: submitted
+    upstream: merged
     version: v1
     project: Linux kernel
     subsystem: HID / Input
@@ -162,7 +162,7 @@ items:
   - id: keyboard-backlight-after-resume
     title: "Keyboard backlight after resume"
     state: available
-    upstream: submitted
+    upstream: merged
     version: v1
     project: Linux kernel
     subsystem: HID / Input
