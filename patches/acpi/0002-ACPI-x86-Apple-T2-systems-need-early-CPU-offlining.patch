@@ -3,6 +3,8 @@ From: Andre Eikmeyer <dev@deq.rocks>
 Date: Fri, 24 Jul 2026 17:37:27 +0200
 Subject: [PATCH 2/2] ACPI: x86: Apple T2 systems need early CPU offlining
 
+Hello everyone, 
+
 Linux reports _OSI("Darwin") on x86 Apple systems. On T2 Macs, the
 selected firmware suspend path makes secondary CPU startup during early
 resume take several seconds per CPU. The same CPUs can be brought online
