@@ -74,13 +74,13 @@ repair_empty_grub_cmdline() {
 	info "restored GRUB_CMDLINE_LINUX from the installed kernel command line"
 }
 
-# Clean up both quoted forms previously installed by KaiT2en.
 REMOVE_ARGS=(
 	"'acpi_osi=Windows 2012'"
 	"acpi_osi='Windows 2012'"
 	intel_iommu
 	iommu
 	pm_async
+	pci
 	pcie_ports
 	pcie_aspm
 	pcie_aspm.policy
@@ -98,6 +98,7 @@ ADD_ARGS=(
 	"iommu=pt"
 	"pm_async=off"
 	"pcie_ports=native"
+	"pci=noaer"
 	"mem_sleep_default=deep"
 )
 
