@@ -31,6 +31,7 @@ kernel updates. `modinfo -n <module>` prints the installed kernel object path.
 
 | DKMS source | Installed module | Purpose |
 | --- | --- | --- |
+| `brcmfmac_kait2en` | `brcmfmac` | Test build using Broadcom firmware power-save mode `PM_MAX` by default |
 | `t2bce_dma` | `t2bce_dma` | Shared DMA queue engine for T2 BCE clients |
 | `t2bce_core` | `t2bce_core` | T2 bridge PCI device, mailbox, power management and transport |
 | `t2bce_vhci` | `t2bce_vhci` | Virtual USB host for internal T2 input devices |
@@ -47,6 +48,13 @@ kernel updates. `modinfo -n <module>` prints the installed kernel object path.
 The installer also writes
 `/etc/kernel/install.d/39-kait2en-dkms-cleanup.install`. The hook removes stale
 DKMS build state before a kernel installation is retried.
+
+`brcmfmac_kait2en` replaces Fedora's in-tree module through DKMS's normal
+out-of-tree module precedence. It deliberately installs no `modprobe.d` option,
+so the stock module remains a safe fallback if DKMS cannot build for a later
+kernel. Remove the test module with
+`sudo bash scripts/fedora/restore-stock-brcmfmac.sh`; reboot afterwards, or add
+`--reload` to switch immediately at the cost of a brief Wi-Fi disconnect.
 
 ## Kernel arguments
 

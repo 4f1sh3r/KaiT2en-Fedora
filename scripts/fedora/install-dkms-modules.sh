@@ -8,6 +8,7 @@ require_fedora
 require_command dkms make install rm chown mktemp depmod sed tar find grep
 
 MODULES=(
+	brcmfmac_kait2en
 	t2bce_dma
 	t2bce_core
 	t2bce_vhci
@@ -64,6 +65,7 @@ kernelver=${2:-}
 [[ "$command" == add && -n "$kernelver" ]] || exit 0
 
 modules=(
+	brcmfmac_kait2en
 	t2bce_dma
 	t2bce_core
 	t2bce_vhci
