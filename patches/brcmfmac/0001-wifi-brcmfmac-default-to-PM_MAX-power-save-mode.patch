@@ -1,4 +1,4 @@
-From 6a1f4422ab1d756f72f160ec3e1f8885ae7e2b4b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: 4f1sh3r <git@syn-flut.de>
 Date: Thu, 6 Aug 2026 22:14:26 +0200
 Subject: [PATCH] wifi: brcmfmac: default to PM_MAX power-save mode
