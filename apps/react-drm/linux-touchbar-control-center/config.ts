@@ -19,7 +19,7 @@ export const DISPLAY = {
   offSecs:          60,   
   pixelShiftSecs:   300,  
   activeBrightness: 2,
-  flushFps:         30,
+  flushFps:         60,
   partialFlush:     false, // true = not ready yet
 } as const;
 
