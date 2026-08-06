@@ -1,0 +1,84 @@
+From 6a1f4422ab1d756f72f160ec3e1f8885ae7e2b4b Mon Sep 17 00:00:00 2001
+From: 4f1sh3r <git@syn-flut.de>
+Date: Thu, 6 Aug 2026 22:14:26 +0200
+Subject: [PATCH] wifi: brcmfmac: default to PM_MAX power-save mode
+
+brcmfmac currently selects the firmware's PM_FAST mode whenever cfg80211
+enables Wi-Fi power saving. On the BCM4364 in T2 Macs, PM_FAST keeps the
+device's PCIe latency requirement low while associated. That prevents the
+platform from spending much time in deep package C-states.
+
+Make the firmware mode selectable and use PM_MAX by default. Validate the
+module parameter so only the two supported power-saving modes can be
+selected. Apply the selected mode both during dongle setup and in later
+cfg80211 power-management requests. Keep PM_OFF unchanged when cfg80211
+disables power saving and keep the existing PM_OFF exception for P2P
+clients.
+
+The default can be overridden with brcmfmac.power_save_mode=2 to restore
+PM_FAST without rebuilding the module. Add a module-information marker so
+testers can distinguish this variant from the stock module with modinfo.
+
+Signed-off-by: 4f1sh3r <git@syn-flut.de>
+---
+ .../broadcom/brcm80211/brcmfmac/cfg80211.c    | 32 +++++++++++++++++--
+ 1 file changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+@@ -88,6 +88,34 @@
+ 
+ #define BRCMF_PS_MAX_TIMEOUT_MS		2000
+ 
++static int brcmf_power_save_mode = PM_MAX;
++
++static int brcmf_param_set_power_save_mode(const char *val,
++					   const struct kernel_param *kp)
++{
++	int mode;
++	int err;
++
++	err = kstrtoint(val, 0, &mode);
++	if (err)
++		return err;
++	if (mode != PM_MAX && mode != PM_FAST)
++		return -EINVAL;
++
++	return param_set_int(val, kp);
++}
++
++static const struct kernel_param_ops brcmf_power_save_mode_ops = {
++	.set = brcmf_param_set_power_save_mode,
++	.get = param_get_int,
++};
++
++module_param_cb(power_save_mode, &brcmf_power_save_mode_ops,
++		&brcmf_power_save_mode, 0644);
++MODULE_PARM_DESC(power_save_mode,
++		 "Firmware power-save mode: 1=PM_MAX (default), 2=PM_FAST");
++MODULE_INFO(kait2en_pm_default, "PM_MAX");
++
+ /* Dump obss definitions */
+ #define ACS_MSRMNT_DELAY		80
+ #define CHAN_NOISE_DUMMY		(-80)
+@@ -3316,7 +3344,7 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
+ 		goto done;
+ 	}
+ 
+-	pm = enabled ? PM_FAST : PM_OFF;
++	pm = enabled ? brcmf_power_save_mode : PM_OFF;
+ 	/* Do not enable the power save after assoc if it is a p2p interface */
+ 	if (ifp->vif->wdev.iftype == NL80211_IFTYPE_P2P_CLIENT) {
+ 		brcmf_dbg(INFO, "Do not enable power save for P2P clients\n");
+@@ -7800,7 +7828,7 @@ static s32 brcmf_config_dongle(struct brcmf_cfg80211_info *cfg)
+ 
+ 	brcmf_dongle_scantime(ifp);
+ 
+-	power_mode = cfg->pwr_save ? PM_FAST : PM_OFF;
++	power_mode = cfg->pwr_save ? brcmf_power_save_mode : PM_OFF;
+ 	err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_PM, power_mode);
+ 	if (err)
+ 		goto default_conf_out;
+-- 
+2.51.0
