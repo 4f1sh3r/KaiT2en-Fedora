@@ -21,55 +21,18 @@ const INSTALLED_BIN_PATH: &str = "/usr/local/bin/t2-smc-control";
 const APPLY_RETRY_ATTEMPTS: usize = 40;
 const APPLY_RETRY_DELAY: Duration = Duration::from_millis(250);
 
-fn physical_cpu_core_count() -> Option<usize> {
-    let entries = fs::read_dir("/sys/devices/system/cpu").ok()?;
-    let mut cores = Vec::new();
-
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        let Some(cpu_id) = name.strip_prefix("cpu") else {
-            continue;
-        };
-        if cpu_id.parse::<usize>().is_err() {
-            continue;
-        }
-
-        let package_id = fs::read_to_string(entry.path().join("topology/physical_package_id"))
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok())
-            .unwrap_or(0);
-        let Some(core_id) = fs::read_to_string(entry.path().join("topology/core_id"))
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok())
-        else {
-            continue;
-        };
-
-        cores.push((package_id, core_id));
-    }
-
-    cores.sort_unstable();
-    cores.dedup();
-    (!cores.is_empty()).then_some(cores.len())
-}
-
-fn cpu_core_label(key: &str, physical_cores: Option<usize>) -> Option<String> {
+fn cpu_core_label(key: &str) -> Option<String> {
     let bytes = key.as_bytes();
     if bytes.len() != 4 || bytes[0] != b'T' || bytes[1] != b'C' || bytes[3] != b'C' {
         return None;
     }
 
-    let smc_index = (bytes[2] as char).to_digit(10)? as usize;
+    let smc_index = (bytes[2] as char).to_digit(16)? as usize;
     if smc_index == 0 {
         return None;
     }
 
     let core_index = smc_index - 1;
-    if physical_cores.is_some_and(|count| core_index >= count) {
-        return None;
-    }
-
     Some(format!("CPU Core {core_index}"))
 }
 
@@ -100,8 +63,8 @@ fn heatpipe_label(key: &str) -> Option<String> {
     }
 }
 
-fn sensor_label(key: &str, physical_cores: Option<usize>) -> String {
-    if let Some(label) = cpu_core_label(key, physical_cores) {
+fn sensor_label(key: &str) -> String {
+    if let Some(label) = cpu_core_label(key) {
         return label;
     }
     if let Some(label) = memory_label(key) {
@@ -290,7 +253,6 @@ fn read_sensors(hwmon: &Path) -> Vec<(String, Option<u32>)> {
         return vec![];
     };
     let mut sensors = Vec::new();
-    let physical_cores = physical_cpu_core_count();
     for entry in entries.flatten() {
         let key = fs::read_to_string(&entry)
             .ok()
@@ -306,7 +268,7 @@ fn read_sensors(hwmon: &Path) -> Vec<(String, Option<u32>)> {
                 .to_string_lossy()
                 .replace("_label", "_input"),
         );
-        sensors.push((sensor_label(&key, physical_cores), read_u32(&input)));
+        sensors.push((sensor_label(&key), read_u32(&input)));
     }
     sensors.sort_by(|a, b| a.0.cmp(&b.0));
     sensors.dedup_by(|a, b| a.0 == b.0);
