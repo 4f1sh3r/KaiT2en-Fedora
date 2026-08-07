@@ -8,12 +8,40 @@ terminal_output console
 set kait2en_efi=$root
 search --no-floppy --label --set=fedora @ISO_VOLUME_LABEL@
 
+# Must be set after the search line: GRUB expands these at assignment time.
+set kait2en_common="root=live:CDLABEL=@ISO_VOLUME_LABEL@ rd.live.image inst.updates=file:///run/kait2en/updates.img initcall_blacklist=magicmouse_driver_init"
+set kait2en_blacklist="acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux"
+set kait2en_initrd="($fedora)@ISO_INITRD_PATH@ ($kait2en_efi)/EFI/BOOT/kait2en/kait2en-input-initramfs.img ($kait2en_efi)/EFI/BOOT/kait2en/kait2en-wifi-initramfs.img"
+
 menuentry "Start Fedora Live with KaiT2en input drivers" --class fedora --class gnu-linux --class gnu --class os {
-	linux ($fedora)@ISO_KERNEL_PATH@ quiet rhgb root=live:CDLABEL=@ISO_VOLUME_LABEL@ rd.live.image inst.updates=file:///run/kait2en/updates.img initcall_blacklist=magicmouse_driver_init module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux
-	initrd ($fedora)@ISO_INITRD_PATH@ ($kait2en_efi)/EFI/BOOT/kait2en/kait2en-input-initramfs.img ($kait2en_efi)/EFI/BOOT/kait2en/kait2en-wifi-initramfs.img
+	linux ($fedora)@ISO_KERNEL_PATH@ quiet rhgb ${kait2en_common} module_blacklist=${kait2en_blacklist}
+	initrd ${kait2en_initrd}
 }
 
 menuentry "Start standard Fedora Live" --class fedora --class gnu-linux --class gnu --class os {
 	linux ($fedora)@ISO_KERNEL_PATH@ quiet rhgb root=live:CDLABEL=@ISO_VOLUME_LABEL@ rd.live.image
 	initrd ($fedora)@ISO_INITRD_PATH@
+}
+
+# Apple firmware gives GRUB no Ctrl-X or F10, so boot options cannot be edited
+# on a T2 Mac and every option set needs its own entry.
+
+menuentry "Troubleshooting: KaiT2en with boot messages" --class fedora --class gnu-linux --class gnu --class os {
+	linux ($fedora)@ISO_KERNEL_PATH@ ${kait2en_common} module_blacklist=${kait2en_blacklist} plymouth.enable=0
+	initrd ${kait2en_initrd}
+}
+
+menuentry "Troubleshooting: KaiT2en with the dedicated GPU disabled" --class fedora --class gnu-linux --class gnu --class os {
+	linux ($fedora)@ISO_KERNEL_PATH@ ${kait2en_common} module_blacklist=${kait2en_blacklist},amdgpu plymouth.enable=0
+	initrd ${kait2en_initrd}
+}
+
+menuentry "Troubleshooting: KaiT2en with basic graphics" --class fedora --class gnu-linux --class gnu --class os {
+	linux ($fedora)@ISO_KERNEL_PATH@ ${kait2en_common} module_blacklist=${kait2en_blacklist} plymouth.enable=0 nomodeset
+	initrd ${kait2en_initrd}
+}
+
+menuentry "Troubleshooting: KaiT2en with basic graphics and conservative PCIe" --class fedora --class gnu-linux --class gnu --class os {
+	linux ($fedora)@ISO_KERNEL_PATH@ ${kait2en_common} module_blacklist=${kait2en_blacklist},amdgpu plymouth.enable=0 nomodeset pcie_ports=compat
+	initrd ${kait2en_initrd}
 }
