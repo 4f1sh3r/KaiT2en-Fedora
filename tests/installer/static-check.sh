@@ -63,6 +63,9 @@ END { exit !(entries >= 5 && entries == overlays) }
 ' packaging/installer/grub.cfg.in
 grep -Fq 'plymouth.enable=0' packaging/installer/grub.cfg.in
 grep -Fq 'nomodeset' packaging/installer/grub.cfg.in
+if grep -Eq '^set kait2en_blacklist=.*apple_gmux' packaging/installer/grub.cfg.in; then
+	exit 1
+fi
 ! rg -n 'INPUT_COMPAT_PATCH|compat_patch|packaging/installer/patches' \
 	packaging/installer/runtime/kait2en-prepare
 grep -Fq '"$transition_source" "$target_kernel" "$work/rpm"' \
