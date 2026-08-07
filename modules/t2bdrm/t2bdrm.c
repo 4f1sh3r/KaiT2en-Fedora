@@ -177,6 +177,8 @@ static int appletbdrm_read_response(struct appletbdrm_device *adev,
 	bool readiness_signal_received = false;
 
 retry:
+	memset(response, 0, size);
+
 	ret = usb_bulk_msg(udev, usb_rcvbulkpipe(udev, adev->in_ep),
 			   response, size, &actual_size, APPLETBDRM_BULK_MSG_TIMEOUT);
 	if (ret) {
