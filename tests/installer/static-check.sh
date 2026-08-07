@@ -55,6 +55,14 @@ done < <(git ls-files 'packaging/installer/anaconda-addon/*.py' \
 	scripts/macos
 ! rg -n 'brcmfmac(4364|4377).*alias|generic.*brcmfmac|brcmfmac[^ ]*-pcie\.txt' \
 	packaging/installer
+# A KaiT2en entry without the input initramfs loses the keyboard it rescues.
+awk '
+$1 == "linux" && index($0, "${kait2en_common}") { entries++ }
+$1 == "initrd" && $2 == "${kait2en_initrd}" { overlays++ }
+END { exit !(entries >= 5 && entries == overlays) }
+' packaging/installer/grub.cfg.in
+grep -Fq 'plymouth.enable=0' packaging/installer/grub.cfg.in
+grep -Fq 'nomodeset' packaging/installer/grub.cfg.in
 ! rg -n 'INPUT_COMPAT_PATCH|compat_patch|packaging/installer/patches' \
 	packaging/installer/runtime/kait2en-prepare
 grep -Fq '"$transition_source" "$target_kernel" "$work/rpm"' \

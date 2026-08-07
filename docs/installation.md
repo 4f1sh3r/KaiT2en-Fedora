@@ -112,6 +112,25 @@ format an existing Linux `/boot` partition so old kernels do not fill it.
 After installation finishes, remove the USB drive and boot the installed Fedora
 system.
 
+### If the live system does not start
+
+The boot menu offers a few troubleshooting entries that are only needed when the
+normal boot does not work. Try them in this order and stop at the first one that
+works:
+
+1. `Troubleshooting: KaiT2en with boot messages` shows the console instead of
+   the logo. Photograph the last lines for a bug report.
+2. `Troubleshooting: KaiT2en with the dedicated GPU disabled` keeps `amdgpu`
+   out of the boot and leaves the Intel GPU fully accelerated.
+3. `Troubleshooting: KaiT2en with basic graphics` adds `nomodeset`. Rendering
+   is done in software and feels slow, but it can run the installation.
+4. `Troubleshooting: KaiT2en with basic graphics and conservative PCIe` is the
+   last resort and also covers a power off coming from PCIe or Thunderbolt.
+
+All of them keep the KAIT2EN input drivers. If entry 2 or 3 was needed, make
+the fix permanent afterwards as described in
+[Configure GPUs](post-install/configuring-gpus.md).
+
 ### If hardware is missing in the live system
 
 KAIT2EN supports the known T2 configurations, but Apple shipped several

@@ -296,6 +296,9 @@ gzip -dc "$INITRAMFS_IMAGE" | cpio -it --quiet |
 grep -Fq 'inst.updates=file:///run/kait2en/updates.img' "$LAYOUT/grub.cfg.in"
 grep -Fq '@ISO_VOLUME_LABEL@' "$LAYOUT/grub.cfg.in"
 ! grep -Fq 'inst.ks=' "$LAYOUT/grub.cfg.in"
+grep -Fq 'module_blacklist=${kait2en_blacklist},amdgpu' "$LAYOUT/grub.cfg.in"
+grep -Fq 'plymouth.enable=0' "$LAYOUT/grub.cfg.in"
+grep -Fq 'nomodeset' "$LAYOUT/grub.cfg.in"
 rm -f "$UPDATES_IMAGE"
 
 printf 'TARGET_ID=%q\nFEDORA_RELEASE=%q\nDEFAULT_EDITION=%q\nISO_KERNEL_RELEASE=%q\nANACONDA_VERSION=%q\n' \
