@@ -10,7 +10,7 @@ search --no-floppy --label --set=fedora @ISO_VOLUME_LABEL@
 
 # Must be set after the search line: GRUB expands these at assignment time.
 set kait2en_common="root=live:CDLABEL=@ISO_VOLUME_LABEL@ rd.live.image inst.updates=file:///run/kait2en/updates.img initcall_blacklist=magicmouse_driver_init"
-set kait2en_blacklist="acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux"
+set kait2en_blacklist="acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge"
 set kait2en_initrd="($fedora)@ISO_INITRD_PATH@ ($kait2en_efi)/EFI/BOOT/kait2en/kait2en-input-initramfs.img ($kait2en_efi)/EFI/BOOT/kait2en/kait2en-wifi-initramfs.img"
 
 menuentry "Start Fedora Live with KaiT2en input drivers" --class fedora --class gnu-linux --class gnu --class os {
