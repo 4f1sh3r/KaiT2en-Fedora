@@ -60,6 +60,16 @@ done < <(git ls-files 'packaging/installer/anaconda-addon/*.py' \
 	packaging/installer/runtime/kait2en-prepare
 grep -Fq '"$transition_source" "$target_kernel" "$work/rpm"' \
 	packaging/installer/runtime/kait2en-prepare
+grep -Fq 'options brcmfmac max_pm=1' \
+	modules/brcmfmac_kait2en/kait2en-brcmfmac-pm-max.conf
+grep -Fq 'module_param_named(max_pm, brcmf_max_pm, bool, 0400);' \
+	modules/brcmfmac_kait2en/common.c
+grep -Fq 'settings->default_pm = brcmf_max_pm ? PM_MAX : PM_FAST;' \
+	modules/brcmfmac_kait2en/common.c
+grep -Fq 'kait2en-brcmfmac-pm-max.conf' \
+	scripts/fedora/install-dkms-modules.sh
+grep -Fq 'rm -f "$BRCMFMAC_PM_CONFIG"' \
+	scripts/fedora/restore-stock-brcmfmac.sh
 # The transition modules only live in the initramfs, so they must be forced in.
 grep -Fq 'dracut --force --force-drivers' \
 	packaging/installer/runtime/kait2en-prepare

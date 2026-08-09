@@ -34,6 +34,7 @@ LEGACY_MODULES=(
 
 DKMS_POST_TRANSACTION_OVERRIDE="/etc/dkms/framework.conf.d/kait2en-disable-post-transaction.conf"
 DKMS_KERNEL_INSTALL_HOOK="/etc/kernel/install.d/39-kait2en-dkms-cleanup.install"
+BRCMFMAC_PM_CONFIG="/etc/modprobe.d/kait2en-brcmfmac-pm-max.conf"
 
 restore_dkms_post_transaction() {
 	rm -f "$DKMS_POST_TRANSACTION_OVERRIDE"
@@ -284,6 +285,11 @@ remove_repo_dkms_modules
 for module in "${MODULES[@]}"; do
 	install_module "$module"
 done
+
+info "enabling brcmfmac PM_MAX for the KaiT2en test module"
+install -D -o root -g root -m 0644 \
+	"$REPO_ROOT/modules/brcmfmac_kait2en/kait2en-brcmfmac-pm-max.conf" \
+	"$BRCMFMAC_PM_CONFIG"
 
 depmod -a "$(kernel_release)"
 restore_dkms_post_transaction

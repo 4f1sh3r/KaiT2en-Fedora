@@ -50,9 +50,10 @@ The installer also writes
 DKMS build state before a kernel installation is retried.
 
 `brcmfmac_kait2en` replaces Fedora's in-tree module through DKMS's normal
-out-of-tree module precedence. It deliberately installs no `modprobe.d` option,
-so the stock module remains a safe fallback if DKMS cannot build for a later
-kernel. Remove the test module with
+out-of-tree module precedence. Its upstream-candidate patch retains `PM_FAST`
+as the driver default; KaiT2en enables the opt-in `PM_MAX` mode through
+`/etc/modprobe.d/kait2en-brcmfmac-pm-max.conf`. Remove the test module and that
+option with
 `sudo bash scripts/fedora/restore-stock-brcmfmac.sh`; reboot afterwards, or add
 `--reload` to switch immediately at the cost of a brief Wi-Fi disconnect.
 

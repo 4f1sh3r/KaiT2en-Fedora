@@ -88,34 +88,6 @@
 
 #define BRCMF_PS_MAX_TIMEOUT_MS		2000
 
-static int brcmf_power_save_mode = PM_MAX;
-
-static int brcmf_param_set_power_save_mode(const char *val,
-					   const struct kernel_param *kp)
-{
-	int mode;
-	int err;
-
-	err = kstrtoint(val, 0, &mode);
-	if (err)
-		return err;
-	if (mode != PM_MAX && mode != PM_FAST)
-		return -EINVAL;
-
-	return param_set_int(val, kp);
-}
-
-static const struct kernel_param_ops brcmf_power_save_mode_ops = {
-	.set = brcmf_param_set_power_save_mode,
-	.get = param_get_int,
-};
-
-module_param_cb(power_save_mode, &brcmf_power_save_mode_ops,
-		&brcmf_power_save_mode, 0644);
-MODULE_PARM_DESC(power_save_mode,
-		 "Firmware power-save mode: 1=PM_MAX (default), 2=PM_FAST");
-MODULE_INFO(kait2en_pm_default, "PM_MAX");
-
 /* Dump obss definitions */
 #define ACS_MSRMNT_DELAY		80
 #define CHAN_NOISE_DUMMY		(-80)
@@ -3344,7 +3316,7 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
 		goto done;
 	}
 
-	pm = enabled ? brcmf_power_save_mode : PM_OFF;
+	pm = enabled ? ifp->drvr->settings->default_pm : PM_OFF;
 	/* Do not enable the power save after assoc if it is a p2p interface */
 	if (ifp->vif->wdev.iftype == NL80211_IFTYPE_P2P_CLIENT) {
 		brcmf_dbg(INFO, "Do not enable power save for P2P clients\n");
@@ -7828,7 +7800,7 @@ static s32 brcmf_config_dongle(struct brcmf_cfg80211_info *cfg)
 
 	brcmf_dongle_scantime(ifp);
 
-	power_mode = cfg->pwr_save ? brcmf_power_save_mode : PM_OFF;
+	power_mode = cfg->pwr_save ? ifp->drvr->settings->default_pm : PM_OFF;
 	err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_PM, power_mode);
 	if (err)
 		goto default_conf_out;

@@ -8,17 +8,19 @@ such as Fedora's `brcmfmac_wcc` module.
 The source is the `brcmfmac` and `brcm80211/include` subtree from Linux 7.1.6,
 as shipped by Fedora in `kernel-7.1.6-201.fc44.src.rpm`. Files retain their
 upstream SPDX identifiers and copyright notices. Fedora's
-`patch-7.1-redhat.patch` did not change this subtree. The KaiT2en change is
-limited to `cfg80211.c`:
+`patch-7.1-redhat.patch` did not change this subtree. The driver carries the
+same opt-in change intended for upstream submission:
 
-- expose `power_save_mode` with `1=PM_MAX` and `2=PM_FAST`;
-- default the test module to `PM_MAX`;
-- use that selection when firmware power saving is enabled.
+- expose a read-only `max_pm` module parameter;
+- retain upstream's `PM_FAST` default when the parameter is absent;
+- select `PM_MAX` when `max_pm=1` and firmware power saving is enabled.
 
-The default intentionally lives in this module instead of an
-`/etc/modprobe.d` option. If DKMS cannot build for a later kernel, Fedora's
-stock module therefore remains loadable and falls back to its normal
-`PM_FAST` behavior.
+The KaiT2en installer writes
+`/etc/modprobe.d/kait2en-brcmfmac-pm-max.conf` to activate the opt-in for
+community testing. The restore script removes this file before restoring
+Fedora's stock module. Until the parameter is accepted upstream, a DKMS build
+failure on a new kernel also requires running the restore script before the
+stock module can load.
 
 Run the regular KaiT2en installer to register and build the module. It becomes
 active after the next reboot. To remove it and restore Fedora's module, run:

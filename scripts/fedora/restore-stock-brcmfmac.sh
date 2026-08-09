@@ -10,6 +10,7 @@ require_command dkms dracut find grep install lsinitrd modinfo modprobe depmod r
 PACKAGE=brcmfmac_kait2en
 KERNEL_HOOK=/etc/kernel/install.d/39-kait2en-dkms-cleanup.install
 DKMS_POST_TRANSACTION_OVERRIDE=/etc/dkms/framework.conf.d/kait2en-disable-post-transaction.conf
+BRCMFMAC_PM_CONFIG=/etc/modprobe.d/kait2en-brcmfmac-pm-max.conf
 reload=false
 
 usage() {
@@ -60,13 +61,16 @@ disable_dkms_post_transaction() {
 }
 
 module_is_kait2en() {
-	[[ -e /sys/module/brcmfmac/parameters/power_save_mode ]] &&
-		[[ $(modinfo -F kait2en_pm_default brcmfmac 2>/dev/null || true) == PM_MAX ]]
+	local filename
+	filename=$(modinfo -F filename brcmfmac 2>/dev/null || true)
+	[[ "$filename" == /lib/modules/*/extra/brcmfmac.ko* ||
+		"$filename" == /lib/modules/*/updates/dkms/brcmfmac.ko* ]]
 }
 
 loaded_kait2en=false
 wcc_was_loaded=false
-[[ -e /sys/module/brcmfmac/parameters/power_save_mode ]] && loaded_kait2en=true
+[[ -e /sys/module/brcmfmac/parameters/power_save_mode ||
+	-e /sys/module/brcmfmac/parameters/max_pm ]] && loaded_kait2en=true
 [[ -d /sys/module/brcmfmac_wcc ]] && wcc_was_loaded=true
 
 disable_dkms_post_transaction
@@ -89,6 +93,11 @@ done < <(find /usr/src -mindepth 1 -maxdepth 1 -type d \
 
 if dkms status -m "$PACKAGE" 2>/dev/null | grep -q .; then
 	fail "DKMS still contains $PACKAGE state"
+fi
+
+if [[ -e "$BRCMFMAC_PM_CONFIG" ]]; then
+	rm -f "$BRCMFMAC_PM_CONFIG"
+	info "removed the brcmfmac PM_MAX module option"
 fi
 
 if [[ -f "$KERNEL_HOOK" ]] && grep -Eq '^[[:space:]]*brcmfmac_kait2en[[:space:]]*$' "$KERNEL_HOOK"; then
@@ -128,7 +137,8 @@ if $reload && $loaded_kait2en; then
 	modprobe brcmfmac
 	$wcc_was_loaded && modprobe brcmfmac_wcc
 
-	[[ ! -e /sys/module/brcmfmac/parameters/power_save_mode ]] ||
+	[[ ! -e /sys/module/brcmfmac/parameters/power_save_mode &&
+		! -e /sys/module/brcmfmac/parameters/max_pm ]] ||
 		fail "KaiT2en brcmfmac is still active after reload"
 	info "Fedora's stock brcmfmac module is active"
 elif $loaded_kait2en; then
