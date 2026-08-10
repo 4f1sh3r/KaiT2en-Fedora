@@ -11,7 +11,7 @@
     },
     "thunderbolt-device-links": {
       "message_id": "1533951135214469344",
-      "hash": "50b92851fb543f4f1b6c60b3eb7c5eeccd24867f54ec4c5122a94f22db8d6553"
+      "hash": "547f96d0783dfdb47e2b1453e301182d9757438c609fdf3c63c7d47da531246c"
     },
     "touchbar-runtime-pm-deadlock": {
       "message_id": "1536401561570246706",
@@ -23,7 +23,7 @@
     },
     "thunderbolt-controller-power-15-1": {
       "message_id": "1533951141778423979",
-      "hash": "21d14df00ac0103eb314a00dc25a00298db34994b3a6fe84f7f3340f833d1ded"
+      "hash": "cd921c3dac59ed56233111fe0f6687bc38546faa43e0d867b33432de17267497"
     },
     "volume-slider-crackling": {
       "message_id": "1533951145570209955",
@@ -31,7 +31,7 @@
     },
     "fn-double-press-layer-switch": {
       "message_id": "1533951148980047994",
-      "hash": "732e5a5ed513580dcf5c3831b300bf6fc6176d0d11d5a72fab1de210d24e59fc"
+      "hash": "8fcb9f54206ac64993c760ae1f28dee6e9c4be6ab6e302344f45bf4dd6efe64e"
     },
     "dgpu-wakeup-15-1": {
       "message_id": "1533951152339554465",
@@ -39,11 +39,11 @@
     },
     "keyboard-backlight-brightness": {
       "message_id": "1533951156437520404",
-      "hash": "b05360dea560c0de84d4c015affb11cde450ba9eb88cc0756f1f617c356baa5b"
+      "hash": "43cdf30b0eed18b4e3daec8728e86ab47b5d35e24a341fd710fc0c9adbe63d16"
     },
     "keyboard-backlight-after-resume": {
       "message_id": "1533951161063968828",
-      "hash": "832e5f845e68fd980f17282c81ad27a028aa1c9c11c3b235acf9763495705b65"
+      "hash": "c29b3eb759ce6355acf94c30ccef5412f042e4517095520dd2e6f556d4b65bb0"
     }
   }
 }
