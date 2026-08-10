@@ -23,6 +23,21 @@
 items:
   # --- Being worked on -------------------------------------------------------
 
+  - id: brcmfmac-pm-max-power-management
+    title: "Wi-Fi PM_MAX power management"
+    state: in-progress
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: Wi-Fi / brcmfmac
+    authors:
+      - 4f1sh3r
+    link: "https://patchwork.kernel.org/project/linux-wireless/patch/20260810150552.25375-1-alexander@fischermail.me/"
+    updated: "2026-08-10"
+    notes: >-
+      Adds an opt-in PM_MAX mode that relaxes the Wi-Fi latency tolerance and
+      allows deeper package C-states while keeping PM_FAST as the default.
+
   - id: audio-dsp
     title: "Audio DSP"
     state: in-progress
@@ -78,6 +93,21 @@ items:
     updated: "2026-07-31"
 
   # --- Available -------------------------------------------------------------
+
+  - id: touchbar-runtime-pm-deadlock
+    title: "Touch Bar suspend and resume without PM deadlock"
+    state: available
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: HID / Touch Bar
+    authors:
+      - deqrocks
+    link: "https://patchwork.kernel.org/project/linux-input/patch/20260810140352.35866-1-dev@deq.rocks/"
+    updated: "2026-08-10"
+    notes: >-
+      Avoids nested runtime PM references in the HID callbacks that could stall
+      Touch Bar suspend and resume.
 
   - id: display-brightness-after-reboot
     title: "Display brightness restored after reboot"
