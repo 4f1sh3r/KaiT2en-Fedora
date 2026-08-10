@@ -1,0 +1,107 @@
+From a03f9416dc060cf9c964324f9821a351ef827c24 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Mon, 10 Aug 2026 15:48:36 +0200
+Subject: [PATCH] HID: apple-touchbar: avoid nested runtime PM in PM callbacks
+
+Hello everyone,
+
+Runtime suspend of the Touch Bar display stalls because its HID suspend
+callback requests a runtime PM resume while already running as part of the
+same USB PM transition. The nested request waits for the transition that
+invoked the callback to finish.
+
+The matching resume callback has the same problem. It can stall after the
+virtual host controller has successfully resumed the port.
+
+The mode update is therefore split into an active-device helper and a
+runtime-PM-managed wrapper. Both PM callbacks call the active-device
+helper and no longer acquire a nested runtime PM reference.
+
+We maintain the apple-bce/t2bce virtual host controller used on these
+systems. Although that module is not yet upstream, its runtime PM path has
+already been adjusted so the complete suspend and resume cycle works with
+this change.
+
+Thanks for your time and work.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ drivers/hid/hid-appletb-kbd.c | 37 ++++++++++++++++++++++-------------
+ 1 file changed, 23 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
+index 462010a75899..cbaf7587feea 100644
+--- a/drivers/hid/hid-appletb-kbd.c
++++ b/drivers/hid/hid-appletb-kbd.c
+@@ -87,29 +87,37 @@ static const struct key_entry appletb_kbd_keymap[] = {
+ 	{ KE_END, 0 }
+ };
+ 
+-static int appletb_kbd_set_mode(struct appletb_kbd *kbd, u8 mode)
++static int appletb_kbd_set_mode_active(struct appletb_kbd *kbd, u8 mode)
+ {
+ 	struct hid_report *report = kbd->mode_field->report;
+ 	struct hid_device *hdev = report->device;
+ 	int ret;
+ 
+-	ret = hid_hw_power(hdev, PM_HINT_FULLON);
+-	if (ret) {
+-		hid_err(hdev, "Device didn't resume (%pe)\n", ERR_PTR(ret));
+-		return ret;
+-	}
+-
+ 	ret = hid_set_field(kbd->mode_field, 0, mode);
+ 	if (ret) {
+ 		hid_err(hdev, "Failed to set mode field to %u (%pe)\n", mode, ERR_PTR(ret));
+-		goto power_normal;
++		return ret;
+ 	}
+ 
+ 	hid_hw_request(hdev, report, HID_REQ_SET_REPORT);
+ 
+ 	kbd->current_mode = mode;
++	return 0;
++}
++
++static int appletb_kbd_set_mode(struct appletb_kbd *kbd, u8 mode)
++{
++	struct hid_device *hdev = kbd->mode_field->report->device;
++	int ret;
++
++	ret = hid_hw_power(hdev, PM_HINT_FULLON);
++	if (ret) {
++		hid_err(hdev, "Device didn't resume (%pe)\n", ERR_PTR(ret));
++		return ret;
++	}
++
++	ret = appletb_kbd_set_mode_active(kbd, mode);
+ 
+-power_normal:
+ 	hid_hw_power(hdev, PM_HINT_NORMAL);
+ 
+ 	return ret;
+@@ -487,18 +495,19 @@ static int appletb_kbd_suspend(struct hid_device *hdev, pm_message_t msg)
+ 	struct appletb_kbd *kbd = hid_get_drvdata(hdev);
+ 
+ 	kbd->saved_mode = kbd->current_mode;
+-	appletb_kbd_set_mode(kbd, APPLETB_KBD_MODE_OFF);
+ 
+-	return 0;
++	/* This callback already runs as part of a USB PM transition. Taking a
++	 * nested runtime-PM reference would wait for that transition to complete
++	 * and deadlock the USB PM state machine.
++	 */
++	return appletb_kbd_set_mode_active(kbd, APPLETB_KBD_MODE_OFF);
+ }
+ 
+ static int appletb_kbd_resume(struct hid_device *hdev)
+ {
+ 	struct appletb_kbd *kbd = hid_get_drvdata(hdev);
+ 
+-	appletb_kbd_set_mode(kbd, kbd->saved_mode);
+-
+-	return 0;
++	return appletb_kbd_set_mode_active(kbd, kbd->saved_mode);
+ }
+ 
+ static const struct hid_device_id appletb_kbd_hid_ids[] = {
