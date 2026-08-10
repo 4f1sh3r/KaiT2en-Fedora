@@ -91,10 +91,28 @@ static const struct key_entry appletb_kbd_keymap[] = {
 	{ KE_END, 0 }
 };
 
-static int appletb_kbd_set_mode(struct appletb_kbd *kbd, u8 mode)
+static int appletb_kbd_set_mode_active(struct appletb_kbd *kbd, u8 mode)
 {
 	struct hid_report *report = kbd->mode_field->report;
 	struct hid_device *hdev = report->device;
+	int ret;
+
+	ret = hid_set_field(kbd->mode_field, 0, mode);
+	if (ret) {
+		hid_err(hdev, "Failed to set mode field to %u (%pe)\n", mode, ERR_PTR(ret));
+		return ret;
+	}
+
+	hid_hw_request(hdev, report, HID_REQ_SET_REPORT);
+
+	kbd->current_mode = mode;
+	hid_info(hdev, "touchbar mode request sent: mode=%u\n", mode);
+	return 0;
+}
+
+static int appletb_kbd_set_mode(struct appletb_kbd *kbd, u8 mode)
+{
+	struct hid_device *hdev = kbd->mode_field->report->device;
 	int ret;
 
 	ret = hid_hw_power(hdev, PM_HINT_FULLON);
@@ -103,18 +121,8 @@ static int appletb_kbd_set_mode(struct appletb_kbd *kbd, u8 mode)
 		return ret;
 	}
 
-	ret = hid_set_field(kbd->mode_field, 0, mode);
-	if (ret) {
-		hid_err(hdev, "Failed to set mode field to %u (%pe)\n", mode, ERR_PTR(ret));
-		goto power_normal;
-	}
+	ret = appletb_kbd_set_mode_active(kbd, mode);
 
-	hid_hw_request(hdev, report, HID_REQ_SET_REPORT);
-
-	kbd->current_mode = mode;
-	hid_info(hdev, "touchbar mode request sent: mode=%u\n", mode);
-
-power_normal:
 	hid_hw_power(hdev, PM_HINT_NORMAL);
 
 	return ret;
@@ -529,18 +537,19 @@ static int appletb_kbd_suspend(struct hid_device *hdev, pm_message_t msg)
 
 	cancel_work_sync(&kbd->mode_work);
 	kbd->saved_mode = kbd->current_mode;
-	appletb_kbd_set_mode(kbd, APPLETB_KBD_MODE_OFF);
 
-	return 0;
+	/* This callback already runs as part of a USB PM transition. Taking a
+	 * nested runtime-PM reference would wait for that transition to complete
+	 * and deadlock the USB PM state machine.
+	 */
+	return appletb_kbd_set_mode_active(kbd, APPLETB_KBD_MODE_OFF);
 }
 
 static int appletb_kbd_resume(struct hid_device *hdev)
 {
 	struct appletb_kbd *kbd = hid_get_drvdata(hdev);
 
-	appletb_kbd_set_mode(kbd, kbd->saved_mode);
-
-	return 0;
+	return appletb_kbd_set_mode_active(kbd, kbd->saved_mode);
 }
 
 static const struct hid_device_id appletb_kbd_hid_ids[] = {
