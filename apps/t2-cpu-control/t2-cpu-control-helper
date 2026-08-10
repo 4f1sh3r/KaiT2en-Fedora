@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG=/etc/t2-cpu-control.conf
+STATE_DIR=/run/t2-cpu-control
+DEFAULTS=$STATE_DIR/firmware-defaults
+
+fail() { printf 't2-cpu-control: %s\n' "$*" >&2; exit 1; }
+zone() {
+    local z
+    for z in /sys/class/powercap/intel-rapl:*; do
+        [[ -r "$z/name" ]] || continue
+        [[ $(<"$z/name") == package-* ]] && { printf '%s' "$z"; return; }
+    done
+    fail "Intel package RAPL is unavailable"
+}
+constraint() {
+    local z=$1 name=$2 f
+    for f in "$z"/constraint_*_name; do
+        [[ -r "$f" && $(<"$f") == "$name" ]] && { printf '%s' "${f%_name}"; return; }
+    done
+    fail "RAPL constraint '$name' is unavailable"
+}
+capture_defaults() {
+    local z long short
+    mkdir -p "$STATE_DIR"
+    [[ -e "$DEFAULTS" ]] && return
+    z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
+    printf 'pl1_uw=%s\npl2_uw=%s\n' \
+        "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" >"$DEFAULTS"
+}
+write_limits() {
+    local pl1=$1 pl2=$2 z long short
+    [[ $pl1 =~ ^[0-9]+$ && $pl2 =~ ^[0-9]+$ ]] || fail "limits must be integer microwatts"
+    ((pl1 >= 1000000 && pl2 >= pl1)) || fail "invalid PL1/PL2 limits"
+    z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
+    printf '%s\n' "$pl1" >"${long}_power_limit_uw"
+    printf '%s\n' "$pl2" >"${short}_power_limit_uw"
+}
+save_config() {
+    local pl1=$1 pl2=$2 enabled=$3
+    printf 'pl1_uw=%s\npl2_uw=%s\nenabled=%s\n' "$pl1" "$pl2" "$enabled" >"$CONFIG"
+    chmod 0644 "$CONFIG"
+}
+apply_saved() {
+    local pl1_uw= pl2_uw= enabled=0
+    capture_defaults
+    [[ -r "$CONFIG" ]] || return 0
+    # shellcheck disable=SC1090
+    source "$CONFIG"
+    [[ $enabled == 1 ]] || return 0
+    write_limits "$pl1_uw" "$pl2_uw"
+}
+fans_max() {
+    local d f
+    mkdir -p "$STATE_DIR"
+    systemctl is-active --quiet t2-fancontrol.service && echo 1 >"$STATE_DIR/fan-service-was-active" || true
+    systemctl stop t2-fancontrol.service || true
+    for d in /sys/class/hwmon/hwmon*; do
+        [[ -r "$d/name" ]] || continue
+        case $(<"$d/name") in t2smc|macsmc) ;; *) continue ;; esac
+        for f in "$d"/fan*_max; do
+            [[ -r "$f" ]] || continue
+            printf '%s\n' "$(<"$f")" >"${f%_max}_target"
+        done
+    done
+}
+fans_restore() {
+    local d f
+    for d in /sys/class/hwmon/hwmon*; do
+        [[ -r "$d/name" ]] || continue
+        case $(<"$d/name") in t2smc|macsmc) ;; *) continue ;; esac
+        for f in "$d"/fan*_target; do [[ -e "$f" ]] && echo 0 >"$f"; done
+    done
+    if [[ -e "$STATE_DIR/fan-service-was-active" ]]; then
+        systemctl start t2-fancontrol.service
+        rm -f "$STATE_DIR/fan-service-was-active"
+    fi
+}
+
+((EUID == 0)) || fail "root privileges are required"
+case ${1:-} in
+    apply)
+        [[ $# == 4 ]] || fail "usage: $0 apply <pl1_uw> <pl2_uw> <persist:0|1>"
+        capture_defaults; write_limits "$2" "$3"; save_config "$2" "$3" "$4"
+        ;;
+    apply-saved) apply_saved ;;
+    restore)
+        [[ -r "$DEFAULTS" ]] || fail "firmware defaults were not captured during boot; reboot first"
+        # shellcheck disable=SC1090
+        source "$DEFAULTS"
+        write_limits "$pl1_uw" "$pl2_uw"
+        save_config "$pl1_uw" "$pl2_uw" 0
+        ;;
+    disable-persistence) save_config 0 0 0 ;;
+    fans-max) fans_max ;;
+    fans-restore) fans_restore ;;
+    *) fail "unknown command" ;;
+esac

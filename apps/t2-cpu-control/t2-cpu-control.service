@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply persistent T2 CPU power limits
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/t2-cpu-control-helper apply-saved
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

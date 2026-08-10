@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+[[ ${1:-} == post ]] || exit 0
+/usr/local/libexec/t2-cpu-control-helper apply-saved

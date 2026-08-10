@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=CPU Control
+Comment=CPU power limits and thermal telemetry
+Exec=/usr/local/bin/t2-cpu-control
+TryExec=/usr/local/bin/t2-cpu-control
+Icon=org.t2cpucontrol.gtk
+Terminal=false
+Categories=System;
+StartupNotify=false

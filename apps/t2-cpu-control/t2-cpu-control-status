@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+modprobe msr
+zone=
+for z in /sys/class/powercap/intel-rapl:*; do
+    [[ -r "$z/name" && $(<"$z/name") == package-* ]] && { zone=$z; break; }
+done
+[[ -n $zone ]] || { echo error=Intel_RAPL_unavailable; exit 1; }
+for f in "$zone"/constraint_*_name; do
+    [[ -r "$f" ]] || continue
+    case $(<"$f") in
+        long_term) long=${f%_name} ;;
+        short_term) short=${f%_name} ;;
+    esac
+done
+[[ -n ${long:-} && -n ${short:-} ]] || { echo error=RAPL_constraints_unavailable; exit 1; }
+
+unit=$((16#$(rdmsr -p 0 0x606)))
+power_div=$((1 << (unit & 15)))
+tdp=$(rdmsr -p 0 0x614 2>/dev/null || echo 0)
+tdp=$((16#$tdp))
+tdp_uw=$(( (tdp & 0x7fff) * 1000000 / power_div ))
+((tdp_uw > 0)) || tdp_uw=$(<"${long}_max_power_uw")
+
+nominal_hex=$(rdmsr -p 0 0x648 2>/dev/null || echo 0)
+nominal=$((16#$nominal_hex & 0xff))
+base_uw=$tdp_uw
+base_kind=package-tdp
+down_ratio=255
+for msr in 0x649 0x64a; do
+    level_hex=$(rdmsr -p 0 "$msr" 2>/dev/null || echo 0)
+    level=$((16#$level_hex))
+    level_power=$((level & 0x7fff))
+    level_ratio=$(((level >> 16) & 0xff))
+    if ((level_power > 0 && level_ratio > 0 && level_ratio < nominal && level_ratio < down_ratio)); then
+        base_uw=$((level_power * 1000000 / power_div))
+        base_kind=ctdp-down
+        down_ratio=$level_ratio
+    fi
+done
+
+max_power_uw=$((((tdp >> 32) & 0x7fff) * 1000000 / power_div))
+((max_power_uw > 0)) || max_power_uw=$((tdp_uw * 2))
+ceiling_uw=$max_power_uw
+((ceiling_uw >= base_uw + 10000000)) || ceiling_uw=$((base_uw + 10000000))
+
+printf 'model=%s\n' "$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -1)"
+printf 'pl1_uw=%s\npl2_uw=%s\nbase_uw=%s\nbase_kind=%s\ntdp_uw=%s\nceiling_uw=%s\n' \
+    "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" \
+    "$base_uw" "$base_kind" "$tdp_uw" "$ceiling_uw"
+enabled=0
+if [[ -r /etc/t2-cpu-control.conf ]]; then
+    saved_enabled=$(sed -n 's/^enabled=//p' /etc/t2-cpu-control.conf | tail -1)
+    [[ $saved_enabled == 1 ]] && enabled=1
+fi
+printf 'persistent=%s\n' "$enabled"
+if [[ -r /run/t2-cpu-control/firmware-defaults ]]; then
+    defaults_pl1_uw=$(sed -n 's/^pl1_uw=//p' /run/t2-cpu-control/firmware-defaults)
+    defaults_pl2_uw=$(sed -n 's/^pl2_uw=//p' /run/t2-cpu-control/firmware-defaults)
+    printf 'defaults_pl1_uw=%s\ndefaults_pl2_uw=%s\n' "$defaults_pl1_uw" "$defaults_pl2_uw"
+fi
+printf 'energy_uj=%s\n' "$(<"$zone/energy_uj")"
+printf 'max_energy_uj=%s\n' "$(<"$zone/max_energy_range_uj")"
+
+target=$((16#$(rdmsr -p 0 0x1a2)))
+tjmax=$(((target >> 16) & 255)); offset=$(((target >> 24) & 15))
+printf 'tjmax=%s\ntcc_offset=%s\n' "$tjmax" "$offset"
+package_therm_hex=$(rdmsr -p 0 0x1b1 2>/dev/null || echo 0)
+package_therm=$((16#$package_therm_hex))
+package_dtj=$(((package_therm >> 16) & 127))
+((package_therm & (1 << 31))) && printf 'package_temp=%s\n' "$((tjmax - package_dtj))" || true
+perf_active=0; perf_log=0; any_prochot=0; any_thermal=0; min_dtj=127
+count=$(nproc)
+for ((cpu=0; cpu<count; cpu++)); do
+    therm=$((16#$(rdmsr -p "$cpu" 0x19c)))
+    perf_hex=$(rdmsr -p "$cpu" 0x64f 2>/dev/null || echo 0); perf=$((16#$perf_hex))
+    dtj=$(((therm >> 16) & 127)); temp=$((tjmax - dtj))
+    mhz=$(cat "/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_cur_freq" 2>/dev/null || echo 0)
+    mhz=$((mhz / 1000))
+    thermal=$((therm & 1)); prochot=$(((therm >> 2) & 1))
+    printf 'cpu.%s=%s,%s,%s,%s\n' "$cpu" "$mhz" "$temp" "$thermal" "$prochot"
+    ((dtj < min_dtj)) && min_dtj=$dtj
+    ((thermal)) && any_thermal=1 || true
+    ((prochot)) && any_prochot=1 || true
+    perf_active=$((perf_active | (perf & 0xffff)))
+    perf_log=$((perf_log | ((perf >> 16) & 0xffff)))
+done
+((perf_active & 1)) && any_prochot=1 || true
+bd=0; ((any_prochot && !any_thermal && min_dtj > offset)) && bd=1 || true
+printf 'prochot=%s\nthermal=%s\nbd_inferred=%s\nperf_active=%s\nperf_log=%s\n' \
+    "$any_prochot" "$any_thermal" "$bd" "$perf_active" "$perf_log"

@@ -272,6 +272,7 @@ if [[ "$install_mode" == all ]]; then
 	install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-fan-control"
 	install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
 	"$REPO_ROOT/apps/t2-dgpu-control/install.sh"
+	"$REPO_ROOT/apps/t2-cpu-control/install.sh"
 fi
 install_react_drm
 
