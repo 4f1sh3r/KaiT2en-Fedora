@@ -5,6 +5,14 @@ set -Eeuo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$repo_root"
 
+# Every `! rg ...` assertion below is satisfied by rg being absent, because the
+# failed lookup is what the negation asks for. A missing ripgrep turns them into
+# no-ops and the suite still reports success, so refuse to run without it.
+if ! command -v rg >/dev/null 2>&1; then
+	printf 'these checks require rg, from the ripgrep package\n' >&2
+	exit 1
+fi
+
 shell_files=(
 	packaging/installer/build-in-container.sh
 	packaging/installer/build-input-kmod.sh
