@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import signal
 import statistics
 import subprocess
 import threading
@@ -14,6 +15,8 @@ from gi.repository import Adw, GLib, Gtk
 APP_ID = "org.t2cpucontrol.gtk"
 HELPER = "/usr/local/libexec/t2-cpu-control-helper"
 STATUS = "/usr/local/libexec/t2-cpu-control-status"
+BENCHMARK = "/usr/local/libexec/t2-cpu-kernel-benchmark"
+STATUS_CACHE = "/run/t2-cpu-control/status"
 HISTORY = 180
 
 
@@ -21,10 +24,19 @@ def command(*args, check=True):
     return subprocess.run(args, text=True, capture_output=True, check=check)
 
 
+def thermald_status():
+    if command("systemctl", "is-active", "--quiet", "thermald.service", check=False).returncode == 0:
+        return "active"
+    if command("systemctl", "is-enabled", "--quiet", "thermald.service", check=False).returncode == 0:
+        return "stopped"
+    return "disabled"
+
+
 def read_status():
-    result = command("pkexec", "--disable-internal-agent", STATUS)
+    with open(STATUS_CACHE, encoding="ascii") as status_file:
+        output = status_file.read()
     data, cores = {}, []
-    for line in result.stdout.splitlines():
+    for line in output.splitlines():
         if "=" not in line:
             continue
         key, value = line.split("=", 1)
@@ -108,8 +120,19 @@ class CpuControl(Adw.Application):
         self.cpu_rows = []
         self.controls_initialized = False
         self.cancel_event = threading.Event()
+        self.status_monitor = None
+        self.thermald_state = "unknown"
 
     def activate(self, _app):
+        self.thermald_state = thermald_status()
+        if self.status_monitor is None or self.status_monitor.poll() is not None:
+            self.status_monitor = subprocess.Popen([
+                "pkexec", "--disable-internal-agent", STATUS, "monitor", str(os.getpid())
+            ])
+        if self.manual_apply_source is not None:
+            GLib.source_remove(self.manual_apply_source)
+            self.manual_apply_source = None
+        self.controls_initialized = False
         win = Adw.ApplicationWindow(application=self, title="T2 CPU Control")
         win.set_default_size(1080, 940)
         header = Adw.HeaderBar()
@@ -123,7 +146,11 @@ class CpuControl(Adw.Application):
         root.append(body); win.set_content(root)
 
         self.summary = Gtk.Label(xalign=0); self.summary.add_css_class("title-3")
-        self.status = Gtk.Label(xalign=0); self.status.add_css_class("dim-label")
+        self.status = Gtk.Label(xalign=0)
+        self.status.add_css_class("dim-label")
+        self.status.add_css_class("monospace")
+        self.status.set_width_chars(100)
+        self.status.set_max_width_chars(100)
         body.append(self.summary); body.append(self.status)
 
         controls = Gtk.Grid(column_spacing=14, column_homogeneous=True)
@@ -181,6 +208,10 @@ class CpuControl(Adw.Application):
         grid = Gtk.Grid(column_spacing=18, row_spacing=10)
         manual_content.append(grid)
         self.pl1_label = Gtk.Label(xalign=0); self.pl2_label = Gtk.Label(xalign=0)
+        for label in (self.pl1_label, self.pl2_label):
+            label.set_width_chars(21)
+            label.set_max_width_chars(21)
+            label.add_css_class("monospace")
         self.pl1 = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 5, 125, 1)
         self.pl2 = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 5, 125, 1)
         for scale in (self.pl1, self.pl2): scale.set_hexpand(True); scale.set_draw_value(False)
@@ -189,7 +220,7 @@ class CpuControl(Adw.Application):
         self.pl1.connect("value-changed", self.limit_changed, "pl1")
         self.pl2.connect("value-changed", self.limit_changed, "pl2")
 
-        self.restore_btn = Gtk.Button(label="Restore firmware defaults")
+        self.restore_btn = Gtk.Button(label="Restore system defaults")
         self.restore_btn.set_sensitive(False)
         manual_content.append(self.restore_btn)
         self.restore_btn.connect("clicked", self.restore_defaults)
@@ -236,17 +267,26 @@ class CpuControl(Adw.Application):
 
     def limit_changed(self, _scale, which):
         if not self.control_update:
-            if which == "pl1" and self.pl1.get_value() > self.pl2.get_value(): self.pl2.set_value(self.pl1.get_value())
-            if which == "pl2" and self.pl2.get_value() < self.pl1.get_value(): self.pl1.set_value(self.pl2.get_value())
-        self.pl1_label.set_text(f"PL1 sustained  {self.pl1.get_value():.0f} W")
-        self.pl2_label.set_text(f"PL2 burst       {self.pl2.get_value():.0f} W")
+            self.control_update = True
+            if which == "pl1" and self.pl1.get_value() > self.pl2.get_value():
+                self.pl1.set_value(self.pl2.get_value())
+            elif which == "pl2" and self.pl2.get_value() < self.pl1.get_value():
+                self.pl2.set_value(self.pl1.get_value())
+            self.control_update = False
+        self.pl1_label.set_text(f"PL1 sustained  {self.pl1.get_value():3.0f} W")
+        self.pl2_label.set_text(f"PL2 burst      {self.pl2.get_value():3.0f} W")
         if self.controls_initialized and not self.control_update and not self.calibrating:
             if self.manual_apply_source is not None:
                 GLib.source_remove(self.manual_apply_source)
             self.manual_apply_source = GLib.timeout_add(700, self.apply_manual_limits)
 
     def run_helper(self, *args):
-        return command("pkexec", HELPER, *map(str, args))
+        result = command("pkexec", HELPER, *map(str, args))
+        if args[0] == "apply":
+            self.thermald_state = "disabled" if int(args[3]) else "stopped"
+        elif args[0] in ("restore", "disable-persistence"):
+            self.thermald_state = thermald_status()
+        return result
 
     def show_notice(self, message, seconds=10):
         self.notice_until = time.monotonic() + seconds
@@ -325,13 +365,13 @@ class CpuControl(Adw.Application):
             self.set_sliders(int(data["pl1_uw"]) / 1e6, int(data["pl2_uw"]) / 1e6)
             self.set_persistence(False)
             result = (
-                f"Firmware defaults restored: "
+                f"System defaults restored: "
                 f"PL1 {int(data['pl1_uw']) / 1e6:.0f} W, "
-                f"PL2 {int(data['pl2_uw']) / 1e6:.0f} W; persistence disabled"
+                f"PL2 {int(data['pl2_uw']) / 1e6:.0f} W; thermal management restored"
             )
             self.auto_result.set_text(result)
-            self.show_notice("Firmware defaults restored; persistence disabled.")
-        except Exception as e: self.status.set_text(f"Could not restore firmware defaults: {e}")
+            self.show_notice("System power limits and thermal management restored.")
+        except Exception as e: self.status.set_text(f"Could not restore system defaults: {e}")
 
     def poll(self):
         try:
@@ -343,15 +383,26 @@ class CpuControl(Adw.Application):
                 watts = delta / 1e6 / (now - self.last_energy_time)
             self.last_energy, self.last_energy_time = energy, now
             self.data = data; cores = data["cores"]
+            active_pl1 = int(data["pl1_uw"]) / 1e6
+            active_pl2 = int(data["pl2_uw"]) / 1e6
             if not self.controls_initialized:
                 base = max(5, int(data.get("base_uw", 5000000))/1e6)
-                ceiling = max(base + 10, int(data.get("ceiling_uw", 0))/1e6)
+                ceiling = max(
+                    base + 10,
+                    int(data.get("ceiling_uw", 0)) / 1e6,
+                    int(data["pl1_uw"]) / 1e6,
+                    int(data["pl2_uw"]) / 1e6,
+                    int(data.get("defaults_pl1_uw", 0)) / 1e6,
+                    int(data.get("defaults_pl2_uw", 0)) / 1e6,
+                )
                 for s in (self.pl1, self.pl2): s.set_range(5, ceiling)
                 self.set_sliders(int(data["pl1_uw"])/1e6, int(data["pl2_uw"])/1e6)
                 self.control_update = True
                 self.persist.set_active(data.get("persistent") == "1")
                 self.control_update = False
                 self.controls_initialized = True
+            elif self.manual_apply_source is None and not self.calibrating:
+                self.set_sliders(active_pl1, active_pl2)
             self.summary.set_text(data.get("model", "Intel CPU"))
             avg_freq = statistics.mean([c[1] for c in cores]) if cores else 0
             max_temp = max([c[2] for c in cores], default=0)
@@ -362,7 +413,7 @@ class CpuControl(Adw.Application):
                 defaults_pl1 = int(data["defaults_pl1_uw"]) / 1e6
                 defaults_pl2 = int(data["defaults_pl2_uw"]) / 1e6
                 self.restore_btn.set_label(
-                    f"Restore firmware defaults ({defaults_pl1:.0f}/{defaults_pl2:.0f} W)"
+                    f"Restore system defaults ({defaults_pl1:.0f}/{defaults_pl2:.0f} W)"
                 )
                 if not self.calibrating:
                     self.restore_btn.set_sensitive(True)
@@ -376,13 +427,13 @@ class CpuControl(Adw.Application):
                 if self.controls_initialized:
                     slider_pl1 = round(self.pl1.get_value())
                     slider_pl2 = round(self.pl2.get_value())
-                    active_pl1 = round(int(data["pl1_uw"]) / 1e6)
-                    active_pl2 = round(int(data["pl2_uw"]) / 1e6)
-                    if (slider_pl1, slider_pl2) != (active_pl1, active_pl2):
+                    current_pl1 = round(active_pl1)
+                    current_pl2 = round(active_pl2)
+                    if (slider_pl1, slider_pl2) != (current_pl1, current_pl2):
                         pending = "  ·  Slider changes not applied"
                 self.status.set_text(
-                    f"{watts or 0:.1f} W  ·  {avg_freq:.0f} MHz average  ·  "
-                    f"{package_temp} °C package{pending}"
+                    f"Power {watts or 0:6.1f} W  |  Average {avg_freq:4.0f} MHz  |  "
+                    f"Package {package_temp:3d} °C  |  thermald {self.thermald_state:<8}{pending}"
                 )
             self.history_power.append(watts); self.history_package_temp.append(package_temp)
             pl1=float(data["pl1_uw"])/1e6; pl2=float(data["pl2_uw"])/1e6
@@ -414,7 +465,8 @@ class CpuControl(Adw.Application):
             "Auto-tune CPU power limits?",
             "PL1 remains fixed at the detected base power: cTDP-down when the processor exposes it, otherwise "
             "Package TDP. PL2 starts at the same value and increases in 5 W steps. "
-            "Each PL2 value runs for 30 seconds. When a value triggers PROCHOT, the previous successful "
+            "Each PL2 value runs the same kernel compilation workload for 30 seconds. The matching Fedora "
+            "kernel source is downloaded and cached before the first run. When a value triggers PROCHOT, the previous successful "
             "PL2 value is applied immediately. The result remains active until reboot. "
             "After auto-tuning completes, enable 'Reapply current limits after boot and resume' "
             "to keep the result. "
@@ -446,18 +498,22 @@ class CpuControl(Adw.Application):
 
     def run_until_prochot(self, duration, label):
         proc = subprocess.Popen([
-            "stress-ng", "--cpu", str(os.cpu_count()), "--cpu-method", "matrixprod",
-            "--timeout", f"{duration}s", "--metrics-brief",
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            BENCHMARK, "run",
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         started = time.monotonic()
         next_sample = started
         prochot = False
+        completed_window = False
         try:
             while proc.poll() is None:
                 if self.cancel_event.is_set():
-                    proc.terminate()
+                    os.killpg(proc.pid, signal.SIGTERM)
                     break
                 now = time.monotonic()
+                if now - started >= duration:
+                    completed_window = True
+                    os.killpg(proc.pid, signal.SIGTERM)
+                    break
                 if now < next_sample:
                     time.sleep(min(next_sample - now, 0.05))
                     continue
@@ -469,24 +525,44 @@ class CpuControl(Adw.Application):
                 elapsed = min(duration, int(time.monotonic() - started) + 1)
                 GLib.idle_add(self.status.set_text, f"{label} · {elapsed}/{duration} s")
                 if prochot:
-                    proc.terminate()
+                    os.killpg(proc.pid, signal.SIGTERM)
                     break
                 next_sample = time.monotonic() + .25
         finally:
             if proc.poll() is None:
-                proc.terminate()
+                os.killpg(proc.pid, signal.SIGTERM)
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                os.killpg(proc.pid, signal.SIGKILL)
                 proc.wait()
+        if not completed_window and not prochot and not self.cancel_event.is_set():
+            raise RuntimeError("kernel compilation benchmark failed")
         return prochot
+
+    def prepare_benchmark(self):
+        proc = subprocess.Popen(
+            [BENCHMARK, "prepare"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        assert proc.stdout is not None
+        last_message = ""
+        for line in proc.stdout:
+            message = line.strip()
+            if message:
+                last_message = message
+                GLib.idle_add(self.status.set_text, message)
+        if proc.wait() != 0:
+            raise RuntimeError(last_message or "kernel source preparation failed")
 
     def calibrate(self):
         original=(int(self.data["pl1_uw"]),int(self.data["pl2_uw"]),int(self.data.get("persistent") == "1"))
         down=max(5,round(int(self.data.get("base_uw",35000000))/1e6))
         ceiling=max(down+10,round(int(self.data.get("ceiling_uw",(down+10)*1000000))/1e6))
         try:
+            self.prepare_benchmark()
             self.run_helper("fans-max")
             candidates=list(range(down,ceiling+1,5))
             if candidates[-1] != ceiling:
