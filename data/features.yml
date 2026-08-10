@@ -89,7 +89,7 @@ items:
     subsystem: Thunderbolt
     authors:
       - ruiCON
-    link: "https://lore.kernel.org/all/20260731161842.12636-1-atharvatiwarilinuxdev@gmail.com/"
+    link: "https://patchwork.kernel.org/project/linux-usb/patch/20260731161842.12636-1-atharvatiwarilinuxdev@gmail.com/"
     updated: "2026-07-31"
 
   # --- Available -------------------------------------------------------------
@@ -132,7 +132,7 @@ items:
     subsystem: USB / xHCI
     authors:
       - deqrocks
-    link: "https://lore.kernel.org/all/20260730210655.15514-1-dev@deq.rocks/"
+    link: "https://patchwork.kernel.org/project/linux-usb/patch/20260730210655.15514-1-dev@deq.rocks/"
     updated: "2026-07-30"
     notes: Withdrawn upstream, still investigating.
 
@@ -160,7 +160,7 @@ items:
     authors:
       - AdityaGarg8
       - deqrocks
-    link: "https://lore.kernel.org/all/20260722141221.13844-1-dev@deq.rocks/"
+    link: "https://patchwork.kernel.org/project/linux-input/patch/20260722141221.13844-1-dev@deq.rocks/"
     updated: "2026-07-22"
 
   - id: dgpu-wakeup-15-1
@@ -185,7 +185,7 @@ items:
     subsystem: HID / Input
     authors:
       - deqrocks
-    link: "https://lore.kernel.org/linux-input/20260718151241.7496-1-dev@deq.rocks/"
+    link: "https://patchwork.kernel.org/project/linux-input/patch/20260718151241.7496-1-dev@deq.rocks/"
     updated: "2026-07-18"
     notes: The backlight reports were parsed with the wrong endianness.
 
@@ -198,7 +198,7 @@ items:
     subsystem: HID / Input
     authors:
       - deqrocks
-    link: "https://lore.kernel.org/linux-input/20260718121527.15924-1-dev@deq.rocks/T/#t"
+    link: "https://patchwork.kernel.org/project/linux-input/patch/20260718121527.15924-1-dev@deq.rocks/"
     updated: "2026-07-18"
     notes: >-
       The butterfly keyboard backlight came back on at 0% after resume, and now
