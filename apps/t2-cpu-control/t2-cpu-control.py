@@ -235,8 +235,9 @@ class CpuControl(Adw.Application):
         return True
 
     def limit_changed(self, _scale, which):
-        if which == "pl1" and self.pl1.get_value() > self.pl2.get_value(): self.pl2.set_value(self.pl1.get_value())
-        if which == "pl2" and self.pl2.get_value() < self.pl1.get_value(): self.pl1.set_value(self.pl2.get_value())
+        if not self.control_update:
+            if which == "pl1" and self.pl1.get_value() > self.pl2.get_value(): self.pl2.set_value(self.pl1.get_value())
+            if which == "pl2" and self.pl2.get_value() < self.pl1.get_value(): self.pl1.set_value(self.pl2.get_value())
         self.pl1_label.set_text(f"PL1 sustained  {self.pl1.get_value():.0f} W")
         self.pl2_label.set_text(f"PL2 burst       {self.pl2.get_value():.0f} W")
         if self.controls_initialized and not self.control_update and not self.calibrating:

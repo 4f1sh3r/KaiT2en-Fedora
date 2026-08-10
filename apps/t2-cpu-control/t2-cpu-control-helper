@@ -34,8 +34,8 @@ write_limits() {
     [[ $pl1 =~ ^[0-9]+$ && $pl2 =~ ^[0-9]+$ ]] || fail "limits must be integer microwatts"
     ((pl1 >= 1000000 && pl2 >= pl1)) || fail "invalid PL1/PL2 limits"
     z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
-    printf '%s\n' "$pl1" >"${long}_power_limit_uw"
     printf '%s\n' "$pl2" >"${short}_power_limit_uw"
+    printf '%s\n' "$pl1" >"${long}_power_limit_uw"
 }
 save_config() {
     local pl1=$1 pl2=$2 enabled=$3
