@@ -1,6 +1,10 @@
 {
   "version": 1,
   "messages": {
+    "brcmfmac-pm-max-power-management": {
+      "message_id": "1536401557581602927",
+      "hash": "5aaf0edd6950de67b366c9d75f79eefb3f7de8a3cce83545b55285c590cd7494"
+    },
     "keyboard-backlight-reenumeration": {
       "message_id": "1533951131821146283",
       "hash": "c7a10f3fb838ee7bdff20f16adc3cd6dc0c9cfc119c172d0d02170c2d4592b1c"
@@ -8,6 +12,10 @@
     "thunderbolt-device-links": {
       "message_id": "1533951135214469344",
       "hash": "50b92851fb543f4f1b6c60b3eb7c5eeccd24867f54ec4c5122a94f22db8d6553"
+    },
+    "touchbar-runtime-pm-deadlock": {
+      "message_id": "1536401561570246706",
+      "hash": "b288d5ba107bc95f80ee0e234ae1ad98d2712da18f1875e154348de8e955414c"
     },
     "display-brightness-after-reboot": {
       "message_id": "1533951138557198509",
