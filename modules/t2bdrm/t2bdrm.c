@@ -48,6 +48,11 @@
 #define drm_to_adev(_drm)		container_of(_drm, struct appletbdrm_device, drm)
 #define adev_to_udev(adev)		interface_to_usbdev(to_usb_interface((adev)->drm.dev))
 
+static unsigned int request_bound_kb;
+module_param(request_bound_kb, uint, 0444);
+MODULE_PARM_DESC(request_bound_kb,
+		 "Upper bound for a single framebuffer request in KiB (0 = automatic)");
+
 struct appletbdrm_msg_request_header {
 	__le16 unk_00;
 	__le16 unk_02;
@@ -131,6 +136,7 @@ struct appletbdrm_device {
 	unsigned int height;
 
 	unsigned int rows_per_request;
+	size_t request_size;
 	size_t frames_capacity;
 	size_t frames_size;
 	struct appletbdrm_fb_request *request;
@@ -154,12 +160,13 @@ static int appletbdrm_send_request(struct appletbdrm_device *adev,
 	ret = usb_bulk_msg(udev, usb_sndbulkpipe(udev, adev->out_ep),
 			   request, size, &actual_size, APPLETBDRM_BULK_MSG_TIMEOUT);
 	if (ret) {
-		drm_err(drm, "Failed to send message (%d)\n", ret);
+		drm_err(drm, "Failed to send message (%d), %d of %zu bytes sent\n",
+			ret, actual_size, size);
 		return ret;
 	}
 
 	if (actual_size != size) {
-		drm_err(drm, "Actual size (%d) doesn't match expected size (%zu)\n",
+		drm_err(drm, "Actual sent size (%d) doesn't match expected size (%zu)\n",
 			actual_size, size);
 		return -EIO;
 	}
@@ -182,7 +189,8 @@ retry:
 	ret = usb_bulk_msg(udev, usb_rcvbulkpipe(udev, adev->in_ep),
 			   response, size, &actual_size, APPLETBDRM_BULK_MSG_TIMEOUT);
 	if (ret) {
-		drm_err(drm, "Failed to read response (%d)\n", ret);
+		drm_err(drm, "Failed to read response (%d), %d of %zu bytes read\n",
+			ret, actual_size, size);
 		return ret;
 	}
 
@@ -202,8 +210,8 @@ retry:
 	}
 
 	if (actual_size != size) {
-		drm_err(drm, "Actual size (%d) doesn't match expected size (%zu)\n",
-			actual_size, size);
+		drm_err(drm, "Actual response size (%d) doesn't match expected size (%zu), data: %*ph\n",
+			actual_size, size, min(actual_size, 32), response);
 		return -EBADMSG;
 	}
 
@@ -315,10 +323,11 @@ static int appletbdrm_alloc_request(struct appletbdrm_device *adev)
 	 * PAGE_ALLOC_COSTLY_ORDER, where the allocator does not give up under
 	 * fragmentation.
 	 */
-	static const size_t bounds[] = { SZ_128K, SZ_64K, SZ_32K };
+	static const size_t auto_bounds[] = { SZ_128K, SZ_64K, SZ_32K };
 	struct drm_device *drm = &adev->drm;
-	size_t overhead, row_size;
-	unsigned int i;
+	size_t overhead, row_size, forced_bound;
+	const size_t *bounds = auto_bounds;
+	unsigned int i, nr_bounds = ARRAY_SIZE(auto_bounds);
 	int ret;
 
 	overhead = sizeof(struct appletbdrm_fb_request) +
@@ -328,13 +337,20 @@ static int appletbdrm_alloc_request(struct appletbdrm_device *adev)
 	/* The framebuffer's width is the device's height, see appletbdrm_setup_mode_config */
 	row_size = adev->height * BITS_TO_BYTES(APPLETBDRM_BITS_PER_PIXEL);
 
-	for (i = 0; i < ARRAY_SIZE(bounds); i++) {
+	forced_bound = (size_t)request_bound_kb * SZ_1K;
+	if (forced_bound) {
+		forced_bound = max(forced_bound, overhead + row_size);
+		bounds = &forced_bound;
+		nr_bounds = 1;
+	}
+
+	for (i = 0; i < nr_bounds; i++) {
 		gfp_t gfp = GFP_KERNEL;
 		unsigned int rows;
 		size_t size;
 
 		/* Only the last bound is small enough to be worth waiting for */
-		if (i + 1 < ARRAY_SIZE(bounds))
+		if (i + 1 < nr_bounds)
 			gfp |= __GFP_NOWARN | __GFP_NORETRY;
 
 		rows = clamp_t(unsigned int, (bounds[i] - overhead) / row_size, 1, adev->width);
@@ -343,6 +359,7 @@ static int appletbdrm_alloc_request(struct appletbdrm_device *adev)
 		adev->request = kzalloc(size, gfp);
 		if (adev->request) {
 			adev->rows_per_request = rows;
+			adev->request_size = size;
 			adev->frames_capacity = size - sizeof(struct appletbdrm_fb_request) -
 						sizeof(struct appletbdrm_fb_request_footer);
 			break;
@@ -360,7 +377,9 @@ static int appletbdrm_alloc_request(struct appletbdrm_device *adev)
 	if (!adev->response)
 		return -ENOMEM;
 
-	drm_dbg(drm, "Using %u rows per framebuffer request\n", adev->rows_per_request);
+	drm_info(drm, "Display %ux%u, %zu byte requests of up to %u rows (%u requests per full update)\n",
+		 adev->width, adev->height, adev->request_size, adev->rows_per_request,
+		 DIV_ROUND_UP(adev->width, adev->rows_per_request));
 
 	return 0;
 }
