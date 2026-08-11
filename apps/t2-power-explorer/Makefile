@@ -1,0 +1,45 @@
+CARGO ?= cargo
+INSTALL ?= install
+GTK_UPDATE_ICON_CACHE ?= gtk-update-icon-cache
+
+APP_ID := org.t2powerexplorer.gtk
+BIN_NAME := t2-power-explorer
+BUILD_DIR := target/release
+BIN_SRC := $(BUILD_DIR)/$(BIN_NAME)
+DESKTOP_SRC := $(APP_ID).desktop
+ICON_SRC := assets/icons/hicolor/scalable/apps/$(APP_ID).svg
+HELPER_SRC := t2-power-explorer-status
+POLICY_SRC := org.t2powerexplorer.policy
+
+PREFIX ?= /usr/local
+BIN_DIR := $(PREFIX)/bin
+APPS_DIR := $(PREFIX)/share/applications
+ICONS_DIR := $(PREFIX)/share/icons/hicolor/scalable/apps
+ICON_THEME_DIR := $(PREFIX)/share/icons/hicolor
+LIBEXEC_DIR := $(PREFIX)/libexec
+POLICY_DIR ?= /usr/share/polkit-1/actions
+
+.PHONY: build install uninstall clean
+
+build:
+	$(CARGO) build --release
+
+install: build
+	$(INSTALL) -d -o root -g root -m 0755 $(BIN_DIR) $(APPS_DIR) $(ICONS_DIR) $(LIBEXEC_DIR) $(POLICY_DIR)
+	$(INSTALL) -o root -g root -m 0755 $(BIN_SRC) $(BIN_DIR)/$(BIN_NAME)
+	$(INSTALL) -o root -g root -m 0755 $(HELPER_SRC) $(LIBEXEC_DIR)/$(HELPER_SRC)
+	$(INSTALL) -o root -g root -m 0644 $(POLICY_SRC) $(POLICY_DIR)/$(POLICY_SRC)
+	$(INSTALL) -o root -g root -m 0644 $(DESKTOP_SRC) $(APPS_DIR)/$(APP_ID).desktop
+	$(INSTALL) -o root -g root -m 0644 $(ICON_SRC) $(ICONS_DIR)/$(APP_ID).svg
+	$(GTK_UPDATE_ICON_CACHE) --force --ignore-theme-index $(ICON_THEME_DIR)
+
+uninstall:
+	rm -f $(BIN_DIR)/$(BIN_NAME)
+	rm -f $(LIBEXEC_DIR)/$(HELPER_SRC)
+	rm -f $(POLICY_DIR)/$(POLICY_SRC)
+	rm -f $(APPS_DIR)/$(APP_ID).desktop
+	rm -f $(ICONS_DIR)/$(APP_ID).svg
+	@if [ -d "$(ICON_THEME_DIR)" ]; then $(GTK_UPDATE_ICON_CACHE) --force --ignore-theme-index $(ICON_THEME_DIR); fi
+
+clean:
+	$(CARGO) clean
