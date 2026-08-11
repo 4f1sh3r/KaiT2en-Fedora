@@ -40,3 +40,4 @@ jobs:
           publish_branch: gh-pages
           publish_dir: ./site
           force_orphan: true
+          cname: kait2en.org
