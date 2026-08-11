@@ -45,6 +45,9 @@
 
 #define APPLETBDRM_BULK_MSG_TIMEOUT	1000
 
+/* Number of framebuffer requests traced after probe, see appletbdrm_send_frames */
+#define APPLETBDRM_TRACE_REQUESTS	16
+
 #define drm_to_adev(_drm)		container_of(_drm, struct appletbdrm_device, drm)
 #define adev_to_udev(adev)		interface_to_usbdev(to_usb_interface((adev)->drm.dev))
 
@@ -136,6 +139,7 @@ struct appletbdrm_device {
 	unsigned int height;
 
 	unsigned int rows_per_request;
+	unsigned int tx_count;
 	size_t request_size;
 	size_t frames_capacity;
 	size_t frames_size;
@@ -283,6 +287,12 @@ static int appletbdrm_get_information(struct appletbdrm_device *adev)
 	adev->width = get_unaligned_le32(&info->width);
 	adev->height = get_unaligned_le32(&info->height);
 
+	drm_info(drm, "GINF: %ux%u, %u bpp, %u bytes per row, orientation %u, bitmap info 0x%x, pixel format %p4cl\n",
+		 adev->width, adev->height, bits_per_pixel,
+		 get_unaligned_le32(&info->bytes_per_row),
+		 get_unaligned_le32(&info->orientation),
+		 get_unaligned_le32(&info->bitmap_info), &pixel_format);
+
 	if (bits_per_pixel != APPLETBDRM_BITS_PER_PIXEL) {
 		drm_err(drm, "Encountered unexpected bits per pixel value (%d)\n", bits_per_pixel);
 		ret = -EINVAL;
@@ -352,11 +362,15 @@ static int appletbdrm_alloc_request(struct appletbdrm_device *adev)
 		/* Only the last bound is small enough to be worth waiting for */
 		if (i + 1 < nr_bounds)
 			gfp |= __GFP_NOWARN | __GFP_NORETRY;
+		else if (forced_bound)
+			gfp |= __GFP_RETRY_MAYFAIL;
 
 		rows = clamp_t(unsigned int, (bounds[i] - overhead) / row_size, 1, adev->width);
 		size = ALIGN(overhead + rows * row_size, 16);
 
 		adev->request = kzalloc(size, gfp);
+		if (!adev->request && forced_bound)
+			drm_err(drm, "Failed to allocate a %zu byte request buffer\n", size);
 		if (adev->request) {
 			adev->rows_per_request = rows;
 			adev->request_size = size;
@@ -464,11 +478,16 @@ static int appletbdrm_send_frames(struct appletbdrm_device *adev)
 	struct drm_device *drm = &adev->drm;
 	u64 timestamp = ktime_get_ns();
 	size_t frames_size = adev->frames_size;
+	unsigned int seq = adev->tx_count;
+	bool trace;
 	size_t request_size;
 	int ret;
 
 	if (!frames_size)
 		return 0;
+
+	adev->tx_count++;
+	trace = seq < APPLETBDRM_TRACE_REQUESTS;
 
 	request_size = ALIGN(sizeof(*request) + frames_size + sizeof(*footer), 16);
 	adev->frames_size = 0;
@@ -491,14 +510,27 @@ static int appletbdrm_send_frames(struct appletbdrm_device *adev)
 	footer->unk_4c = cpu_to_le32(0xffff);
 	footer->timestamp = cpu_to_le64(timestamp);
 
+	if (trace)
+		drm_info(drm, "tx #%u: %zu bytes (%zu frame bytes, %zu padding, %zu mod 512), msg_id %u\n",
+			 seq, request_size, frames_size,
+			 request_size - sizeof(*request) - frames_size - sizeof(*footer),
+			 request_size % 512, request->msg_id);
+
 	ret = appletbdrm_send_request(adev, &request->header, request_size);
-	if (ret)
+	if (ret) {
+		drm_err(drm, "tx #%u of %zu bytes failed\n", seq, request_size);
 		return ret;
+	}
 
 	ret = appletbdrm_read_response(adev, &response->header, sizeof(*response),
 				       APPLETBDRM_MSG_UPDATE_COMPLETE);
-	if (ret)
+	if (ret) {
+		drm_err(drm, "rx #%u for a %zu byte request failed\n", seq, request_size);
 		return ret;
+	}
+
+	if (trace)
+		drm_info(drm, "rx #%u: %*ph\n", seq, (int)sizeof(*response), response);
 
 	if (response->timestamp != footer->timestamp)
 		drm_err(drm, "Response timestamp (%llu) doesn't match request timestamp (%llu)\n",
@@ -533,6 +565,11 @@ static int appletbdrm_flush_damage(struct appletbdrm_device *adev,
 
 		if (!drm_rect_intersect(&dst_clip, &damage))
 			continue;
+
+		if (adev->tx_count < APPLETBDRM_TRACE_REQUESTS)
+			drm_info(drm, "damage " DRM_RECT_FMT ", %u rows in bands of %u\n",
+				 DRM_RECT_ARG(&damage), drm_rect_height(&damage),
+				 adev->rows_per_request);
 
 		for (y = damage.y1; y < damage.y2; y += adev->rows_per_request) {
 			struct drm_rect band = damage;
@@ -788,6 +825,10 @@ static int appletbdrm_probe(struct usb_interface *intf,
 	adev->out_ep = bulk_out->bEndpointAddress;
 
 	drm = &adev->drm;
+
+	drm_info(drm, "Bulk endpoints: in 0x%02x maxp %u, out 0x%02x maxp %u\n",
+		 adev->in_ep, usb_endpoint_maxp(bulk_in),
+		 adev->out_ep, usb_endpoint_maxp(bulk_out));
 
 	usb_set_intfdata(intf, adev);
 
