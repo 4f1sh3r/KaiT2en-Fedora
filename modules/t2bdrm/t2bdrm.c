@@ -134,6 +134,7 @@ struct appletbdrm_fb_request_response {
 struct appletbdrm_device {
 	unsigned int in_ep;
 	unsigned int out_ep;
+	unsigned int out_maxp;
 
 	unsigned int width;
 	unsigned int height;
@@ -365,10 +366,11 @@ static int appletbdrm_alloc_request(struct appletbdrm_device *adev)
 		else if (forced_bound)
 			gfp |= __GFP_RETRY_MAYFAIL;
 
-		rows = clamp_t(unsigned int, (bounds[i] - overhead) / row_size, 1, adev->width);
+		rows = clamp_t(unsigned int, (bounds[i] - overhead - 16) / row_size, 1, adev->width);
 		size = ALIGN(overhead + rows * row_size, 16);
 
-		adev->request = kzalloc(size, gfp);
+		/* The spare 16 bytes are the padding of appletbdrm_send_frames */
+		adev->request = kzalloc(size + 16, gfp);
 		if (!adev->request && forced_bound)
 			drm_err(drm, "Failed to allocate a %zu byte request buffer\n", size);
 		if (adev->request) {
@@ -491,6 +493,14 @@ static int appletbdrm_send_frames(struct appletbdrm_device *adev)
 
 	request_size = ALIGN(sizeof(*request) + frames_size + sizeof(*footer), 16);
 	adev->frames_size = 0;
+
+	/*
+	 * usb_bulk_msg() cannot ask for a terminating zero length packet, so a
+	 * transfer that is an exact multiple of the endpoint's packet size
+	 * leaves the device waiting for more data. Pad the request instead.
+	 */
+	if (adev->out_maxp && !(request_size % adev->out_maxp))
+		request_size += 16;
 
 	request->header.unk_00 = cpu_to_le16(2);
 	request->header.unk_02 = cpu_to_le16(0x12);
@@ -823,6 +833,7 @@ static int appletbdrm_probe(struct usb_interface *intf,
 
 	adev->in_ep = bulk_in->bEndpointAddress;
 	adev->out_ep = bulk_out->bEndpointAddress;
+	adev->out_maxp = usb_endpoint_maxp(bulk_out);
 
 	drm = &adev->drm;
 
