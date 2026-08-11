@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+KVER=$(uname -r)
+CACHE_ROOT=${XDG_CACHE_HOME:-$HOME/.cache}/t2-cpu-control/kernel/$KVER
+TREE_FILE=$CACHE_ROOT/tree
+
+prepare() {
+    local source_rpm source_name source_version source_release source_url
+    local archive sources kernel_tarball redhat_patch kernel_tree trace_header
+
+    if [[ -r "$TREE_FILE" ]] && kernel_tree=$(<"$TREE_FILE") &&
+       [[ -f "$kernel_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c" ]]; then
+        echo "Kernel source cache ready"
+        return
+    fi
+
+    source_rpm=$(rpm -q --qf '%{SOURCERPM}\n' "kernel-core-$KVER")
+    source_name=${source_rpm%%-*}
+    source_version=$(rpm -q --qf '%{VERSION}\n' "kernel-core-$KVER")
+    source_release=$(rpm -q --qf '%{RELEASE}\n' "kernel-core-$KVER")
+    source_url="https://kojipkgs.fedoraproject.org/packages/$source_name/$source_version/$source_release/src/$source_rpm"
+    archive=$CACHE_ROOT/$source_rpm
+    sources=$CACHE_ROOT/sources
+
+    mkdir -p "$CACHE_ROOT" "$sources" "$CACHE_ROOT/tree-root"
+    if [[ ! -f "$archive" ]]; then
+        echo "Downloading current Fedora kernel source"
+        curl --fail --location --silent --show-error --output "$archive.part" "$source_url"
+        mv "$archive.part" "$archive"
+    fi
+    if [[ ! -f "$sources/.extracted" ]]; then
+        echo "Extracting Fedora kernel source package"
+        (
+            cd "$sources"
+            rpm2cpio "$archive" | cpio -idm --quiet
+        )
+        touch "$sources/.extracted"
+    fi
+
+    kernel_tarball=$(find "$sources" -maxdepth 1 -type f -name 'linux-*.tar.xz' -print -quit)
+    redhat_patch=$(find "$sources" -maxdepth 1 -type f -name 'patch-*-redhat.patch' -print -quit)
+    [[ -n $kernel_tarball && -n $redhat_patch ]] || {
+        echo "Fedora kernel sources are incomplete" >&2
+        exit 1
+    }
+
+    rm -rf "$CACHE_ROOT/tree-root"
+    mkdir -p "$CACHE_ROOT/tree-root"
+    echo "Unpacking Linux kernel source tree"
+    tar -xf "$kernel_tarball" -C "$CACHE_ROOT/tree-root"
+    kernel_tree=$(find "$CACHE_ROOT/tree-root" -type f \
+        -path '*/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c' -printf '%h\n' -quit)
+    [[ -n $kernel_tree ]] || { echo "Kernel source tree is missing" >&2; exit 1; }
+    kernel_tree=${kernel_tree%/drivers/gpu/drm/amd/amdgpu}
+    echo "Applying Fedora kernel patch set"
+    git -C "$kernel_tree" apply "$redhat_patch"
+
+    trace_header=$kernel_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_trace.h
+    if grep -q '^#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/amd/amdgpu$' "$trace_header"; then
+        sed -i 's|^#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/amd/amdgpu$|#define TRACE_INCLUDE_PATH .|' \
+            "$trace_header"
+    fi
+    printf '%s\n' "$kernel_tree" >"$TREE_FILE"
+    echo "Kernel compilation workload ready"
+}
+
+run_build() {
+    local kernel_tree module_tree
+    prepare
+    kernel_tree=$(<"$TREE_FILE")
+    module_tree=$kernel_tree/drivers/gpu/drm/amd/amdgpu
+    while true; do
+        make -s -C "/usr/src/kernels/$KVER" M="$module_tree" clean
+        make -s -j"$(nproc)" -C "/usr/src/kernels/$KVER" M="$module_tree" modules
+    done
+}
+
+case ${1:-} in
+    prepare) prepare ;;
+    run) run_build ;;
+    *) echo "usage: $0 {prepare|run}" >&2; exit 2 ;;
+esac

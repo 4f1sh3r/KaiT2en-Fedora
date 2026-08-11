@@ -4,6 +4,8 @@ set -euo pipefail
 CONFIG=/etc/t2-cpu-control.conf
 STATE_DIR=/run/t2-cpu-control
 DEFAULTS=$STATE_DIR/firmware-defaults
+PERSISTENT_STATE_DIR=/var/lib/t2-cpu-control
+THERMALD_STATE=$PERSISTENT_STATE_DIR/thermald-state
 
 fail() { printf 't2-cpu-control: %s\n' "$*" >&2; exit 1; }
 zone() {
@@ -42,20 +44,72 @@ save_config() {
     printf 'pl1_uw=%s\npl2_uw=%s\nenabled=%s\n' "$pl1" "$pl2" "$enabled" >"$CONFIG"
     chmod 0644 "$CONFIG"
 }
+capture_thermald_state() {
+    local enabled=0 active=0
+    [[ -e "$THERMALD_STATE" ]] && return
+    if systemctl is-enabled --quiet thermald.service; then
+        enabled=1
+    fi
+    if systemctl is-active --quiet thermald.service; then
+        active=1
+    fi
+    mkdir -p "$PERSISTENT_STATE_DIR"
+    printf 'enabled=%s\nactive=%s\n' "$enabled" "$active" >"$THERMALD_STATE"
+}
+take_rapl_ownership() {
+    local persist=$1 enabled=0 active=0
+    capture_thermald_state
+    # shellcheck disable=SC1090
+    source "$THERMALD_STATE"
+    if systemctl is-active --quiet thermald.service; then
+        systemctl stop thermald.service
+    fi
+    if [[ $persist == 1 ]]; then
+        if systemctl is-enabled --quiet thermald.service; then
+            systemctl disable thermald.service
+        fi
+    elif [[ $enabled == 1 ]] && ! systemctl is-enabled --quiet thermald.service; then
+        systemctl enable thermald.service
+    fi
+}
+restore_thermald_state() {
+    local enabled=0 active=0
+    [[ -r "$THERMALD_STATE" ]] || return
+    # shellcheck disable=SC1090
+    source "$THERMALD_STATE"
+    if [[ $enabled == 1 ]]; then
+        systemctl enable thermald.service
+    elif systemctl is-enabled --quiet thermald.service; then
+        systemctl disable thermald.service
+    fi
+    if [[ $active == 1 ]]; then
+        systemctl start thermald.service
+    elif systemctl is-active --quiet thermald.service; then
+        systemctl stop thermald.service
+    fi
+    rm -f "$THERMALD_STATE"
+}
 apply_saved() {
-    local pl1_uw= pl2_uw= enabled=0
+    local pl1_uw= pl2_uw= enabled=0 z long short active_pl1 active_pl2
     capture_defaults
     [[ -r "$CONFIG" ]] || return 0
     # shellcheck disable=SC1090
     source "$CONFIG"
     [[ $enabled == 1 ]] || return 0
     write_limits "$pl1_uw" "$pl2_uw"
+    z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
+    active_pl1=$(<"${long}_power_limit_uw")
+    active_pl2=$(<"${short}_power_limit_uw")
+    printf 't2-cpu-control: requested PL1=%s PL2=%s; read back PL1=%s PL2=%s\n' \
+        "$pl1_uw" "$pl2_uw" "$active_pl1" "$active_pl2"
 }
 fans_max() {
     local d f
     mkdir -p "$STATE_DIR"
-    systemctl is-active --quiet t2-fancontrol.service && echo 1 >"$STATE_DIR/fan-service-was-active" || true
-    systemctl stop t2-fancontrol.service || true
+    if systemctl is-active --quiet t2-fancontrol.service; then
+        echo 1 >"$STATE_DIR/fan-service-was-active"
+        systemctl stop t2-fancontrol.service
+    fi
     for d in /sys/class/hwmon/hwmon*; do
         [[ -r "$d/name" ]] || continue
         case $(<"$d/name") in t2smc|macsmc) ;; *) continue ;; esac
@@ -82,7 +136,11 @@ fans_restore() {
 case ${1:-} in
     apply)
         [[ $# == 4 ]] || fail "usage: $0 apply <pl1_uw> <pl2_uw> <persist:0|1>"
-        capture_defaults; write_limits "$2" "$3"; save_config "$2" "$3" "$4"
+        [[ $4 == 0 || $4 == 1 ]] || fail "persistence must be 0 or 1"
+        capture_defaults
+        take_rapl_ownership "$4"
+        write_limits "$2" "$3"
+        save_config "$2" "$3" "$4"
         ;;
     apply-saved) apply_saved ;;
     restore)
@@ -91,8 +149,12 @@ case ${1:-} in
         source "$DEFAULTS"
         write_limits "$pl1_uw" "$pl2_uw"
         save_config "$pl1_uw" "$pl2_uw" 0
+        restore_thermald_state
         ;;
-    disable-persistence) save_config 0 0 0 ;;
+    disable-persistence)
+        save_config 0 0 0
+        restore_thermald_state
+        ;;
     fans-max) fans_max ;;
     fans-restore) fans_restore ;;
     *) fail "unknown command" ;;

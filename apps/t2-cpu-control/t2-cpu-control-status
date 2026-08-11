@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ ${1:-} == monitor ]]; then
+    [[ ${2:-} =~ ^[0-9]+$ ]] || { echo "usage: $0 monitor <gui-pid>" >&2; exit 2; }
+    gui_pid=$2
+    state_dir=/run/t2-cpu-control
+    cache=$state_dir/status
+    temporary=$state_dir/status.tmp
+    install -d -m 0755 "$state_dir"
+    rm -f "$cache" "$temporary"
+    trap 'rm -f "$temporary"' EXIT
+    while kill -0 "$gui_pid" 2>/dev/null; do
+        "$0" >"$temporary"
+        chmod 0644 "$temporary"
+        mv -f "$temporary" "$cache"
+        sleep 0.1
+    done
+fi
+
 modprobe msr
 zone=
 for z in /sys/class/powercap/intel-rapl:*; do
@@ -69,7 +86,9 @@ printf 'tjmax=%s\ntcc_offset=%s\n' "$tjmax" "$offset"
 package_therm_hex=$(rdmsr -p 0 0x1b1 2>/dev/null || echo 0)
 package_therm=$((16#$package_therm_hex))
 package_dtj=$(((package_therm >> 16) & 127))
-((package_therm & (1 << 31))) && printf 'package_temp=%s\n' "$((tjmax - package_dtj))" || true
+if ((package_therm & (1 << 31))); then
+    printf 'package_temp=%s\n' "$((tjmax - package_dtj))"
+fi
 perf_active=0; perf_log=0; any_prochot=0; any_thermal=0; min_dtj=127
 count=$(nproc)
 for ((cpu=0; cpu<count; cpu++)); do
@@ -81,12 +100,13 @@ for ((cpu=0; cpu<count; cpu++)); do
     thermal=$((therm & 1)); prochot=$(((therm >> 2) & 1))
     printf 'cpu.%s=%s,%s,%s,%s\n' "$cpu" "$mhz" "$temp" "$thermal" "$prochot"
     ((dtj < min_dtj)) && min_dtj=$dtj
-    ((thermal)) && any_thermal=1 || true
-    ((prochot)) && any_prochot=1 || true
+    if ((thermal)); then any_thermal=1; fi
+    if ((prochot)); then any_prochot=1; fi
     perf_active=$((perf_active | (perf & 0xffff)))
     perf_log=$((perf_log | ((perf >> 16) & 0xffff)))
 done
-((perf_active & 1)) && any_prochot=1 || true
-bd=0; ((any_prochot && !any_thermal && min_dtj > offset)) && bd=1 || true
+if ((perf_active & 1)); then any_prochot=1; fi
+bd=0
+if ((any_prochot && !any_thermal && min_dtj > offset)); then bd=1; fi
 printf 'prochot=%s\nthermal=%s\nbd_inferred=%s\nperf_active=%s\nperf_log=%s\n' \
     "$any_prochot" "$any_thermal" "$bd" "$perf_active" "$perf_log"
