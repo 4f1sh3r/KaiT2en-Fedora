@@ -3,13 +3,6 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-# The spin exclusion below is a `! rg ...` assertion, which a missing ripgrep
-# would satisfy without reading the catalog. This check runs as its own CI step,
-# so it cannot rely on the static checks having looked first.
-if ! command -v rg >/dev/null 2>&1; then
-	printf 'these checks require rg, from the ripgrep package\n' >&2
-	exit 1
-fi
 target_name=${1:-fedora-44}
 target="$repo_root/packaging/installer/targets/$target_name.conf"
 [[ -f "$target" ]]
@@ -54,6 +47,6 @@ done <"$catalog"
 ((count == 3))
 ((default_found == 1))
 [[ "$seen" == ' workstation kde cosmic ' ]]
-! rg -n 'Atomic|ostree|Labs|Server|netinst|IoT' "$catalog"
+! grep -InE 'Atomic|ostree|Labs|Server|netinst|IoT' "$catalog"
 printf 'Validated %d classic Fedora desktop editions for Fedora %s.\n' \
 	"$count" "$FEDORA_RELEASE"

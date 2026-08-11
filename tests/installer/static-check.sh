@@ -5,14 +5,6 @@ set -Eeuo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$repo_root"
 
-# Every `! rg ...` assertion below is satisfied by rg being absent, because the
-# failed lookup is what the negation asks for. A missing ripgrep turns them into
-# no-ops and the suite still reports success, so refuse to run without it.
-if ! command -v rg >/dev/null 2>&1; then
-	printf 'these checks require rg, from the ripgrep package\n' >&2
-	exit 1
-fi
-
 shell_files=(
 	packaging/installer/build-in-container.sh
 	packaging/installer/build-input-kmod.sh
@@ -56,12 +48,12 @@ while IFS= read -r file; do
 done < <(git ls-files 'packaging/installer/anaconda-addon/*.py' \
 	'packaging/installer/anaconda-addon/**/*.py')
 
-! rg -n 'OEMDRV|rhdd3|inst\.dd=|inst\.ks=|kait2en\.wifi_required' \
+! grep -rInE 'OEMDRV|rhdd3|inst\.dd=|inst\.ks=|kait2en\.wifi_required' \
 	packaging/installer/grub.cfg.in \
 	packaging/installer/initramfs \
 	packaging/installer/anaconda-addon \
 	scripts/macos
-! rg -n 'brcmfmac(4364|4377).*alias|generic.*brcmfmac|brcmfmac[^ ]*-pcie\.txt' \
+! grep -rInE 'brcmfmac(4364|4377).*alias|generic.*brcmfmac|brcmfmac[^ ]*-pcie\.txt' \
 	packaging/installer
 # A KaiT2en entry without the input initramfs loses the keyboard it rescues.
 awk '
@@ -74,7 +66,7 @@ grep -Fq 'nomodeset' packaging/installer/grub.cfg.in
 if grep -Eq '^set kait2en_blacklist=.*apple_gmux' packaging/installer/grub.cfg.in; then
 	exit 1
 fi
-! rg -n 'INPUT_COMPAT_PATCH|compat_patch|packaging/installer/patches' \
+! grep -InE 'INPUT_COMPAT_PATCH|compat_patch|packaging/installer/patches' \
 	packaging/installer/runtime/kait2en-prepare
 grep -Fq '"$transition_source" "$target_kernel" "$work/rpm"' \
 	packaging/installer/runtime/kait2en-prepare
@@ -84,13 +76,13 @@ grep -Fq 'dracut --force --force-drivers' \
 ! grep -Fq -- '--add-drivers' packaging/installer/runtime/kait2en-prepare
 grep -Fq '"etc", "xdg", "autostart"' \
 	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
-! rg -n 'find_regular_user|home\.lstrip|os\.chown' \
+! grep -InE 'find_regular_user|home\.lstrip|os\.chown' \
 	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
 grep -Fq 'KAIT2EN_AUTOSTART_FILE:-/etc/xdg/autostart/kait2en-install.desktop' \
 	packaging/installer/runtime/kait2en-prepare
-! rg -n '\$HOME/\.config/autostart' \
+! grep -InE '\$HOME/\.config/autostart' \
 	packaging/installer/runtime/kait2en-install
-if rg -n 'kait2en-first-boot|KAIT2EN_FIRST_BOOT' packaging/installer; then
+if grep -rInE 'kait2en-first-boot|KAIT2EN_FIRST_BOOT' packaging/installer; then
 	exit 1
 fi
 # The live Wi-Fi helpers must ride along in the input initramfs and must stay
@@ -106,7 +98,7 @@ grep -Fq 'runtime_units=/run/systemd/system' \
 	packaging/installer/initramfs/90-kait2en-updates.sh
 grep -Fq 'ExecStart=/run/kait2en/kait2en-live-wifi' \
 	packaging/installer/runtime/kait2en-live-wifi.service
-! rg -n 'kait2en-live-wifi' packaging/installer/anaconda-addon
+! grep -rInE 'kait2en-live-wifi' packaging/installer/anaconda-addon
 
 # Bluetooth firmware is loaded from disk by BCM4377 alone. Every entry point has
 # to check for that PCI function, and the UART .hcd path must stay out of here.
@@ -115,7 +107,7 @@ grep -Fq '0x5fa0' packaging/installer/runtime/kait2en-live-bluetooth
 grep -Fq '0x5fa0' \
 	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
 grep -Fq 'BCM4377' scripts/macos/prepare-fedora-installer.sh
-! rg -n '\.hcd' packaging/installer scripts/macos
+! grep -rInE '\.hcd' packaging/installer scripts/macos
 grep -Fq 'usr/lib/kait2en/install-bt-firmware.sh' \
 	packaging/installer/build-in-container.sh
 grep -Fq 'usr/lib/kait2en/kait2en-live-bluetooth' \
@@ -124,7 +116,7 @@ grep -Fq 'usr/lib/kait2en/kait2en-live-bluetooth.service' \
 	packaging/installer/build-in-container.sh
 grep -Fq 'ExecStart=/run/kait2en/kait2en-live-bluetooth' \
 	packaging/installer/runtime/kait2en-live-bluetooth.service
-! rg -n 'kait2en-live-bluetooth' packaging/installer/anaconda-addon
+! grep -rInE 'kait2en-live-bluetooth' packaging/installer/anaconda-addon
 
 grep -Fq 'Do not close this window!' packaging/installer/runtime/kait2en-install
 grep -Fq 'Ensure that you are connected to Wi-Fi before continuing.' \
@@ -157,7 +149,7 @@ grep -Fq 'KAIT2EN_TTY:-/dev/tty' packaging/installer/macos-release-bootstrap.sh.
 [[ $(grep -Fc 'uses: actions/checkout@v5' .github/workflows/installer.yml) -eq 3 ]]
 grep -Fq 'uses: actions/upload-artifact@v6' .github/workflows/installer.yml
 grep -Fq 'uses: actions/download-artifact@v7' .github/workflows/installer.yml
-! rg -n 'uses: actions/(checkout|upload-artifact|download-artifact)@v4' \
+! grep -InE 'uses: actions/(checkout|upload-artifact|download-artifact)@v4' \
 	.github/workflows/installer.yml
 
 patch_name=$(
