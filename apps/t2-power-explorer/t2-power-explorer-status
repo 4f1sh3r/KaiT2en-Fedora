@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+shopt -s nullglob
+for file in /sys/kernel/debug/dri/0000:*/i915_display_info; do
+    device=${file%/i915_display_info}
+    device=${device##*/}
+    lanes=$(
+        awk '
+            match($0, /lane_count=[0-9]+/) {
+                value = substr($0, RSTART, RLENGTH)
+                sub(/^lane_count=/, "", value)
+                print value
+                exit
+            }
+        ' "$file"
+    )
+    if [[ -n "$lanes" ]]; then
+        printf 'DISPLAY_LANES\t%s\t%s\n' "$device" "$lanes"
+    fi
+done
+
+for config in /sys/bus/pci/devices/0000:*/config; do
+    device=${config%/config}
+    device=${device##*/}
+    mapfile -t bytes < <(od -An -v -tx1 "$config" | tr ' ' '\n' | sed '/^$/d')
+    (( ${#bytes[@]} >= 64 )) || continue
+    status=$((16#${bytes[7]}${bytes[6]}))
+    if (( !(status & 0x10) )); then
+        printf 'PCI_PM\t%s\t0\t0\t0\t0\t0\t0\t0\t0\n' "$device"
+        continue
+    fi
+    pointer=$((16#${bytes[52]} & 0xfc))
+    found=0
+    for ((guard = 0; pointer >= 0x40 && pointer + 3 < ${#bytes[@]} && guard < 48; guard++)); do
+        capability=$((16#${bytes[pointer]}))
+        next=$((16#${bytes[pointer + 1]} & 0xfc))
+        if (( capability == 1 )); then
+            pmc=$((16#${bytes[pointer + 3]}${bytes[pointer + 2]}))
+            printf 'PCI_PM\t%s\t%d\t%d\t1\t%d\t%d\t%d\t%d\t%d\n' \
+                "$device" \
+                "$(( (pmc >> 9) & 1 ))" \
+                "$(( (pmc >> 10) & 1 ))" \
+                "$(( (pmc >> 11) & 1 ))" \
+                "$(( (pmc >> 12) & 1 ))" \
+                "$(( (pmc >> 13) & 1 ))" \
+                "$(( (pmc >> 14) & 1 ))" \
+                "$(( (pmc >> 15) & 1 ))"
+            found=1
+            break
+        fi
+        (( next != 0 && next != pointer )) || break
+        pointer=$next
+    done
+    if (( !found )); then
+        printf 'PCI_PM\t%s\t0\t0\t0\t0\t0\t0\t0\t0\n' "$device"
+    fi
+done
