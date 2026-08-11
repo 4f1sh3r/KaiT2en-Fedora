@@ -48,12 +48,12 @@ while IFS= read -r file; do
 done < <(git ls-files 'packaging/installer/anaconda-addon/*.py' \
 	'packaging/installer/anaconda-addon/**/*.py')
 
-! grep -rInE 'OEMDRV|rhdd3|inst\.dd=|inst\.ks=|kait2en\.wifi_required' \
+! grep -rInE --exclude-dir=target 'OEMDRV|rhdd3|inst\.dd=|inst\.ks=|kait2en\.wifi_required' \
 	packaging/installer/grub.cfg.in \
 	packaging/installer/initramfs \
 	packaging/installer/anaconda-addon \
 	scripts/macos
-! grep -rInE 'brcmfmac(4364|4377).*alias|generic.*brcmfmac|brcmfmac[^ ]*-pcie\.txt' \
+! grep -rInE --exclude-dir=target 'brcmfmac(4364|4377).*alias|generic.*brcmfmac|brcmfmac[^ ]*-pcie\.txt' \
 	packaging/installer
 # A KaiT2en entry without the input initramfs loses the keyboard it rescues.
 awk '
@@ -82,7 +82,8 @@ grep -Fq 'KAIT2EN_AUTOSTART_FILE:-/etc/xdg/autostart/kait2en-install.desktop' \
 	packaging/installer/runtime/kait2en-prepare
 ! grep -InE '\$HOME/\.config/autostart' \
 	packaging/installer/runtime/kait2en-install
-if grep -rInE 'kait2en-first-boot|KAIT2EN_FIRST_BOOT' packaging/installer; then
+if grep -rInE --exclude-dir=target 'kait2en-first-boot|KAIT2EN_FIRST_BOOT' \
+		packaging/installer; then
 	exit 1
 fi
 # The live Wi-Fi helpers must ride along in the input initramfs and must stay
@@ -98,7 +99,8 @@ grep -Fq 'runtime_units=/run/systemd/system' \
 	packaging/installer/initramfs/90-kait2en-updates.sh
 grep -Fq 'ExecStart=/run/kait2en/kait2en-live-wifi' \
 	packaging/installer/runtime/kait2en-live-wifi.service
-! grep -rInE 'kait2en-live-wifi' packaging/installer/anaconda-addon
+! grep -rInE --exclude-dir=target 'kait2en-live-wifi' \
+	packaging/installer/anaconda-addon
 
 # Bluetooth firmware is loaded from disk by BCM4377 alone. Every entry point has
 # to check for that PCI function, and the UART .hcd path must stay out of here.
@@ -107,7 +109,7 @@ grep -Fq '0x5fa0' packaging/installer/runtime/kait2en-live-bluetooth
 grep -Fq '0x5fa0' \
 	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
 grep -Fq 'BCM4377' scripts/macos/prepare-fedora-installer.sh
-! grep -rInE '\.hcd' packaging/installer scripts/macos
+! grep -rInE --exclude-dir=target '\.hcd' packaging/installer scripts/macos
 grep -Fq 'usr/lib/kait2en/install-bt-firmware.sh' \
 	packaging/installer/build-in-container.sh
 grep -Fq 'usr/lib/kait2en/kait2en-live-bluetooth' \
@@ -116,7 +118,8 @@ grep -Fq 'usr/lib/kait2en/kait2en-live-bluetooth.service' \
 	packaging/installer/build-in-container.sh
 grep -Fq 'ExecStart=/run/kait2en/kait2en-live-bluetooth' \
 	packaging/installer/runtime/kait2en-live-bluetooth.service
-! grep -rInE 'kait2en-live-bluetooth' packaging/installer/anaconda-addon
+! grep -rInE --exclude-dir=target 'kait2en-live-bluetooth' \
+	packaging/installer/anaconda-addon
 
 grep -Fq 'Do not close this window!' packaging/installer/runtime/kait2en-install
 grep -Fq 'Ensure that you are connected to Wi-Fi before continuing.' \
