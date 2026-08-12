@@ -52,6 +52,6 @@ done <"$catalog"
 ((count == 3))
 ((default_found == 1))
 [[ "$seen" == ' workstation kde cosmic ' ]]
-! rg -n 'Atomic|ostree|Labs|Server|netinst|IoT' "$catalog"
+! grep -InE 'Atomic|ostree|Labs|Server|netinst|IoT' "$catalog"
 printf 'Validated %d classic Fedora desktop editions for Fedora %s.\n' \
 	"$count" "$FEDORA_RELEASE"
