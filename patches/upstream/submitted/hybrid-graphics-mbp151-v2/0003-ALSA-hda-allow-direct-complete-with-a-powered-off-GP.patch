@@ -1,7 +1,8 @@
-From a282d7ac04a809f585aec401c3b431a39efc78f8 Mon Sep 17 00:00:00 2001
+From f7f92fd5c77fff9250469e14350ad961af6094e4 Mon Sep 17 00:00:00 2001
 From: Andre Eikmeyer <dev@deq.rocks>
-Date: Wed, 12 Aug 2026 16:00:25 +0200
-Subject: [PATCH] ALSA: hda: allow direct complete with a powered-off GPU
+Date: Wed, 12 Aug 2026 16:37:38 +0200
+Subject: [PATCH v2 3/3] ALSA: hda: allow direct complete with a powered-off
+ GPU
 
 The HDA controller normally needs different WAKEEN settings for runtime and
 system suspend, so azx_prepare() prevents direct complete. For a switcheroo
@@ -13,7 +14,7 @@ Resuming the HDA function during system suspend also acquires its runtime
 PM supplier. This powers the discrete GPU back on only to suspend it again
 and can expose failures while restoring an otherwise unused GPU.
 
-Direct complete is now allowed when the bound VGA device is both runtime
+Direct complete is allowed when the bound VGA device is both runtime
 suspended and reported off by vga_switcheroo. Active GPUs and HDA
 controllers without a switcheroo binding retain the existing WAKEEN
 transition.
@@ -23,6 +24,7 @@ both the 2018 and 2019 revisions. The discrete GPU remains powered off
 across system suspend when it is unused, and suspend and resume complete
 successfully.
 
+Reviewed-by: Takashi Iwai <tiwai@suse.de>
 Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 ---
  sound/hda/controllers/intel.c | 24 ++++++++++++++++++++++++
@@ -82,3 +84,4 @@ index 28c55c5..194d962 100644
  {
 -- 
 2.55.0
+

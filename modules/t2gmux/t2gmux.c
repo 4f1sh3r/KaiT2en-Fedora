@@ -90,24 +90,16 @@ static int gmux_call_pwg(struct apple_gmux_data *gmux_data,
 			 const char *method)
 {
 	acpi_handle handle = ACPI_HANDLE(&gmux_data->discrete_pdev->dev);
-	unsigned long long result;
 	acpi_status status;
 
 	if (!handle)
 		return -ENODEV;
 
-	status = acpi_evaluate_integer(handle, (acpi_string)method, NULL,
-				       &result);
+	status = acpi_evaluate_object(handle, (acpi_string)method, NULL, NULL);
 	if (ACPI_FAILURE(status)) {
 		dev_err(&gmux_data->discrete_pdev->dev,
 			"failed to evaluate %s: %s\n", method,
 			acpi_format_exception(status));
-		return -EIO;
-	}
-
-	if (result) {
-		dev_err(&gmux_data->discrete_pdev->dev,
-			"%s failed: %llu\n", method, result);
 		return -EIO;
 	}
 
@@ -622,8 +614,10 @@ static enum vga_switcheroo_client_id gmux_get_client_id(struct pci_dev *pdev)
 		return VGA_SWITCHEROO_IGD;
 
 	if (apple_gmux_data->use_pwg_power_sequence &&
-	    !apple_gmux_data->discrete_pdev)
+	    apple_gmux_data->discrete_pdev != pdev) {
+		pci_dev_put(apple_gmux_data->discrete_pdev);
 		apple_gmux_data->discrete_pdev = pci_dev_get(pdev);
+	}
 
 	return VGA_SWITCHEROO_DIS;
 }

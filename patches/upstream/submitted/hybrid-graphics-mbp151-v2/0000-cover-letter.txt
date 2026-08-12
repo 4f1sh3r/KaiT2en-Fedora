@@ -1,0 +1,65 @@
+From f7f92fd5c77fff9250469e14350ad961af6094e4 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Wed, 12 Aug 2026 16:37:38 +0200
+Subject: [PATCH v2 0/3] Apple GMUX hybrid graphics support for MacBookPro15,1
+
+Hello everyone,
+
+This series enables hybrid graphics on the MacBookPro15,1.
+
+The MacBookPro15,1 normally starts Linux with the discrete GPU as primary.
+On the machines tested here that results in roughly 24 W idle power draw,
+about 12 W of which is attributable to the otherwise unused discrete GPU.
+Selecting the integrated GPU at boot avoids that cost, but the discrete GPU
+cannot currently return after GMUX powers it down, so usable hybrid graphics
+and suspend are not available.
+
+This series provides the missing power lifecycle across apple-gmux, amdgpu
+and the HDA controller. With the integrated GPU as primary, the discrete GPU
+transitions between DynOff and DynPwr. Offloading through DRI_PRIME and
+external monitor support both work across these transitions.
+
+The result has been tested for three weeks on both the 2018 and 2019
+MacBookPro15,1 revisions. Runtime suspend and resume, system suspend and
+resume, repeated GPU wakeups, and a variety of external Thunderbolt and
+USB-C monitors were tested successfully.
+
+One question remains regarding Apple's gpu-power-prefs EFI variable. The
+firmware defaults to the discrete GPU, while selecting the integrated GPU
+is required before this hybrid configuration can take effect. Would setting
+that preference from the kernel be appropriate on a known-good model, or
+should it remain a userspace policy decision? Some discoverable way to
+select the power-efficient configuration would seem preferable to requiring
+users to know about a vendor-specific NVRAM variable.
+
+Changes in v2:
+- Refresh the individual patch descriptions.
+- Evaluate PWG methods without expecting an integer return object.
+- Refresh the cached discrete PCI device when a client is re-registered.
+- Keep the HDA switcheroo implementation in the existing switcheroo section.
+- Document the positive azx_prepare() return and add Takashi's Reviewed-by.
+
+The HDA follow-up review crossed with the standalone v2 and v3 revisions of
+patch 3/3. This full-series v2 contains the reviewed v3 implementation.
+
+v1: https://lore.kernel.org/all/20260812122206.193680-1-dev@deq.rocks/
+
+Thank you for your time and consideration.
+
+Andre Eikmeyer (2):
+  drm/amdgpu: add Apple GMUX runtime PM support
+  ALSA: hda: allow direct complete with a powered-off GPU
+
+Atharva Tiwari (1):
+  platform/x86: apple-gmux: add MacBookPro15,1 dGPU power sequence
+
+ drivers/gpu/drm/amd/amdgpu/amdgpu.h        |  1 +
+ drivers/gpu/drm/amd/amdgpu/amdgpu_device.c | 34 ++++++++--
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c    | 30 ++++++---
+ drivers/gpu/drm/amd/pm/inc/amdgpu_dpm.h    |  1 +
+ drivers/platform/x86/apple-gmux.c          | 78 ++++++++++++++++++++--
+ sound/hda/controllers/intel.c              | 24 +++++++
+ 6 files changed, 145 insertions(+), 23 deletions(-)
+
+-- 
+2.55.0
