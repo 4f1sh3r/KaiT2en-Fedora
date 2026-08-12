@@ -15,7 +15,7 @@ import { TouchReader, getTouchDevicePath } from '../native/input';
 import { KeyboardReader, findKeyboardDevices, findPointerDevices, findLidDevice } from '../native/keyboard';
 import type { SceneNode, RootContainer } from '../scene/types';
 import type { LayoutBox } from '../scene/layout';
-import type { DrmDisplay } from '../native/binding';
+import type { Display } from '../native/binding';
 
 export interface RenderOptions {
   /**
@@ -60,6 +60,15 @@ export interface RenderOptions {
   flushFps?: number;
 
   partialFlush?: boolean;
+
+  /**
+   * Open the native Touch Bar touchpad and wire its gestures into the touch
+   * registry. Default: true. Set false when there's no real Touch Bar to read
+   * from (e.g. the browser preview backend, which drives touch input over
+   * its own WebSocket connection instead) — otherwise the renderer retries
+   * the open forever on the INPUT_RETRY_MS cadence, logging a warning each time.
+   */
+  touchEnabled?: boolean;
 }
 
 export interface RenderResult {
@@ -490,15 +499,16 @@ class Backlight {
 
 export function render(
   element: React.ReactNode,
-  display: DrmDisplay,
+  display: Display,
   options: RenderOptions = {},
 ): RenderResult {
   // Resolve timing — support deprecated screenSaverSecs as alias for dimSecs
   const dimMs = ((options.dimSecs ?? options.screenSaverSecs) ?? 0) * 1000;
   const offMs = ((options.offSecs ?? options.dimSecs ?? options.screenSaverSecs) ?? 0) * 1000;
 
-  const adaptive    = options.adaptiveBrightness ?? false;
-  const activeLevel = options.activeBrightness ?? 2;
+  const adaptive     = options.adaptiveBrightness ?? false;
+  const activeLevel  = options.activeBrightness ?? 2;
+  const touchEnabled = options.touchEnabled ?? true;
   const backlight = new Backlight();
 
   const registry  = new TouchRegistry();
@@ -842,6 +852,7 @@ export function render(
   let stopTouch = (): void => {};
   let touchRetryTimer: ReturnType<typeof setTimeout> | null = null;
   function startTouch(): void {
+    if (!touchEnabled) return;
     if (touchRetryTimer) { clearTimeout(touchRetryTimer); touchRetryTimer = null; }
     try {
       const touchDevice = new TouchReader({ width: display.width, height: display.height });

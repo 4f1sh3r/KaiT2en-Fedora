@@ -1,21 +1,25 @@
 import fs from 'fs';
 import path from 'path';
-import { DrmDisplay, KeyboardReader, renderHot, resolveKeyCode } from 'react-drm';
+import { KeyboardReader, PreviewDisplay, createDisplay, renderHot, resolveKeyCode, startPreviewServer } from 'react-drm';
 import { DISPLAY, SCREENSHOT, SLEEP } from './config';
 import { attachTouchBar, ensureTouchBarAttached, watchSleep } from './services/suspend';
 
 // The app owns the Touch Bar lifecycle in every run mode — manual `npm run
 // dev` and react-drm.service alike: attach at startup, quiesce before system
 // sleep, re-attach + resume after. SLEEP.enabled in config.ts turns it off.
+// None of this applies to the browser preview backend — there's no physical
+// Touch Bar to attach/detach, and waiting on one would just stall startup.
+const isPreview = process.env.REACT_DRM_BACKEND === 'preview';
+
 async function main() {
-  if (SLEEP.enabled) {
+  if (SLEEP.enabled && !isPreview) {
     await ensureTouchBarAttached().catch(e => {
       console.warn('[react-drm] Touch Bar attach failed:', e instanceof Error ? e.message : e);
     });
   }
 
   const keyboard = new KeyboardReader();
-  const display  = new DrmDisplay(process.argv[2]);
+  const display  = createDisplay(process.argv[2]);
 
   // Save what the touchbar currently shows as a PNG when all combo keys are
   // held. Fires once per press — re-arms only after a combo key is released.
@@ -47,10 +51,11 @@ async function main() {
     activeBrightness: DISPLAY.activeBrightness,
     flushFps:         DISPLAY.flushFps,
     partialFlush:     DISPLAY.partialFlush,
+    touchEnabled:     !isPreview,
     //  adaptiveBrightness: true
   });
 
-  if (SLEEP.enabled) {
+  if (SLEEP.enabled && !isPreview) {
     watchSleep({
       onSleep: () => result.suspend(),
       onResume: async () => {
@@ -63,6 +68,10 @@ async function main() {
     }).catch(e => {
       console.warn('[react-drm] sleep watcher unavailable:', e instanceof Error ? e.message : e);
     });
+  }
+
+  if (isPreview) {
+    startPreviewServer(display as PreviewDisplay, result);
   }
 
   function shutdown() {

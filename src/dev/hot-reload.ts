@@ -3,7 +3,7 @@ import path from 'path';
 import React from 'react';
 import { render } from '../renderer/renderer';
 import type { RenderResult, RenderOptions } from '../renderer/renderer';
-import type { DrmDisplay } from '../native/binding';
+import type { Display } from '../native/binding';
 
 
 function findWatchRoot(startDir: string): string {
@@ -78,7 +78,7 @@ function watchDir(dir: string, onChange: (changed: string[]) => void): () => voi
 
 export function renderHot(
   appModulePath: string,
-  display: DrmDisplay,
+  display: Display,
   options?: RenderOptions & {
     appProps?: Record<string, unknown>;
     watch?: boolean;

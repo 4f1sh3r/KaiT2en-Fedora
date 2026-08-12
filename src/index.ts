@@ -14,7 +14,9 @@ export type { SvgProps } from './components/Svg';
 export type { GifProps } from './components/Gif';
 export type { SwipeZoneProps } from './components/SwipeZone';
 export type { ScrollRowProps } from './components/ScrollRow';
-export { DrmDisplay, usbReset } from './native/binding';
+export { DrmDisplay, usbReset, createDisplay } from './native/binding';
+export type { Display, DamageRect, BarsOpts } from './native/binding';
+export { PreviewDisplay } from './native/preview-display';
 export { TouchReader, KeyInjector, FKEY_CODES, KEY } from './native/input';
 export type { GestureOptions, TouchReaderOptions } from './native/input';
 export { KeyboardReader, KEY_NAMES, resolveKeyCode } from './native/keyboard';
@@ -38,6 +40,8 @@ export type { DisplaySize, NativeDraw } from './scene/display-context';
 export { SAFE_INSET, SAFE_INSET_X, SAFE_INSET_Y } from './scene/safe-area';
 export type { SafeAreaInsets } from './scene/safe-area';
 export { renderHot } from './dev/hot-reload';
+export { startPreviewServer } from './dev/preview-server';
+export type { PreviewServerOptions, PreviewServerHandle } from './dev/preview-server';
 export {
   animated,
   useSpring, useSpringValue, useSprings, useTransition,

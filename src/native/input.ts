@@ -65,8 +65,8 @@ const TOUCH_MAX_Y = 127;
 // Fallback logical display size (after rotation) for the T2 Touch Bar, used
 // only when the caller doesn't supply the real DRM display dimensions. The
 // renderer passes display.width/height so touch tracks the auto-detected mode.
-const DEFAULT_DISPLAY_W = 2008;
-const DEFAULT_DISPLAY_H = 60;
+export const DEFAULT_DISPLAY_W = 2008;
+export const DEFAULT_DISPLAY_H = 60;
 
 function resolveTouchDevicePath(devicePath?: string): string {
   if (devicePath) return devicePath;

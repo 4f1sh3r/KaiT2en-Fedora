@@ -51,6 +51,23 @@ interface NativeHandle {
 }
 
 /**
+ * Common surface the renderer drives regardless of where pixels end up —
+ * the real Touch Bar (DrmDisplay) or a browser preview (PreviewDisplay).
+ * Both are thin wrappers around the same native CairoRenderer; only what
+ * owns/exposes the framebuffer differs.
+ */
+export interface Display {
+  readonly width: number;
+  readonly height: number;
+  render(commands: DrawCommand[], clips?: DamageRect[]): void;
+  renderBinary(frame: BinaryFrame, clips?: DamageRect[]): void;
+  drawBars(opts: BarsOpts): void;
+  screenshot(filePath: string): void;
+  close(): void;
+  reopen(): void;
+}
+
+/**
  * USBDEVFS_RESET ioctl on a USB device node (`/dev/bus/usb/BBB/DDD`).
  * Wakes the Touch Bar firmware's display interface out of its idle sleep —
  * the state where every transfer (including config switches) fails with
@@ -60,7 +77,7 @@ export function usbReset(devnode: string): void {
   loadNative().usbReset(devnode);
 }
 
-export class DrmDisplay {
+export class DrmDisplay implements Display {
   private handle: NativeHandle;
   private readonly devicePath?: string;
   private closed = false;
@@ -124,4 +141,25 @@ export class DrmDisplay {
     }
     console.log(`[react-drm] DRM display reopened on ${resolvedPath}`);
   }
+}
+
+/**
+ * Construct the display backend selected by REACT_DRM_BACKEND:
+ *   'drm'     (default) — real Touch Bar over DRM/KMS.
+ *   'preview' — in-memory framebuffer streamed to a browser, for development
+ *               on a desktop with no Touch Bar / DRM device / root. See
+ *               src/dev/preview-server.ts.
+ */
+export function createDisplay(devicePath?: string): Display {
+  const backend = process.env.REACT_DRM_BACKEND ?? 'drm';
+  if (backend === 'preview') {
+    // Lazy require: keeps the native DRM path free of any preview-only code paths.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { PreviewDisplay } = require('./preview-display') as typeof import('./preview-display');
+    return new PreviewDisplay();
+  }
+  if (backend !== 'drm') {
+    console.warn(`[react-drm] unknown REACT_DRM_BACKEND=${backend}, falling back to 'drm'`);
+  }
+  return new DrmDisplay(devicePath);
 }
