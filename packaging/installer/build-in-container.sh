@@ -9,7 +9,8 @@ OUTPUT_DIR=${3:-/work/out}
 required_variables=(
 	TARGET_ID FEDORA_RELEASE ARCH DEFAULT_EDITION EDITIONS_FILE
 	ISO_KERNEL_PATH ISO_INITRD_PATH ISO_KERNEL_RELEASE ANACONDA_VERSION
-	KERNEL_DEVEL_SHA256 FEDORA_BASEURL INPUT_COMPAT_PATCH ARTIFACT_BASENAME
+	KERNEL_DEVEL_SHA256 FEDORA_METALINK FEDORA_ARCHIVE_BASEURL INPUT_COMPAT_PATCH
+	ARTIFACT_BASENAME
 	SOURCE_DATE_EPOCH
 )
 for variable in "${required_variables[@]}"; do
@@ -22,17 +23,47 @@ done
 [[ "$ARCH" =~ ^[a-z0-9_]+$ ]]
 [[ "$ISO_KERNEL_RELEASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.fc[0-9]+\.${ARCH}$ ]]
 [[ "$KERNEL_DEVEL_SHA256" =~ ^[0-9a-f]{64}$ ]]
-[[ "$FEDORA_BASEURL" == https://* ]]
+[[ "$FEDORA_METALINK" == https://mirrors.fedoraproject.org/metalink\?* ]]
+[[ "$FEDORA_ARCHIVE_BASEURL" == https://archives.fedoraproject.org/pub/archive/* ]]
 EDITION_CATALOG="$SOURCE_ROOT/packaging/installer/targets/$EDITIONS_FILE"
 [[ -s "$EDITION_CATALOG" ]]
 grep -Eq "^${DEFAULT_EDITION}[[:space:]]" "$EDITION_CATALOG"
 
 printf '%s  %s\n' "$KERNEL_DEVEL_SHA256" "$KERNEL_DEVEL_RPM" | sha256sum --check --status
 
-dnf install -y \
-	--disablerepo='*' \
-	--repofrompath="kait2en-fedora,$FEDORA_BASEURL" \
-	--setopt=kait2en-fedora.gpgcheck=0 \
+DNF_REPO_CONFIG=/work/kait2en-fedora.repo
+mkdir -p /work/kait2en-empty-repos
+write_dnf_repo() {
+	local source_type=$1 source=$2
+	cat >"$DNF_REPO_CONFIG" <<EOF
+[main]
+reposdir=/work/kait2en-empty-repos
+
+[kait2en-fedora]
+name=KaiT2en Fedora build repository
+$source_type=$source
+enabled=1
+gpgcheck=0
+EOF
+}
+
+run_dnf_with_fallback() {
+	local cleanup_dir=$1
+	shift
+	write_dnf_repo metalink "$FEDORA_METALINK"
+	if dnf --config="$DNF_REPO_CONFIG" "$@"; then
+		return 0
+	fi
+	printf 'Fedora metalink transaction failed; retrying with the official archive.\n' >&2
+	rm -rf /var/cache/dnf/kait2en-fedora-* /var/cache/libdnf5/kait2en-fedora-*
+	if [[ -n "$cleanup_dir" ]]; then
+		find "$cleanup_dir" -mindepth 1 -maxdepth 1 -type f -delete
+	fi
+	write_dnf_repo baseurl "$FEDORA_ARCHIVE_BASEURL"
+	dnf --config="$DNF_REPO_CONFIG" "$@"
+}
+
+run_dnf_with_fallback '' install -y \
 	--setopt=install_weak_deps=False \
 	cpio \
 	elfutils-libelf-devel \
@@ -51,10 +82,7 @@ dnf install -y \
 ANACONDA_VALIDATION=/work/anaconda-validation
 rm -rf "$ANACONDA_VALIDATION"
 mkdir -p "$ANACONDA_VALIDATION/rpm" "$ANACONDA_VALIDATION/root"
-dnf download \
-	--disablerepo='*' \
-	--repofrompath="kait2en-fedora,$FEDORA_BASEURL" \
-	--setopt=kait2en-fedora.gpgcheck=0 \
+run_dnf_with_fallback "$ANACONDA_VALIDATION/rpm" download \
 	--destdir="$ANACONDA_VALIDATION/rpm" \
 	"anaconda-core-$ANACONDA_VERSION"
 ANACONDA_RPM=$(find "$ANACONDA_VALIDATION/rpm" -type f -name 'anaconda-core-*.rpm' -print -quit)
@@ -112,6 +140,9 @@ install -m 0644 \
 	"$LAYOUT/README.md"
 install -m 0755 \
 	"$SOURCE_ROOT/scripts/macos/prepare-fedora-installer.sh" \
+	"$LAYOUT/scripts/macos/"
+install -m 0755 \
+	"$SOURCE_ROOT/scripts/macos/download-fedora-iso.sh" \
 	"$LAYOUT/scripts/macos/"
 install -m 0644 "$EDITION_CATALOG" "$LAYOUT/installer-editions.tsv"
 

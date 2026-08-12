@@ -214,7 +214,7 @@ collect_macos_bluetooth_firmware() {
 
 load_editions() {
 	local catalog=$1
-	local id display variant subvariant filename url size sha
+	local id display variant subvariant filename url size sha release_path
 	local seen=" "
 
 	[[ -s "$catalog" ]] || die "installer edition catalog is missing: $catalog"
@@ -224,7 +224,10 @@ load_editions() {
 		[[ "$seen" != *" $id "* ]] || die "duplicate edition ID: $id"
 		[[ -n "$display" && -n "$variant" && -n "$subvariant" ]] ||
 			die "incomplete edition entry: $id"
-		[[ "$filename" == *.iso && "$url" == https://download.fedoraproject.org/* ]] ||
+		release_path=$(kait2en_fedora_release_path "$url") ||
+			die "invalid Fedora download for edition: $id"
+		[[ "$filename" == *.iso && "${release_path##*/}" == "$filename" &&
+			"$release_path" == "$FEDORA_RELEASE/"* ]] ||
 			die "invalid Fedora download for edition: $id"
 		[[ "$size" =~ ^[0-9]+$ && "$sha" =~ ^[0-9a-f]{64}$ ]] ||
 			die "invalid size or checksum for edition: $id"
@@ -339,36 +342,6 @@ run_as_calling_user() {
 	fi
 }
 
-verify_iso() {
-	local path=$1 expected_size=$2 expected_sha=$3 actual_size actual_sha
-	[[ -f "$path" ]] || return 1
-	actual_size=$(stat -f %z "$path")
-	[[ "$actual_size" == "$expected_size" ]] || return 1
-	actual_sha=$(shasum -a 256 "$path" | awk '{print $1}')
-	[[ "$actual_sha" == "$expected_sha" ]]
-}
-
-download_iso() {
-	local destination=$1 url=$2 expected_size=$3 expected_sha=$4
-	local partial="$destination.part"
-
-	if [[ -e "$destination" ]]; then
-		if verify_iso "$destination" "$expected_size" "$expected_sha"; then
-			printf 'Using verified cached ISO: %s\n' "$destination"
-			return
-		fi
-		die "cached ISO has the wrong size or checksum; remove it and retry: $destination"
-	fi
-
-	printf 'Downloading %s...\n' "${destination##*/}"
-	run_as_calling_user curl --fail --location --retry 3 \
-		--continue-at - --output "$partial" "$url"
-	verify_iso "$partial" "$expected_size" "$expected_sha" ||
-		die "downloaded ISO failed verification: $partial"
-	run_as_calling_user mv "$partial" "$destination"
-	printf 'Verified Fedora ISO: %s\n' "$destination"
-}
-
 while (($# > 0)); do
 	case "$1" in
 		--edition)
@@ -415,9 +388,12 @@ while (($# > 0)); do
 	esac
 done
 
-for file in installer-target.conf installer-editions.tsv grub.cfg.in kait2en-input-initramfs.img; do
+for file in installer-target.conf installer-editions.tsv grub.cfg.in \
+	kait2en-input-initramfs.img scripts/macos/download-fedora-iso.sh; do
 	[[ -s "$KIT_ROOT/$file" ]] || die "installer kit file is missing: $file"
 done
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/download-fedora-iso.sh"
 # shellcheck disable=SC1091
 source "$KIT_ROOT/installer-target.conf"
 [[ -n ${TARGET_ID:-} && -n ${FEDORA_RELEASE:-} && -n ${DEFAULT_EDITION:-} ]] ||
@@ -472,7 +448,7 @@ expected_url=${EDITION_URLS[EDITION_INDEX]}
 expected_size=${EDITION_SIZES[EDITION_INDEX]}
 expected_sha=${EDITION_SHAS[EDITION_INDEX]}
 if [[ -n "$ISO_PATH" ]]; then
-	verify_iso "$ISO_PATH" "$expected_size" "$expected_sha" ||
+	kait2en_verify_iso "$ISO_PATH" "$expected_size" "$expected_sha" ||
 		die "ISO verification failed for $expected_name"
 fi
 
@@ -498,7 +474,8 @@ if [[ -z "$ISO_PATH" ]]; then
 	fi
 	[[ -d "$DOWNLOAD_DIR" ]] || die "download directory not found: $DOWNLOAD_DIR"
 	ISO_PATH="$DOWNLOAD_DIR/$expected_name"
-	download_iso "$ISO_PATH" "$expected_url" "$expected_size" "$expected_sha"
+	kait2en_download_iso "$ISO_PATH" "$expected_url" "$expected_size" "$expected_sha" ||
+		die 'could not download and verify the Fedora ISO; the target disk was not changed'
 fi
 
 WORK=$(mktemp -d /tmp/kait2en-installer.XXXXXX)
