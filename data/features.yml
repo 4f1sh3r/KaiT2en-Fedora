@@ -240,7 +240,7 @@ items:
     project: KAIT2EN Fedora
     subsystem: t2gmux / amdgpu
     authors:
-      - Atharva Tiwari
+      - byte
       - deqrocks
     link: "https://lore.kernel.org/all/20260812122206.193680-1-dev@deq.rocks/"
     updated: "2026-08-12"
