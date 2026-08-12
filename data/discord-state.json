@@ -3,7 +3,7 @@
   "messages": {
     "brcmfmac-pm-max-power-management": {
       "message_id": "1536401557581602927",
-      "hash": "5aaf0edd6950de67b366c9d75f79eefb3f7de8a3cce83545b55285c590cd7494"
+      "hash": "1cb27b4855ef86a8941edd89766fa4decff0cd4a4b0196dfe94cb1a7ed4b0aa0"
     },
     "keyboard-backlight-reenumeration": {
       "message_id": "1533951131821146283",
@@ -51,7 +51,7 @@
     },
     "hybrid-graphics": {
       "message_id": "1537074764714082334",
-      "hash": "01ab9d532868a91c1f6379bc623d4dfb2e2e328a9d8e8e2ffafb7c3ae096bc06"
+      "hash": "b8ed769c82954940cd02bde28a8544690d099f59707a4764ce0880cf5c689bfc"
     }
   }
 }
