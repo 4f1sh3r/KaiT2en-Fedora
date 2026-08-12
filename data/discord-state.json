@@ -13,6 +13,10 @@
       "message_id": "1533951135214469344",
       "hash": "547f96d0783dfdb47e2b1453e301182d9757438c609fdf3c63c7d47da531246c"
     },
+    "apple-t2-early-cpu-offlining": {
+      "message_id": "1537074756724199444",
+      "hash": "343e818877bdf1f2ba39a714a563e5aca95de52a7abe27a748e6b7f48cac3c85"
+    },
     "touchbar-runtime-pm-deadlock": {
       "message_id": "1536401561570246706",
       "hash": "b288d5ba107bc95f80ee0e234ae1ad98d2712da18f1875e154348de8e955414c"
@@ -31,7 +35,7 @@
     },
     "fn-double-press-layer-switch": {
       "message_id": "1533951148980047994",
-      "hash": "8fcb9f54206ac64993c760ae1f28dee6e9c4be6ab6e302344f45bf4dd6efe64e"
+      "hash": "ce53764a853dafb1bc9ca935574afe678717fe154f8d8f12dfcebc1517f6340f"
     },
     "dgpu-wakeup-15-1": {
       "message_id": "1533951152339554465",
@@ -44,6 +48,10 @@
     "keyboard-backlight-after-resume": {
       "message_id": "1533951161063968828",
       "hash": "c29b3eb759ce6355acf94c30ccef5412f042e4517095520dd2e6f556d4b65bb0"
+    },
+    "hybrid-graphics": {
+      "message_id": "1537074764714082334",
+      "hash": "ff51303947423fcb8e4e0c9e1c416a3e9e92b93b9791d567a542c0d034184c70"
     }
   }
 }
