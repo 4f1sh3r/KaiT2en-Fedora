@@ -10,18 +10,23 @@ target="$repo_root/packaging/installer/targets/$target_name.conf"
 source "$target"
 catalog="$repo_root/packaging/installer/targets/$EDITIONS_FILE"
 [[ -s "$catalog" ]]
+# shellcheck disable=SC1091
+source "$repo_root/scripts/macos/download-fedora-iso.sh"
 
 count=0
 seen=" "
 default_found=0
 while IFS=$'\t' read -r id display variant subvariant filename url size sha; do
+	release_path=$(kait2en_fedora_release_path "$url")
 	[[ "$id" =~ ^[a-z0-9][a-z0-9-]*$ ]]
 	[[ "$seen" != *" $id "* ]]
 	seen="$seen$id "
 	[[ -n "$display" && -n "$subvariant" ]]
 	case "$variant" in Workstation|KDE|Spins) ;; *) exit 1 ;; esac
 	[[ "$filename" == *-Live-"$FEDORA_RELEASE"-*.x86_64.iso ]]
-	[[ "$url" == https://download.fedoraproject.org/*/"$filename" ]]
+	[[ "$url" == "https://download.fedoraproject.org/pub/fedora/linux/releases/$release_path" ]]
+	[[ "$release_path" == "$FEDORA_RELEASE/"* ]]
+	[[ "${release_path##*/}" == "$filename" ]]
 	[[ "$size" =~ ^[0-9]+$ && "$sha" =~ ^[0-9a-f]{64}$ ]]
 	[[ "$id" != "$DEFAULT_EDITION" ]] || default_found=1
 	count=$((count + 1))

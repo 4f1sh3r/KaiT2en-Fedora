@@ -21,8 +21,10 @@ shell_files=(
 	packaging/installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
 	scripts/fedora/install-dkms-modules.sh
+	scripts/macos/download-fedora-iso.sh
 	scripts/macos/prepare-fedora-installer.sh
 	tests/installer/edition-catalog.sh
+	tests/installer/iso-download.sh
 	tests/installer/install-launcher.sh
 	tests/installer/static-check.sh
 	tests/installer/prepare-install.sh
@@ -142,6 +144,14 @@ grep -Fq 'Allow booting from external or removable media.' \
 	scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'reconnect the USB drive and retry with --reuse-media' \
 	scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'source "$SCRIPT_DIR/download-fedora-iso.sh"' \
+	scripts/macos/prepare-fedora-installer.sh
+grep -Fq 'scripts/macos/download-fedora-iso.sh' \
+	packaging/installer/build-in-container.sh
+grep -Fq 'FEDORA_METALINK=' packaging/installer/targets/fedora-44.conf
+grep -Fq 'FEDORA_ARCHIVE_BASEURL=' packaging/installer/targets/fedora-44.conf
+! grep -rIn 'FEDORA_BASEURL\|dl.fedoraproject.org/pub/fedora/linux/releases' \
+	packaging/installer/targets scripts/fedora packaging/installer/build-in-container.sh
 ! grep -Fq 'Keep no second driver disk connected' scripts/macos/prepare-fedora-installer.sh
 ! grep -Fq 'before the intentional EFI customization' scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'shasum -a 256 -c' packaging/installer/macos-release-bootstrap.sh.in
@@ -169,5 +179,6 @@ bash tests/installer/prepare-install.sh
 bash tests/installer/install-launcher.sh
 bash tests/installer/release-bootstrap.sh
 bash tests/installer/terminal-launcher.sh
+bash tests/installer/iso-download.sh
 bash tests/installer/edition-catalog.sh
 printf 'Installer static checks passed.\n'
