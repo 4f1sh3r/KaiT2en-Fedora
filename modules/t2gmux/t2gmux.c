@@ -90,16 +90,24 @@ static int gmux_call_pwg(struct apple_gmux_data *gmux_data,
 			 const char *method)
 {
 	acpi_handle handle = ACPI_HANDLE(&gmux_data->discrete_pdev->dev);
+	unsigned long long result;
 	acpi_status status;
 
 	if (!handle)
 		return -ENODEV;
 
-	status = acpi_evaluate_object(handle, (acpi_string)method, NULL, NULL);
+	status = acpi_evaluate_integer(handle, (acpi_string)method, NULL,
+				       &result);
 	if (ACPI_FAILURE(status)) {
 		dev_err(&gmux_data->discrete_pdev->dev,
 			"failed to evaluate %s: %s\n", method,
 			acpi_format_exception(status));
+		return -EIO;
+	}
+
+	if (result) {
+		dev_err(&gmux_data->discrete_pdev->dev,
+			"%s failed: %llu\n", method, result);
 		return -EIO;
 	}
 

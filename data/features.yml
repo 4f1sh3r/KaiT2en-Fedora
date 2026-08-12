@@ -27,7 +27,7 @@ items:
     title: "Wi-Fi PM_MAX power management"
     state: in-progress
     upstream: submitted
-    version: v2
+    version: v3
     project: Linux kernel
     subsystem: Wi-Fi / brcmfmac
     authors:
@@ -242,8 +242,8 @@ items:
     authors:
       - byte
       - deqrocks
-    link: "https://lore.kernel.org/all/20260812144221.35877-1-dev@deq.rocks/"
+    link: "https://lore.kernel.org/all/20260812144750.36797-1-dev@deq.rocks/"
     updated: "2026-08-12"
     notes: >-
       Runtime GPU switching is available downstream on MacBookPro15,1. The
-      apple-gmux, amdgpu and ALSA HDA changes were submitted upstream as v2.
+      apple-gmux, amdgpu and ALSA HDA changes were submitted upstream as v3.
