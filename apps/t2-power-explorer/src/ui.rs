@@ -446,6 +446,7 @@ pub fn build(app: &adw::Application) {
     let left_scroll = gtk::ScrolledWindow::builder()
         .child(&list)
         .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
         .build();
     let left = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let tree_toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 6);

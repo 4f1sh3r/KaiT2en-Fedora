@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=T2 Hybrid GPU Control
+Comment=Configure hybrid graphics on the MacBookPro15,1
+Exec=t2-hybrid-gpu-control
+Icon=org.t2hybridgpucontrol.gtk
+Terminal=false
+Type=Application
+Categories=Settings;HardwareSettings;
+Keywords=GPU;graphics;Apple;T2;

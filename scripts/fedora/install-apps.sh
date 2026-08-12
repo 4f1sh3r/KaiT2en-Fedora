@@ -105,6 +105,33 @@ has_t2_touchbar_model() {
 	esac
 }
 
+install_gpu_control() {
+	local model
+
+	[[ -r /sys/class/dmi/id/product_name ]] || {
+		info "DMI product name not found, skipping GPU control"
+		return
+	}
+	read -r model </sys/class/dmi/id/product_name
+
+	case "$model" in
+		MacBookPro15,1)
+			info "installing tested hybrid graphics support for $model"
+			make -C "$REPO_ROOT/apps/t2-dgpu-control" uninstall
+			"$REPO_ROOT/apps/t2-hybrid-gpu-control/install.sh"
+			;;
+		MacBookPro15,3|MacBookPro16,1|MacBookPro16,4)
+			make -C "$REPO_ROOT/apps/t2-hybrid-gpu-control" uninstall
+			"$REPO_ROOT/apps/t2-dgpu-control/install.sh"
+			;;
+		*)
+			info "Model $model has no supported switchable AMD dGPU"
+			make -C "$REPO_ROOT/apps/t2-hybrid-gpu-control" uninstall
+			make -C "$REPO_ROOT/apps/t2-dgpu-control" uninstall
+			;;
+	esac
+}
+
 install_react_drm() {
 	local target_user target_home target_uid target_group src dst
 	local installed_node_packages=() package daemon unit group groups
@@ -272,7 +299,7 @@ if [[ "$install_mode" == all ]]; then
 	install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-fan-control"
 	install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
 	install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
-	"$REPO_ROOT/apps/t2-dgpu-control/install.sh"
+	install_gpu_control
 	"$REPO_ROOT/apps/t2-cpu-control/install.sh"
 fi
 install_react_drm

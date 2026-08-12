@@ -19,6 +19,7 @@
 #include <linux/apple-gmux.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
+#include <linux/dmi.h>
 #include <linux/pci.h>
 #include <linux/vga_switcheroo.h>
 #include <linux/debugfs.h>
@@ -84,6 +85,42 @@ struct apple_gmux_data {
 };
 
 static struct apple_gmux_data *apple_gmux_data;
+
+static bool gmux_uses_mbp151_power_sequence(void)
+{
+	return dmi_match(DMI_PRODUCT_NAME, "MacBookPro15,1");
+}
+
+static int gmux_call_dgpu_link_method(struct apple_gmux_data *gmux_data,
+				      const char *method)
+{
+	acpi_handle handle;
+	unsigned long long result;
+	acpi_status status;
+
+	if (!gmux_data->dgpu_pdev)
+		return -ENODEV;
+
+	handle = ACPI_HANDLE(&gmux_data->dgpu_pdev->dev);
+	if (!handle)
+		return -ENODEV;
+
+	pr_info("DGPU power-on: requesting %s link transition\n", method);
+	status = acpi_evaluate_integer(handle, (acpi_string)method, NULL,
+				       &result);
+	if (ACPI_FAILURE(status)) {
+		pr_err("Failed to evaluate DGPU.%s: %s\n", method,
+		       acpi_format_exception(status));
+		return -EIO;
+	}
+	if (result) {
+		pr_err("DGPU.%s failed: %llu\n", method, result);
+		return -EIO;
+	}
+
+	pr_info("DGPU power-on: %s completed successfully\n", method);
+	return 0;
+}
 
 struct apple_gmux_config {
 	u8 (*read8)(struct apple_gmux_data *gmux_data, int port);
@@ -513,22 +550,28 @@ static int gmux_switch_ddc(enum vga_switcheroo_client_id id)
 static int gmux_set_discrete_state(struct apple_gmux_data *gmux_data,
 				   enum vga_switcheroo_state state)
 {
+	int ret;
+
 	reinit_completion(&gmux_data->powerchange_done);
 
 	if (state == VGA_SWITCHEROO_ON) {
 		if (gmux_data->type == APPLE_GMUX_TYPE_MMIO &&
-		    gmux_data->dgpu_pdev) {
-			acpi_handle dgpu_handle =
-				ACPI_HANDLE(&gmux_data->dgpu_pdev->dev);
-			void __iomem *bar;
+		    gmux_data->dgpu_pdev &&
+		    gmux_uses_mbp151_power_sequence()) {
+			unsigned long start;
 			u16 val;
 			u16 ms;
 
+			pr_info("DGPU power-on: writing GMUX states 2 -> 3\n");
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 2);
 			msleep(100);
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 3);
-			acpi_evaluate_object(dgpu_handle, "PWG1", NULL, NULL);
 
+			ret = gmux_call_dgpu_link_method(gmux_data, "PWG1");
+			if (ret)
+				return ret;
+
+			start = jiffies;
 			for (ms = 0; ms < 1000; ms++) {
 				pci_read_config_word(gmux_data->dgpu_pdev,
 						     PCI_VENDOR_ID, &val);
@@ -540,23 +583,22 @@ static int gmux_set_discrete_state(struct apple_gmux_data *gmux_data,
 				pr_err("Timed out waiting for DGPU to power on\n");
 				return -ETIMEDOUT;
 			}
+			pr_info("DGPU power-on: PCI config accessible after %u ms\n",
+				jiffies_to_msecs(jiffies - start));
 
-			bar = pci_iomap(gmux_data->dgpu_pdev, 0, 0);
-			if (!bar)
-				return -ENOMEM;
+			ret = gmux_call_dgpu_link_method(gmux_data, "PWG3");
+			if (ret)
+				return ret;
 
-			iowrite32(ioread32(bar + 0x8c340) & 0x3fffffff,
-				  bar + 0x8c340);
-			pci_iounmap(gmux_data->dgpu_pdev, bar);
-
-			acpi_evaluate_object(dgpu_handle, "PWG3", NULL, NULL);
 		} else {
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 1);
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 3);
 		}
 		pr_debug("Discrete card powered up\n");
 	} else {
-		if (gmux_data->type == APPLE_GMUX_TYPE_MMIO) {
+		if (gmux_data->type == APPLE_GMUX_TYPE_MMIO &&
+		    gmux_uses_mbp151_power_sequence()) {
+			pr_info("DGPU power-off: writing GMUX states 1 -> 0\n");
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 1);
 			msleep(10);
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 0);
@@ -598,7 +640,8 @@ static enum vga_switcheroo_client_id gmux_get_client_id(struct pci_dev *pdev)
 		 pdev->device == 0x0863)
 		return VGA_SWITCHEROO_IGD;
 	else {
-		if (!apple_gmux_data->dgpu_pdev)
+		if (gmux_uses_mbp151_power_sequence() &&
+		    !apple_gmux_data->dgpu_pdev)
 			apple_gmux_data->dgpu_pdev = pdev;
 		return VGA_SWITCHEROO_DIS;
 	}
@@ -903,7 +946,7 @@ get_version:
 		ver_minor = gmux_read8(gmux_data, GMUX_PORT_VERSION_MINOR);
 		ver_release = gmux_read8(gmux_data, GMUX_PORT_VERSION_RELEASE);
 	}
-	pr_debug("Found gmux version %d.%d.%d [%s]\n", ver_major, ver_minor,
+	pr_info("Found gmux version %d.%d.%d [%s]\n", ver_major, ver_minor,
 		ver_release, gmux_data->config->name);
 
 	memset(&props, 0, sizeof(props));
@@ -1062,8 +1105,8 @@ static void gmux_remove(struct pnp_dev *pnp)
 }
 
 static const struct pnp_device_id gmux_device_ids[] = {
-	{GMUX_ACPI_HID, 0},
-	{"", 0}
+	{ .id = GMUX_ACPI_HID },
+	{ }
 };
 
 static const struct dev_pm_ops gmux_dev_pm_ops = {
@@ -1085,5 +1128,6 @@ module_pnp_driver(gmux_pnp_driver);
 MODULE_AUTHOR("Seth Forshee <seth.forshee@canonical.com>");
 MODULE_AUTHOR("kait2en");
 MODULE_DESCRIPTION("Kait2en T2 GMUX driver");
+MODULE_VERSION("0.8");
 MODULE_LICENSE("GPL");
 MODULE_DEVICE_TABLE(pnp, gmux_device_ids);

@@ -80,6 +80,7 @@ REMOVE_ARGS=(
 	intel_iommu
 	iommu
 	pm_async
+	brcmfmac.p2pon
 	pci
 	pcie_ports
 	pcie_aspm
@@ -97,6 +98,9 @@ ADD_ARGS=(
 	"intel_iommu=on"
 	"iommu=pt"
 	"pm_async=off"
+	"brcmfmac.p2pon=0"
+	"pcie_aspm=force"
+	"pcie_aspm.policy=powersave"
 	"pcie_ports=native"
 	"pci=noaer"
 	"mem_sleep_default=deep"

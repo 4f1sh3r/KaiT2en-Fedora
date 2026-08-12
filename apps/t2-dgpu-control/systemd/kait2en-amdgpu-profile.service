@@ -8,4 +8,3 @@ ExecStart=/usr/local/libexec/t2-dgpu-control-helper apply-power-saving
 
 [Install]
 WantedBy=multi-user.target
-

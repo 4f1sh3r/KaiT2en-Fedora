@@ -48,6 +48,19 @@ The installer also writes
 `/etc/kernel/install.d/39-kait2en-dkms-cleanup.install`. The hook removes stale
 DKMS build state before a kernel installation is retried.
 
+On the MacBookPro15,1, the app installer also builds the AMDGPU and Intel HDA
+modules with the hybrid runtime-PM patches and installs them for the running
+kernel at:
+
+```text
+/usr/lib/modules/<kernel>/updates/kait2en-gpu-runtime-pm/amdgpu.ko.xz
+/usr/lib/modules/<kernel>/updates/kait2en-gpu-runtime-pm/snd-hda-intel.ko.xz
+```
+
+The corresponding modprobe and dracut configuration is installed as
+`/usr/lib/modprobe.d/kait2en-gpu-runtime-pm.conf` and
+`/etc/dracut.conf.d/90-kait2en-gpu-runtime-pm.conf`.
+
 ## Kernel arguments
 
 `install-kernel-args.sh` updates every installed kernel entry with
@@ -63,6 +76,11 @@ KAIT2EN adds these arguments to every installed kernel through `grubby`:
 intel_iommu=on
 iommu=pt
 pm_async=off
+brcmfmac.p2pon=0
+pcie_aspm=force
+pcie_aspm.policy=powersave
+pcie_ports=native
+pci=noaer
 mem_sleep_default=deep
 initcall_blacklist=cmos_init,magicmouse_driver_init
 module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux
@@ -170,24 +188,26 @@ outcome of the Bluetooth step is recorded in the installed system at:
 
 ## Desktop applications
 
-`t2-fan-control`, `t2-smc-control`, and `t2-power-explorer` are built from the checkout and installed
-system-wide under `/usr/local`. `t2-dgpu-control` is installed only when DMI
-identifies a MacBook Pro and PCI discovery finds both Intel and AMD display
-devices.
+`t2-fan-control`, `t2-smc-control`, and `t2-power-explorer` are built from the
+checkout and installed system-wide under `/usr/local`. The MacBookPro15,1 gets
+`t2-hybrid-gpu-control`; other MacBook Pro models with Intel and AMD display
+devices get `t2-dgpu-control`.
 
 | Application | Installed files |
 | --- | --- |
 | T2 Fan Control | `/usr/local/bin/t2-fancontrol-gtk`, `/usr/local/share/applications/org.t2fancontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2fancontrol.gtk.svg`, `/usr/local/lib/systemd/system/t2-fancontrol.service` |
 | T2 SMC Control | `/usr/local/bin/t2-smc-control`, `/usr/local/share/applications/org.t2smccontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2smccontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-t2-smc-charge-limit.service` |
 | T2 Power Explorer | `/usr/local/bin/t2-power-explorer`, `/usr/local/libexec/t2-power-explorer-status`, `/usr/local/share/applications/org.t2powerexplorer.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2powerexplorer.gtk.svg`, `/usr/share/polkit-1/actions/org.t2powerexplorer.policy` |
+| T2 Hybrid GPU Control | `/usr/local/bin/t2-hybrid-gpu-control`, `/usr/local/libexec/t2-hybrid-gpu-control-helper`, `/usr/local/libexec/t2-hybrid-gpu-control-status`, `/usr/local/share/applications/org.t2hybridgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2hybridgpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.status.policy` |
 | T2 GPU Control | `/usr/local/bin/t2-dgpu-control`, `/usr/local/libexec/t2-dgpu-control-helper`, `/usr/local/libexec/t2-dgpu-control-status`, `/usr/local/share/applications/org.t2dgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2dgpucontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-dgpu-off.service`, `/usr/local/lib/systemd/system/kait2en-dgpu-suspend.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile-resume.service`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.status.policy` |
 
 T2 SMC Control creates `/etc/t2-smc-control/config.txt` only after a charge
 limit is saved. Its system service restores that value at boot. T2 Fan Control's
 service starts immediately and persists fan curves across boot and resume.
-T2 GPU Control enables its units only when the corresponding options are
-applied in the app. Its privileged helper validates the hybrid GPU layout and
-accepts only the fixed operations exposed by the UI.
+T2 Hybrid GPU Control does not install system services. T2 GPU Control enables
+its units only when the corresponding options are applied in the app. Both
+privileged helpers validate the GPU layout and accept only the fixed operations
+exposed by their UI.
 
 `react-drm` is installed for the desktop user only when the DMI product name is
 one of `MacBookPro15,1`, `MacBookPro15,2`, `MacBookPro15,3`, `MacBookPro15,4`,
