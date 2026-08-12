@@ -1,7 +1,7 @@
 From d2c3561a6eea1969cefb566a1fbb27de0504b336 Mon Sep 17 00:00:00 2001
 From: Andre Eikmeyer <dev@deq.rocks>
 Date: Wed, 12 Aug 2026 16:00:25 +0200
-Subject: [PATCH] ALSA: hda: allow direct complete with a powered-off GPU
+Subject: [PATCH v2 3/3] ALSA: hda: allow direct complete with a powered-off GPU
 
 The HDA controller normally needs different WAKEEN settings for runtime and
 system suspend, so azx_prepare() prevents direct complete. For a switcheroo
@@ -25,6 +25,10 @@ successfully.
 
 Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 ---
+Changes in v2:
+- Move the SUPPORT_VGA_SWITCHEROO guard to the sole call site.
+- Explain the significance of the positive azx_prepare() return value.
+
  sound/hda/controllers/intel.c | 29 +++++++++++++++++++++++++++--
  1 file changed, 27 insertions(+), 2 deletions(-)
 
