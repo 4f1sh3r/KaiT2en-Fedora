@@ -247,7 +247,7 @@ fn read_rtc_datetime(rtc: &Path) -> Option<String> {
     Some(format!("{} {}", date.trim(), time.trim()))
 }
 
-fn read_sensors(hwmon: &Path) -> Vec<(String, Option<u32>)> {
+fn read_sensors(hwmon: &Path) -> Vec<(String, String, Option<u32>)> {
     let pattern = format!("{}/temp*_label", hwmon.display());
     let Ok(entries) = glob::glob(&pattern) else {
         return vec![];
@@ -268,10 +268,10 @@ fn read_sensors(hwmon: &Path) -> Vec<(String, Option<u32>)> {
                 .to_string_lossy()
                 .replace("_label", "_input"),
         );
-        sensors.push((sensor_label(&key), read_u32(&input)));
+        sensors.push((sensor_label(&key), key, read_u32(&input)));
     }
-    sensors.sort_by(|a, b| a.0.cmp(&b.0));
-    sensors.dedup_by(|a, b| a.0 == b.0);
+    sensors.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    sensors.dedup_by(|a, b| a.1 == b.1);
     sensors
 }
 
@@ -325,7 +325,7 @@ fn power_label(key: &str) -> String {
     }
 }
 
-fn read_smc_power_stats(hwmon: &Path) -> Vec<(String, String)> {
+fn read_smc_power_stats(hwmon: &Path) -> Vec<(String, String, String)> {
     let pattern = format!("{}/power*_label", hwmon.display());
     let Ok(entries) = glob::glob(&pattern) else {
         return vec![];
@@ -348,53 +348,87 @@ fn read_smc_power_stats(hwmon: &Path) -> Vec<(String, String)> {
                 .replace("_label", "_input"),
         );
         if let Some(value) = read_i64(&input_path) {
-            stats.push((power_label(&key), scaled_value(value, "W")));
+            stats.push((power_label(&key), key, scaled_value(value, "W")));
         }
     }
 
-    stats.sort_by(|a, b| a.0.cmp(&b.0));
+    stats.sort_by(|a, b| {
+        let rank = |(label, _, value): &(String, String, String)| {
+            (label.starts_with("unknown"), value == "0.00 W")
+        };
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.0.cmp(&b.0))
+            .then_with(|| a.1.cmp(&b.1))
+    });
     stats
 }
 
-fn read_power_telemetry(hwmon: &Path) -> Vec<(String, String)> {
+fn has_smc_power_key(hwmon: &Path, wanted: &str) -> bool {
+    let pattern = format!("{}/power*_label", hwmon.display());
+    glob::glob(&pattern).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|path| fs::read_to_string(path).is_ok_and(|key| key.trim() == wanted))
+    })
+}
+
+fn read_power_telemetry(hwmon: &Path) -> Vec<(String, String, String)> {
     let mut values = Vec::new();
-    let mut add = |name: &str, file: &str, format: fn(i64) -> String| {
+    let adapter_power_key = if has_smc_power_key(hwmon, "PD0R") {
+        "PD0R"
+    } else {
+        "PDTR"
+    };
+    let mut add = |name: &str, key: &str, file: &str, format: fn(i64) -> String| {
         if let Some(value) = read_i64(&hwmon.join(file)) {
-            values.push((name.to_string(), format(value)));
+            values.push((name.to_string(), key.to_string(), format(value)));
         }
     };
 
-    add("Power events", "power_event_count", |v| v.to_string());
-    add("Battery capacity", "smc_battery_capacity_percent", |v| {
-        format!("{v}%")
-    });
-    add("Battery voltage", "smc_battery_voltage_uv", |v| {
+    add("Power events", "", "power_event_count", |v| v.to_string());
+    add(
+        "Battery capacity",
+        "BRSC",
+        "smc_battery_capacity_percent",
+        |v| format!("{v}%"),
+    );
+    add("Battery voltage", "B0AV", "smc_battery_voltage_uv", |v| {
         scaled_value(v, "V")
     });
-    add("Battery current", "smc_battery_current_ua", |v| {
+    add("Battery current", "B0AC", "smc_battery_current_ua", |v| {
         format!("{:.3} A", v as f64 / 1_000_000.0)
     });
-    add("Battery power", "smc_battery_power_uw", |v| {
+    add("Battery power", "B0AP", "smc_battery_power_uw", |v| {
         scaled_value(v, "W")
     });
-    add("Battery charge", "smc_battery_charge_now_uah", |v| {
-        scaled_value(v, "Ah")
-    });
-    add("Battery full charge", "smc_battery_charge_full_uah", |v| {
-        scaled_value(v, "Ah")
-    });
-    add("Battery cycles", "smc_battery_cycle_count", |v| {
+    add(
+        "Battery charge",
+        "B0RM",
+        "smc_battery_charge_now_uah",
+        |v| scaled_value(v, "Ah"),
+    );
+    add(
+        "Battery full charge",
+        "B0FC",
+        "smc_battery_charge_full_uah",
+        |v| scaled_value(v, "Ah"),
+    );
+    add("Battery cycles", "B0CT", "smc_battery_cycle_count", |v| {
         v.to_string()
     });
-    add("Adapter voltage", "smc_adapter_voltage_uv", |v| {
+    add("Adapter voltage", "VD0R", "smc_adapter_voltage_uv", |v| {
         scaled_value(v, "V")
     });
-    add("Adapter current", "smc_adapter_current_ua", |v| {
+    add("Adapter current", "ID0R", "smc_adapter_current_ua", |v| {
         scaled_value(v, "A")
     });
-    add("Adapter power", "smc_adapter_power_uw", |v| {
-        scaled_value(v, "W")
-    });
+    add(
+        "Adapter power",
+        adapter_power_key,
+        "smc_adapter_power_uw",
+        |v| scaled_value(v, "W"),
+    );
 
     values.extend(read_smc_power_stats(hwmon));
 
@@ -559,9 +593,9 @@ fn sensor_value_text(val: Option<u32>) -> String {
         .unwrap_or_else(|| "n/a".into())
 }
 
-fn append_placeholder_row(list: &gtk4::ListBox) {
+fn append_placeholder_row(list: &gtk4::ListBox, text: &str) {
     let row = gtk4::ListBoxRow::new();
-    let label = gtk4::Label::new(Some("No temperature sensors found"));
+    let label = gtk4::Label::new(Some(text));
     label.set_margin_top(12);
     label.set_margin_bottom(12);
     label.set_margin_start(12);
@@ -572,53 +606,60 @@ fn append_placeholder_row(list: &gtk4::ListBox) {
     list.append(&row);
 }
 
-fn append_sensor_row(list: &gtk4::ListBox, name: &str, val: Option<u32>) -> gtk4::Label {
-    let row = gtk4::ListBoxRow::new();
-    row.set_selectable(false);
-
-    let line = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
-    line.set_margin_top(10);
-    line.set_margin_bottom(10);
-    line.set_margin_start(12);
-    line.set_margin_end(12);
-
-    let name_label = gtk4::Label::new(Some(name));
-    name_label.set_halign(gtk4::Align::Start);
-    name_label.set_hexpand(true);
-    name_label.set_xalign(0.0);
-
-    let value_label = gtk4::Label::new(Some(&sensor_value_text(val)));
-    value_label.set_halign(gtk4::Align::End);
-    value_label.add_css_class("numeric");
-
-    line.append(&name_label);
-    line.append(&value_label);
-    row.set_child(Some(&line));
-    list.append(&row);
-
-    value_label
+fn table_cell(text: &str, width: i32, expand: bool, align: f32) -> gtk4::Label {
+    let label = gtk4::Label::new(Some(text));
+    label.set_width_chars(width);
+    label.set_hexpand(expand);
+    label.set_xalign(align);
+    label.set_halign(if align == 1.0 {
+        gtk4::Align::End
+    } else {
+        gtk4::Align::Fill
+    });
+    label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+    label
 }
 
-fn append_value_row(list: &gtk4::ListBox, name: &str, value: &str) -> gtk4::Label {
+fn append_table_header(list: &gtk4::ListBox, first: &str, third: &str) {
+    let row = gtk4::ListBoxRow::new();
+    row.set_selectable(false);
+    let line = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+    line.set_margin_top(6);
+    line.set_margin_bottom(6);
+    line.set_margin_start(10);
+    line.set_margin_end(10);
+    let first = table_cell(first, 24, true, 0.0);
+    let key = table_cell("SMC key", 8, false, 0.0);
+    let value = table_cell(third, 10, false, 1.0);
+    first.add_css_class("heading");
+    key.add_css_class("heading");
+    value.add_css_class("heading");
+    line.append(&first);
+    line.append(&key);
+    line.append(&value);
+    row.set_child(Some(&line));
+    list.append(&row);
+}
+
+fn append_table_row(list: &gtk4::ListBox, name: &str, key: &str, value: &str) -> gtk4::Label {
     let row = gtk4::ListBoxRow::new();
     row.set_selectable(false);
 
     let line = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
-    line.set_margin_top(10);
-    line.set_margin_bottom(10);
-    line.set_margin_start(12);
-    line.set_margin_end(12);
+    line.set_margin_top(5);
+    line.set_margin_bottom(5);
+    line.set_margin_start(10);
+    line.set_margin_end(10);
 
-    let name_label = gtk4::Label::new(Some(name));
-    name_label.set_halign(gtk4::Align::Start);
-    name_label.set_hexpand(true);
-    name_label.set_xalign(0.0);
-
-    let value_label = gtk4::Label::new(Some(value));
-    value_label.set_halign(gtk4::Align::End);
+    let name_label = table_cell(name, 24, true, 0.0);
+    let key_label = table_cell(if key.is_empty() { "—" } else { key }, 8, false, 0.0);
+    key_label.add_css_class("dim-label");
+    key_label.add_css_class("monospace");
+    let value_label = table_cell(value, 10, false, 1.0);
     value_label.add_css_class("numeric");
 
     line.append(&name_label);
+    line.append(&key_label);
     line.append(&value_label);
     row.set_child(Some(&line));
     list.append(&row);
@@ -629,26 +670,30 @@ fn append_value_row(list: &gtk4::ListBox, name: &str, value: &str) -> gtk4::Labe
 fn refresh_value_rows(
     list: &gtk4::ListBox,
     rows: &Rc<RefCell<BTreeMap<String, gtk4::Label>>>,
-    values: &[(String, String)],
+    values: &[(String, String, String)],
 ) {
     let rebuild = {
         let rows = rows.borrow();
-        rows.len() != values.len() || values.iter().any(|(name, _)| !rows.contains_key(name))
+        rows.len() != values.len()
+            || values
+                .iter()
+                .any(|(name, key, _)| !rows.contains_key(&(name.clone() + key)))
     };
 
     if rebuild {
         let mut rows = rows.borrow_mut();
         clear_listbox(list);
         rows.clear();
-        for (name, value) in values {
-            rows.insert(name.clone(), append_value_row(list, name, value));
+        append_table_header(list, "Metric", "Value");
+        for (name, key, value) in values {
+            rows.insert(name.clone() + key, append_table_row(list, name, key, value));
         }
         return;
     }
 
     let rows = rows.borrow();
-    for (name, value) in values {
-        if let Some(label) = rows.get(name) {
+    for (name, key, value) in values {
+        if let Some(label) = rows.get(&(name.clone() + key)) {
             label.set_text(value);
         }
     }
@@ -657,7 +702,7 @@ fn refresh_value_rows(
 fn refresh_sensor_rows(
     list: &gtk4::ListBox,
     rows: &Rc<RefCell<BTreeMap<String, gtk4::Label>>>,
-    sensors: &[(String, Option<u32>)],
+    sensors: &[(String, String, Option<u32>)],
 ) {
     let has_placeholder = rows.borrow().is_empty() && list.first_child().is_some();
 
@@ -665,7 +710,7 @@ fn refresh_sensor_rows(
         if !has_placeholder {
             rows.borrow_mut().clear();
             clear_listbox(list);
-            append_placeholder_row(list);
+            append_placeholder_row(list, "No temperature sensors found");
         }
         return;
     }
@@ -674,23 +719,24 @@ fn refresh_sensor_rows(
         let rows = rows.borrow();
         has_placeholder
             || rows.len() != sensors.len()
-            || sensors.iter().any(|(name, _)| !rows.contains_key(name))
+            || sensors.iter().any(|(_, key, _)| !rows.contains_key(key))
     };
 
     if rebuild {
         let mut rows = rows.borrow_mut();
         clear_listbox(list);
         rows.clear();
-        for (name, val) in sensors {
-            let value_label = append_sensor_row(list, name, *val);
-            rows.insert(name.clone(), value_label);
+        append_table_header(list, "Sensor", "Temperature");
+        for (name, key, val) in sensors {
+            let value_label = append_table_row(list, name, key, &sensor_value_text(*val));
+            rows.insert(key.clone(), value_label);
         }
         return;
     }
 
     let rows = rows.borrow();
-    for (name, val) in sensors {
-        if let Some(label) = rows.get(name) {
+    for (_, key, val) in sensors {
+        if let Some(label) = rows.get(key) {
             label.set_text(&sensor_value_text(*val));
         }
     }
@@ -699,20 +745,21 @@ fn refresh_sensor_rows(
 fn rebuild_sensor_rows(
     list: &gtk4::ListBox,
     rows: &Rc<RefCell<BTreeMap<String, gtk4::Label>>>,
-    sensors: &[(String, Option<u32>)],
+    sensors: &[(String, String, Option<u32>)],
 ) {
     rows.borrow_mut().clear();
     clear_listbox(list);
 
     if sensors.is_empty() {
-        append_placeholder_row(list);
+        append_placeholder_row(list, "No temperature sensors found");
         return;
     }
 
     let mut rows = rows.borrow_mut();
-    for (name, val) in sensors {
-        let value_label = append_sensor_row(list, name, *val);
-        rows.insert(name.clone(), value_label);
+    append_table_header(list, "Sensor", "Temperature");
+    for (name, key, val) in sensors {
+        let value_label = append_table_row(list, name, key, &sensor_value_text(*val));
+        rows.insert(key.clone(), value_label);
     }
 }
 
@@ -821,9 +868,15 @@ fn main() {
             refresh_value_rows(&power_list, &power_rows, &read_power_telemetry(h));
         }
         let power_scroll = gtk4::ScrolledWindow::new();
-        power_scroll.set_max_content_height(260);
-        power_scroll.set_propagate_natural_height(true);
+        power_scroll.set_hexpand(true);
+        power_scroll.set_vexpand(true);
         power_scroll.set_child(Some(&power_list));
+
+        let power_panel = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+        power_panel.set_hexpand(true);
+        power_panel.set_vexpand(true);
+        power_panel.append(&power_title);
+        power_panel.append(&power_scroll);
 
         // Sensor list
         let sensors_title = gtk4::Label::new(Some("Temperatures"));
@@ -841,19 +894,33 @@ fn main() {
         scroll.set_vexpand(true);
         scroll.set_child(Some(&sensor_list));
 
+        let sensor_panel = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+        sensor_panel.set_hexpand(true);
+        sensor_panel.set_vexpand(true);
+        sensor_panel.append(&sensors_title);
+        sensor_panel.append(&scroll);
+
         // Layout
+        let overview = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+        overview.set_homogeneous(true);
+        overview.append(&charge_frame);
+        overview.append(&rtc_frame);
+
+        let telemetry = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+        telemetry.set_homogeneous(true);
+        telemetry.set_hexpand(true);
+        telemetry.set_vexpand(true);
+        telemetry.append(&power_panel);
+        telemetry.append(&sensor_panel);
+
         let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 12);
         vbox.set_vexpand(true);
         vbox.set_margin_top(12);
         vbox.set_margin_bottom(12);
         vbox.set_margin_start(12);
         vbox.set_margin_end(12);
-        vbox.append(&charge_frame);
-        vbox.append(&rtc_frame);
-        vbox.append(&power_title);
-        vbox.append(&power_scroll);
-        vbox.append(&sensors_title);
-        vbox.append(&scroll);
+        vbox.append(&overview);
+        vbox.append(&telemetry);
 
         let root = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         root.set_vexpand(true);
@@ -862,7 +929,7 @@ fn main() {
 
         let window = adw::ApplicationWindow::new(app);
         window.set_title(Some("SMC Control"));
-        window.set_default_size(460, 900);
+        window.set_default_size(1200, 760);
         window.set_content(Some(&root));
 
         let updating_slider = Rc::new(RefCell::new(false));
@@ -1097,8 +1164,8 @@ mod tests {
         assert_eq!(
             read_power_telemetry(&hwmon),
             vec![
-                ("Power events".into(), "2".into()),
-                ("Battery voltage".into(), "12.10 V".into()),
+                ("Power events".into(), "".into(), "2".into()),
+                ("Battery voltage".into(), "B0AV".into(), "12.10 V".into()),
             ]
         );
 
@@ -1119,8 +1186,8 @@ mod tests {
         assert_eq!(
             read_smc_power_stats(&hwmon),
             vec![
-                ("CPU cores".into(), "12.35 W".into()),
-                ("GPU 0 rail".into(), "2.50 W".into()),
+                ("CPU cores".into(), "PC0C".into(), "12.35 W".into()),
+                ("GPU 0 rail".into(), "PG0R".into(), "2.50 W".into()),
             ]
         );
 
@@ -1136,5 +1203,26 @@ mod tests {
         assert_eq!(power_label("PDTR"), "DC-In total");
         assert_eq!(power_label("PSTR"), "System total (1 s delayed)");
         assert_eq!(power_label("PXYZ"), "unknown (PXYZ)");
+    }
+
+    #[test]
+    fn sorts_unknown_zero_power_values_last() {
+        let hwmon = temp_path("power-order");
+        fs::create_dir_all(&hwmon).unwrap();
+        for (index, key, value) in [
+            (1, "PZZZ", 0),
+            (2, "PYYY", 1_000_000),
+            (3, "PC0C", 0),
+            (4, "PDTR", 2_000_000),
+        ] {
+            fs::write(hwmon.join(format!("power{index}_label")), key).unwrap();
+            fs::write(hwmon.join(format!("power{index}_input")), value.to_string()).unwrap();
+        }
+
+        let stats = read_smc_power_stats(&hwmon);
+        let keys: Vec<_> = stats.iter().map(|(_, key, _)| key.as_str()).collect();
+        assert_eq!(keys, vec!["PDTR", "PC0C", "PYYY", "PZZZ"]);
+
+        let _ = fs::remove_dir_all(hwmon);
     }
 }
