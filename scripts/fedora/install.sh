@@ -11,6 +11,7 @@ STEPS=(
 	install-dependencies.sh
 	install-kernel-args.sh
 	install-dkms-modules.sh
+	install-gpu-runtime-pm.sh
 	install-alsa-ucm.sh
 	install-dsp.sh
 	install-networkmanager-rules.sh
@@ -26,6 +27,8 @@ for step in "${STEPS[@]}"; do
 	info "running $step"
 	if [[ "$step" == install-plymouth-theme.sh ]]; then
 		bash "$SCRIPT_DIR/$step" --defer-initramfs
+	elif [[ "$step" == install-gpu-runtime-pm.sh ]]; then
+		bash "$SCRIPT_DIR/$step" install --defer-initramfs
 	else
 		bash "$SCRIPT_DIR/$step"
 	fi

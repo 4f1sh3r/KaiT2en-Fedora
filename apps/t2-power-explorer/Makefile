@@ -24,7 +24,7 @@ POLICY_DIR ?= /usr/share/polkit-1/actions
 build:
 	$(CARGO) build --release
 
-install: build
+install:
 	$(INSTALL) -d -o root -g root -m 0755 $(BIN_DIR) $(APPS_DIR) $(ICONS_DIR) $(LIBEXEC_DIR) $(POLICY_DIR)
 	$(INSTALL) -o root -g root -m 0755 $(BIN_SRC) $(BIN_DIR)/$(BIN_NAME)
 	$(INSTALL) -o root -g root -m 0755 $(HELPER_SRC) $(LIBEXEC_DIR)/$(HELPER_SRC)

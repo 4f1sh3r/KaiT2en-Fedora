@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly EFI_VAR=/sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9
+readonly SWITCH_PATH=/sys/kernel/debug/vgaswitcheroo/switch
+
+fail() {
+	printf 't2-hybrid-gpu-control: %s\n' "$*" >&2
+	exit 1
+}
+
+find_amd_gpu() {
+	local class dev driver vendor
+
+	for dev in /sys/bus/pci/devices/*; do
+		[[ -r "$dev/vendor" && -r "$dev/class" ]] || continue
+		read -r vendor <"$dev/vendor"
+		read -r class <"$dev/class"
+		[[ "$vendor" == 0x1002 && "$class" == 0x03* ]] || continue
+		[[ -L "$dev/driver" ]] || continue
+		driver=$(basename "$(readlink -f "$dev/driver")")
+		[[ "$driver" == amdgpu ]] || continue
+		printf '%s\n' "$dev"
+		return 0
+	done
+
+	return 1
+}
+
+is_supported_macbook() {
+	local class dev model vendor has_intel=0 has_amd=0
+
+	[[ -r /sys/class/dmi/id/product_name ]] || return 1
+	read -r model </sys/class/dmi/id/product_name
+	[[ "$model" == MacBookPro15,1 ]] || return 1
+
+	for dev in /sys/bus/pci/devices/*; do
+		[[ -r "$dev/vendor" && -r "$dev/class" ]] || continue
+		read -r vendor <"$dev/vendor"
+		read -r class <"$dev/class"
+		[[ "$class" == 0x03* ]] || continue
+		case "$vendor" in
+			0x8086) has_intel=1 ;;
+			0x1002) has_amd=1 ;;
+		esac
+	done
+
+	((has_intel && has_amd))
+}
+
+runtime_pm_supported() {
+	local state
+
+	[[ -r "$SWITCH_PATH" ]] || return 1
+	state=$(awk -F: '$2 == "DIS" { print $4; exit }' "$SWITCH_PATH")
+	[[ "$state" == DynPwr || "$state" == DynOff ]]
+}
+
+write_boot_gpu() {
+	local gpu=$1
+
+	[[ -w /sys/firmware/efi/efivars ]] || fail "EFI variables are not writable"
+	if [[ -e "$EFI_VAR" ]]; then
+		chattr -i "$EFI_VAR"
+	fi
+	trap 'chattr +i "$EFI_VAR" 2>/dev/null || true' EXIT
+	case "$gpu" in
+		integrated) printf '\x07\x00\x00\x00\x01\x00\x00\x00' >"$EFI_VAR" ;;
+		discrete) printf '\x07\x00\x00\x00\x00\x00\x00\x00' >"$EFI_VAR" ;;
+		*) fail "invalid boot GPU: $gpu" ;;
+	esac
+	chattr +i "$EFI_VAR"
+	trap - EXIT
+}
+
+enable_hybrid_graphics() {
+	local amd
+
+	runtime_pm_supported ||
+		fail "required Apple GMUX runtime-PM kernel support is not available"
+	amd=$(find_amd_gpu) || fail "no AMDGPU device was found"
+	[[ -w "$amd/power/control" ]] ||
+		fail "runtime power control is unavailable on ${amd##*/}"
+
+	printf 'auto\n' >"$amd/power/control"
+	write_boot_gpu integrated
+}
+
+use_discrete_gpu() {
+	write_boot_gpu discrete
+}
+
+((EUID == 0)) || fail "root privileges are required"
+is_supported_macbook || fail "this Mac does not have the supported Intel/AMD hybrid GPU layout"
+
+case "${1:-}" in
+	enable-hybrid)
+		[[ $# -eq 1 ]] || fail "usage: $0 enable-hybrid"
+		enable_hybrid_graphics
+		;;
+	use-discrete)
+		[[ $# -eq 1 ]] || fail "usage: $0 use-discrete"
+		use_discrete_gpu
+		;;
+	reboot)
+		[[ $# -eq 1 ]] || fail "usage: $0 reboot"
+		systemctl reboot
+		;;
+	*)
+		fail "unknown command"
+		;;
+esac

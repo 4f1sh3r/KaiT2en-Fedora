@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>KaiT2en</vendor>
+  <vendor_url>https://kait2en.github.io/</vendor_url>
+  <action id="org.t2hybridgpucontrol.configure">
+    <description>Configure the GPUs in this MacBook Pro</description>
+    <message>Authentication is required to change the GPU configuration</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/libexec/t2-hybrid-gpu-control-helper</annotate>
+  </action>
+</policyconfig>

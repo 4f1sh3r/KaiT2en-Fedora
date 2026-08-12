@@ -1,6 +1,8 @@
+use std::cell::Cell;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::rc::Rc;
 
 #[allow(unused_imports)]
 use adw::prelude::*;
@@ -11,6 +13,10 @@ const HELPER: &str = "/usr/local/libexec/t2-dgpu-control-helper";
 const STATUS_HELPER: &str = "/usr/local/libexec/t2-dgpu-control-status";
 const EFI_VAR: &str =
     "/sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9";
+const DGPU_OFF_SERVICE: &str = "kait2en-dgpu-off.service";
+const DGPU_SUSPEND_SERVICE: &str = "kait2en-dgpu-suspend.service";
+const POWER_PROFILE_SERVICE: &str = "kait2en-amdgpu-profile.service";
+const POWER_PROFILE_RESUME_SERVICE: &str = "kait2en-amdgpu-profile-resume.service";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Gpu {
@@ -29,26 +35,12 @@ impl Gpu {
     }
 }
 
-struct GpuStatus {
-    active: Gpu,
-    discrete_state: String,
-    runtime_pm: bool,
-}
-
-fn switcheroo_status() -> GpuStatus {
+fn switcheroo_status() -> (Gpu, String) {
     let Ok(output) = Command::new("pkexec").arg(STATUS_HELPER).output() else {
-        return GpuStatus {
-            active: Gpu::Unknown,
-            discrete_state: "Unavailable".into(),
-            runtime_pm: false,
-        };
+        return (Gpu::Unknown, "Unavailable".into());
     };
     if !output.status.success() {
-        return GpuStatus {
-            active: Gpu::Unknown,
-            discrete_state: "Unavailable".into(),
-            runtime_pm: false,
-        };
+        return (Gpu::Unknown, "Unavailable".into());
     }
 
     let mut active = Gpu::Unknown;
@@ -71,13 +63,10 @@ fn switcheroo_status() -> GpuStatus {
         }
     }
 
-    let discrete_state = discrete_state.unwrap_or_else(|| "Unavailable".into());
-    let runtime_pm = matches!(discrete_state.as_str(), "DynPwr" | "DynOff");
-    GpuStatus {
+    (
         active,
-        discrete_state,
-        runtime_pm,
-    }
+        discrete_state.unwrap_or_else(|| "Unavailable".into()),
+    )
 }
 
 fn configured_gpu() -> Gpu {
@@ -90,6 +79,19 @@ fn configured_gpu() -> Gpu {
         Some([0, 0, 0, 0]) => Gpu::Discrete,
         _ => Gpu::Unknown,
     }
+}
+
+fn service_enabled(unit: &str) -> bool {
+    Command::new("systemctl")
+        .args(["is-enabled", "--quiet", unit])
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn power_saving_enabled() -> bool {
+    [POWER_PROFILE_SERVICE, POWER_PROFILE_RESUME_SERVICE]
+        .iter()
+        .all(|unit| service_enabled(unit))
 }
 
 fn run_helper(args: &[&str]) -> Result<(), String> {
@@ -116,35 +118,25 @@ fn set_status(label: &gtk::Label, message: &str, error: bool) {
     label.remove_css_class("error");
     label.remove_css_class("success");
     label.add_css_class(if error { "error" } else { "success" });
-    label.set_visible(true);
-}
-
-fn update_runtime_status(
-    current_row: &adw::ActionRow,
-    runtime_row: &adw::ActionRow,
-    discrete_state_row: &adw::ActionRow,
-    hybrid_button: &gtk::Button,
-) {
-    let status = switcheroo_status();
-    current_row.set_subtitle(status.active.label());
-    runtime_row.set_subtitle(if status.runtime_pm {
-        "Available"
-    } else {
-        "Required kernel patches are not active"
-    });
-    discrete_state_row.set_subtitle(&status.discrete_state);
-    hybrid_button.set_sensitive(status.runtime_pm);
 }
 
 fn build_ui(app: &adw::Application) {
-    let status = switcheroo_status();
+    let (current, discrete_state) = switcheroo_status();
     let configured = configured_gpu();
+    let configured_power_off = service_enabled(DGPU_OFF_SERVICE);
+    let configured_suspend_restore = service_enabled(DGPU_SUSPEND_SERVICE);
+    let configured_power_saving = power_saving_enabled();
+    let initial_gpu = if configured == Gpu::Unknown {
+        current
+    } else {
+        configured
+    };
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("T2 GPU Control")
         .default_width(520)
-        .default_height(700)
+        .default_height(720)
         .build();
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -153,112 +145,236 @@ fn build_ui(app: &adw::Application) {
     let page = adw::PreferencesPage::new();
     let status_group = adw::PreferencesGroup::builder().title("GPU status").build();
     let current_row = adw::ActionRow::builder()
-        .title("Current display GPU")
-        .subtitle(status.active.label())
+        .title("Current active GPU")
+        .subtitle(current.label())
         .build();
     let next_row = adw::ActionRow::builder()
         .title("Configured boot GPU")
         .subtitle(configured.label())
         .build();
-    let runtime_row = adw::ActionRow::builder()
-        .title("Hybrid graphics support")
-        .subtitle(if status.runtime_pm {
-            "Available"
+    let power_row = adw::ActionRow::builder()
+        .title("Discrete GPU at next boot")
+        .subtitle(if configured_power_off {
+            "Will be powered off"
         } else {
-            "Required kernel patches are not active"
+            "Remains powered on"
         })
         .build();
     let discrete_state_row = adw::ActionRow::builder()
-        .title("Discrete GPU runtime state")
-        .subtitle(&status.discrete_state)
+        .title("Discrete GPU state")
+        .subtitle(discrete_state)
         .build();
     status_group.add(&current_row);
     status_group.add(&next_row);
-    status_group.add(&runtime_row);
+    status_group.add(&power_row);
     status_group.add(&discrete_state_row);
     page.add(&status_group);
 
     let config_group = adw::PreferencesGroup::builder()
-        .title("Configuration")
-        .description("Hybrid graphics uses the integrated GPU for the display and wakes the AMD GPU automatically for PRIME offload.")
+        .title("Next boot")
+        .description("Choose the primary GPU and whether the discrete GPU remains available.")
         .build();
 
-    let hybrid_row = adw::ActionRow::builder()
-        .title("Hybrid graphics")
-        .subtitle("Recommended for performance, battery life, and suspend")
-        .build();
-    let hybrid_button = gtk::Button::with_label(if configured == Gpu::Integrated {
-        "Reapply"
-    } else {
-        "Enable"
-    });
-    hybrid_button.add_css_class("suggested-action");
-    hybrid_button.set_valign(gtk::Align::Center);
-    hybrid_button.set_sensitive(status.runtime_pm);
-    hybrid_row.add_suffix(&hybrid_button);
-    config_group.add(&hybrid_row);
+    let boot_row = adw::ActionRow::builder().title("Primary GPU").build();
+    let choices = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    choices.add_css_class("linked");
+    choices.set_valign(gtk::Align::Center);
+    let integrated = gtk::ToggleButton::with_label("Integrated");
+    let discrete = gtk::ToggleButton::with_label("Discrete");
+    discrete.set_group(Some(&integrated));
+    choices.append(&integrated);
+    choices.append(&discrete);
+    boot_row.add_suffix(&choices);
+    config_group.add(&boot_row);
 
-    let discrete_row = adw::ActionRow::builder()
-        .title("Discrete GPU boot")
-        .subtitle("Recovery option for configurations that cannot use hybrid graphics")
+    let power_off_row = adw::ActionRow::builder()
+        .title("Power off discrete GPU")
+        .subtitle("Reduces idle power use; the dGPU remains unavailable until the next reboot.")
         .build();
-    let discrete_button = gtk::Button::with_label("Use Next Boot");
-    discrete_button.set_valign(gtk::Align::Center);
-    discrete_row.add_suffix(&discrete_button);
-    config_group.add(&discrete_row);
+    let power_off = gtk::Switch::new();
+    power_off.set_valign(gtk::Align::Center);
+    power_off_row.add_suffix(&power_off);
+    power_off_row.set_activatable_widget(Some(&power_off));
+    config_group.add(&power_off_row);
+
+    let power_saving_row = adw::ActionRow::builder()
+        .title("AMDGPU power-saving profile")
+        .subtitle("Applies the driver power-saving profile after boot and resume.")
+        .build();
+    let power_saving = gtk::Switch::new();
+    power_saving.set_valign(gtk::Align::Center);
+    power_saving_row.add_suffix(&power_saving);
+    power_saving_row.set_activatable_widget(Some(&power_saving));
+    config_group.add(&power_saving_row);
     page.add(&config_group);
 
     let actions_group = adw::PreferencesGroup::new();
     let actions = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    buttons.set_halign(gtk::Align::End);
+    let apply = gtk::Button::with_label("Apply Changes");
+    apply.add_css_class("suggested-action");
+    let reboot = gtk::Button::with_label("Reboot");
+    reboot.set_sensitive(false);
+    buttons.append(&apply);
+    buttons.append(&reboot);
     let message = gtk::Label::new(None);
     message.set_wrap(true);
     message.set_xalign(0.0);
     message.set_visible(false);
-    let reboot = gtk::Button::with_label("Reboot");
-    reboot.add_css_class("suggested-action");
-    reboot.set_halign(gtk::Align::End);
-    reboot.set_sensitive(false);
     actions.append(&message);
-    actions.append(&reboot);
+    actions.append(&buttons);
     actions_group.add(&actions);
     page.add(&actions_group);
 
-    {
+    let selected_gpu = Rc::new(Cell::new(initial_gpu));
+    let saved_gpu = Rc::new(Cell::new(configured));
+    let saved_power_off = Rc::new(Cell::new(configured_power_off));
+    let saved_suspend_restore = Rc::new(Cell::new(configured_suspend_restore));
+    let saved_power_saving = Rc::new(Cell::new(configured_power_saving));
+
+    match initial_gpu {
+        Gpu::Discrete => discrete.set_active(true),
+        _ => integrated.set_active(true),
+    }
+    power_off.set_active(configured_power_off && initial_gpu == Gpu::Integrated);
+    power_off.set_sensitive(initial_gpu == Gpu::Integrated);
+    power_saving.set_active(configured_power_saving && !power_off.is_active());
+    power_saving.set_sensitive(!power_off.is_active());
+
+    let update_apply = {
+        let apply = apply.clone();
         let message = message.clone();
-        let next_row = next_row.clone();
+        let power_off = power_off.clone();
+        let selected_gpu = selected_gpu.clone();
+        let saved_gpu = saved_gpu.clone();
+        let saved_power_off = saved_power_off.clone();
+        let saved_suspend_restore = saved_suspend_restore.clone();
+        let power_saving = power_saving.clone();
+        let saved_power_saving = saved_power_saving.clone();
         let reboot = reboot.clone();
-        hybrid_button.connect_clicked(move |button| {
-            button.set_sensitive(false);
-            match run_helper(&["enable-hybrid"]) {
-                Ok(()) => {
-                    next_row.set_subtitle(Gpu::Integrated.label());
-                    set_status(
-                        &message,
-                        "Hybrid graphics configured. Reboot to use the integrated display GPU.",
-                        false,
-                    );
-                    reboot.set_sensitive(true);
-                }
-                Err(error) => {
-                    set_status(&message, &error, true);
-                    button.set_sensitive(true);
-                }
+        move || {
+            let gpu = selected_gpu.get();
+            let changed = gpu != saved_gpu.get()
+                || power_off.is_active() != saved_power_off.get()
+                || power_off.is_active() != saved_suspend_restore.get()
+                || power_saving.is_active() != saved_power_saving.get();
+            apply.set_sensitive(changed);
+            if changed {
+                message.set_visible(false);
+                reboot.set_sensitive(false);
+            }
+        }
+    };
+
+    {
+        let selected_gpu = selected_gpu.clone();
+        let power_off = power_off.clone();
+        let update_apply = update_apply.clone();
+        integrated.connect_toggled(move |button| {
+            if button.is_active() {
+                selected_gpu.set(Gpu::Integrated);
+                power_off.set_sensitive(true);
+                update_apply();
             }
         });
     }
+    {
+        let selected_gpu = selected_gpu.clone();
+        let power_off = power_off.clone();
+        let power_saving = power_saving.clone();
+        let update_apply = update_apply.clone();
+        discrete.connect_toggled(move |button| {
+            if button.is_active() {
+                selected_gpu.set(Gpu::Discrete);
+                power_off.set_active(false);
+                power_off.set_sensitive(false);
+                power_saving.set_active(false);
+                power_saving.set_sensitive(true);
+                update_apply();
+            }
+        });
+    }
+    {
+        let power_saving = power_saving.clone();
+        let update_apply = update_apply.clone();
+        power_off.connect_active_notify(move |button| {
+            if button.is_active() {
+                power_saving.set_active(false);
+                power_saving.set_sensitive(false);
+            } else {
+                power_saving.set_sensitive(true);
+            }
+            update_apply();
+        });
+    }
+    {
+        let update_apply = update_apply.clone();
+        power_saving.connect_active_notify(move |_| update_apply());
+    }
+    update_apply();
 
     {
+        let selected_gpu = selected_gpu.clone();
+        let saved_gpu = saved_gpu.clone();
+        let saved_power_off = saved_power_off.clone();
+        let saved_suspend_restore = saved_suspend_restore.clone();
+        let saved_power_saving = saved_power_saving.clone();
+        let power_off = power_off.clone();
+        let power_saving = power_saving.clone();
         let message = message.clone();
-        let next_row = next_row.clone();
         let reboot = reboot.clone();
-        discrete_button.connect_clicked(move |button| {
+        let next_row = next_row.clone();
+        let power_row = power_row.clone();
+        apply.connect_clicked(move |button| {
+            let gpu = selected_gpu.get();
+            let power = power_off.is_active();
+            let profile = power_saving.is_active();
             button.set_sensitive(false);
-            match run_helper(&["use-discrete"]) {
+            message.set_visible(true);
+            message.set_label("Applying GPU configuration...");
+            message.remove_css_class("error");
+            message.remove_css_class("success");
+
+            let result = match gpu {
+                Gpu::Integrated => run_helper(&[
+                    "apply",
+                    "integrated",
+                    if power { "power-off" } else { "keep-powered" },
+                    if profile {
+                        "power-saving"
+                    } else {
+                        "default-profile"
+                    },
+                ]),
+                Gpu::Discrete => run_helper(&[
+                    "apply",
+                    "discrete",
+                    "keep-powered",
+                    if profile {
+                        "power-saving"
+                    } else {
+                        "default-profile"
+                    },
+                ]),
+                Gpu::Unknown => Err("No boot GPU was selected.".into()),
+            };
+
+            match result {
                 Ok(()) => {
-                    next_row.set_subtitle(Gpu::Discrete.label());
+                    saved_gpu.set(gpu);
+                    saved_power_off.set(power);
+                    saved_suspend_restore.set(power);
+                    saved_power_saving.set(profile);
+                    next_row.set_subtitle(gpu.label());
+                    power_row.set_subtitle(if power {
+                        "Will be powered off"
+                    } else {
+                        "Remains powered on"
+                    });
                     set_status(
                         &message,
-                        "Discrete GPU boot configured. Reboot to apply the recovery configuration.",
+                        "Changes applied. Reboot to use the new configuration.",
                         false,
                     );
                     reboot.set_sensitive(true);
@@ -274,25 +390,10 @@ fn build_ui(app: &adw::Application) {
     {
         let message = message.clone();
         reboot.connect_clicked(move |_| {
+            message.set_visible(true);
             if let Err(error) = run_helper(&["reboot"]) {
                 set_status(&message, &error, true);
             }
-        });
-    }
-
-    {
-        let current_row = current_row.clone();
-        let runtime_row = runtime_row.clone();
-        let discrete_state_row = discrete_state_row.clone();
-        let hybrid_button = hybrid_button.clone();
-        gtk::glib::timeout_add_seconds_local(3, move || {
-            update_runtime_status(
-                &current_row,
-                &runtime_row,
-                &discrete_state_row,
-                &hybrid_button,
-            );
-            gtk::glib::ControlFlow::Continue
         });
     }
 

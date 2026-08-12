@@ -5,28 +5,40 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
 require_root
 require_repo_root
 require_fedora
-require_command depmod dnf dracut find modinfo rm rpm
-
-ACTION=${1:-install}
-KVER=${2:-$(kernel_release)}
-MODULE_DIR="/usr/lib/modules/$KVER/updates/kait2en-gpu-runtime-pm"
-MODPROBE_CONF="/usr/lib/modprobe.d/kait2en-gpu-runtime-pm.conf"
-DRACUT_CONF="/etc/dracut.conf.d/90-kait2en-gpu-runtime-pm.conf"
+require_command awk depmod dnf dracut find modinfo rm rpm sha256sum
 
 usage() {
-	printf 'Usage: %s [install|remove] [KERNEL_RELEASE]\n' "$0" >&2
+	printf 'Usage: %s [install|remove] [KERNEL_RELEASE] [--defer-initramfs]\n' "$0" >&2
 	exit 2
 }
 
-require_supported_model() {
+ACTION=${1:-install}
+shift $(( $# > 0 ? 1 : 0 ))
+KVER=$(kernel_release)
+KVER_SET=0
+DEFER_INITRAMFS=0
+for argument in "$@"; do
+	case "$argument" in
+		--defer-initramfs) DEFER_INITRAMFS=1 ;;
+		--*) usage ;;
+		*)
+			((KVER_SET == 0)) || usage
+			KVER=$argument
+			KVER_SET=1
+			;;
+	esac
+done
+MODULE_DIR="/usr/lib/modules/$KVER/updates/kait2en-gpu-runtime-pm"
+MODPROBE_CONF="/usr/lib/modprobe.d/kait2en-gpu-runtime-pm.conf"
+DRACUT_CONF="/etc/dracut.conf.d/90-kait2en-gpu-runtime-pm.conf"
+BUILD_ID_FILE="$MODULE_DIR/.build-id"
+
+is_supported_model() {
 	local model
 
-	[[ -r /sys/class/dmi/id/product_name ]] || fail "DMI product name is unavailable"
+	[[ -r /sys/class/dmi/id/product_name ]] || return 1
 	read -r model </sys/class/dmi/id/product_name
-	case "$model" in
-		MacBookPro15,1|MacBookPro15,3|MacBookPro16,1|MacBookPro16,4) ;;
-		*) fail "GPU runtime PM is not supported on $model" ;;
-	esac
+	[[ "$model" == MacBookPro15,1 ]]
 }
 
 remove_modules() {
@@ -67,7 +79,25 @@ case "$ACTION" in
 	*) usage ;;
 esac
 
-require_supported_model
+if ! is_supported_model; then
+	info "GPU runtime PM is not supported on this model, skipping"
+	exit 0
+fi
+
+build_id=$(
+	sha256sum \
+		"$REPO_ROOT/patches/amdgpu/0001-drm-amdgpu-reset-VI-ASIC-on-MacBookPro15-1.patch" \
+		"$REPO_ROOT/patches/amdgpu/0002-drm-amdgpu-Add-Apple-GMUX-runtime-PM-support.patch" \
+		"$REPO_ROOT/patches/hda/0001-ALSA-hda-Allow-direct-complete-with-a-powered-off-GPU.patch" |
+		sha256sum | awk '{ print $1 }'
+)
+if [[ -f "$MODULE_DIR/amdgpu.ko.xz" &&
+	-f "$MODULE_DIR/snd-hda-intel.ko.xz" &&
+	-r "$BUILD_ID_FILE" &&
+	$(<"$BUILD_ID_FILE") == "$build_id" ]]; then
+	info "GPU runtime PM modules are current for $KVER"
+	exit 0
+fi
 
 info "installing build dependencies for $KVER"
 dnf install -y \
@@ -170,7 +200,10 @@ install -Dpm 0644 "$workdir/kait2en-gpu-runtime-pm.conf" "$MODPROBE_CONF"
 printf 'omit_drivers+=" snd_hda_intel "\n' >"$workdir/90-kait2en-gpu-runtime-pm.conf"
 install -Dpm 0644 "$workdir/90-kait2en-gpu-runtime-pm.conf" "$DRACUT_CONF"
 depmod -a "$KVER"
-dracut --force "/boot/initramfs-$KVER.img" "$KVER"
+if ((DEFER_INITRAMFS == 0)); then
+	dracut --force "/boot/initramfs-$KVER.img" "$KVER"
+fi
+printf '%s\n' "$build_id" >"$BUILD_ID_FILE"
 
 info "GPU runtime PM modules installed for $KVER"
 info "reboot into $KVER, then verify with: modinfo -n amdgpu"

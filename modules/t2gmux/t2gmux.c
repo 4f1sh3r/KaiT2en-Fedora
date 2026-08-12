@@ -19,6 +19,7 @@
 #include <linux/apple-gmux.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
+#include <linux/dmi.h>
 #include <linux/pci.h>
 #include <linux/vga_switcheroo.h>
 #include <linux/debugfs.h>
@@ -84,6 +85,11 @@ struct apple_gmux_data {
 };
 
 static struct apple_gmux_data *apple_gmux_data;
+
+static bool gmux_uses_mbp151_power_sequence(void)
+{
+	return dmi_match(DMI_PRODUCT_NAME, "MacBookPro15,1");
+}
 
 static int gmux_call_dgpu_link_method(struct apple_gmux_data *gmux_data,
 				      const char *method)
@@ -550,7 +556,8 @@ static int gmux_set_discrete_state(struct apple_gmux_data *gmux_data,
 
 	if (state == VGA_SWITCHEROO_ON) {
 		if (gmux_data->type == APPLE_GMUX_TYPE_MMIO &&
-		    gmux_data->dgpu_pdev) {
+		    gmux_data->dgpu_pdev &&
+		    gmux_uses_mbp151_power_sequence()) {
 			unsigned long start;
 			u16 val;
 			u16 ms;
@@ -589,7 +596,8 @@ static int gmux_set_discrete_state(struct apple_gmux_data *gmux_data,
 		}
 		pr_debug("Discrete card powered up\n");
 	} else {
-		if (gmux_data->type == APPLE_GMUX_TYPE_MMIO) {
+		if (gmux_data->type == APPLE_GMUX_TYPE_MMIO &&
+		    gmux_uses_mbp151_power_sequence()) {
 			pr_info("DGPU power-off: writing GMUX states 1 -> 0\n");
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 1);
 			msleep(10);
@@ -632,7 +640,8 @@ static enum vga_switcheroo_client_id gmux_get_client_id(struct pci_dev *pdev)
 		 pdev->device == 0x0863)
 		return VGA_SWITCHEROO_IGD;
 	else {
-		if (!apple_gmux_data->dgpu_pdev)
+		if (gmux_uses_mbp151_power_sequence() &&
+		    !apple_gmux_data->dgpu_pdev)
 			apple_gmux_data->dgpu_pdev = pdev;
 		return VGA_SWITCHEROO_DIS;
 	}
@@ -937,7 +946,7 @@ get_version:
 		ver_minor = gmux_read8(gmux_data, GMUX_PORT_VERSION_MINOR);
 		ver_release = gmux_read8(gmux_data, GMUX_PORT_VERSION_RELEASE);
 	}
-	pr_debug("Found gmux version %d.%d.%d [%s]\n", ver_major, ver_minor,
+	pr_info("Found gmux version %d.%d.%d [%s]\n", ver_major, ver_minor,
 		ver_release, gmux_data->config->name);
 
 	memset(&props, 0, sizeof(props));
@@ -1096,8 +1105,8 @@ static void gmux_remove(struct pnp_dev *pnp)
 }
 
 static const struct pnp_device_id gmux_device_ids[] = {
-	{GMUX_ACPI_HID, 0},
-	{"", 0}
+	{ .id = GMUX_ACPI_HID },
+	{ }
 };
 
 static const struct dev_pm_ops gmux_dev_pm_ops = {

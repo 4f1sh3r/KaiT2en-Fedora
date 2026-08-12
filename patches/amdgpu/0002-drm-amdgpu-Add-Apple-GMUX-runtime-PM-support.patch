@@ -5,16 +5,15 @@ Subject: [PATCH] drm/amdgpu: Add Apple GMUX runtime PM support
 
 Hello everyone,
 
-T2 MacBook Pro systems with discrete AMD graphics use Apple GMUX to control
+The MacBookPro15,1 uses Apple GMUX to control
 power to the GPU, but they do not expose the ATPX or ACPI power-resource
 interfaces currently recognized by amdgpu. The driver therefore leaves
 runtime PM disabled even though vga_switcheroo can switch the GPU reliably.
 
-We add a dedicated GMUX runtime PM mode for the T2 models with discrete
-AMD graphics and use the existing vga_switcheroo PM domain to sequence
-GPU power. A runtime-suspended GMUX GPU can remain powered off across
-system sleep, following the smart-suspend handling already used by BOCO
-devices.
+We add a dedicated GMUX runtime PM mode and enable it on the tested
+MacBookPro15,1. It uses the existing vga_switcheroo PM domain to sequence GPU
+power. A runtime-suspended GMUX GPU can remain powered off across system sleep,
+following the smart-suspend handling already used by BOCO devices.
 
 This enables the discrete GPU to enter D3cold while the integrated GPU is
 primary and allows PRIME workloads to wake it on demand.
@@ -22,7 +21,7 @@ primary and allows PRIME workloads to wake it on demand.
 Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 ---
 This patch has no build-time dependency on the apple-gmux change, but
-runtime resume on T2 MacBooks requires:
+runtime resume on the MacBookPro15,1 requires:
 
   platform/x86: apple-gmux: Fix discrete GPU power sequencing on T2 Macs
 
@@ -57,7 +56,7 @@ index e5f26e5892ba..4f672897b86d 100644
  #include <linux/pci-p2pdma.h>
  #include <linux/apple-gmux.h>
  #include <linux/nospec.h>
-@@ -568,6 +569,37 @@ bool amdgpu_device_supports_px(struct amdgpu_device *adev)
+@@ -568,6 +569,22 @@ bool amdgpu_device_supports_px(struct amdgpu_device *adev)
  	return false;
  }
  
@@ -65,21 +64,6 @@ index e5f26e5892ba..4f672897b86d 100644
 +	{
 +		.matches = {
 +			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro15,1"),
-+		},
-+	},
-+	{
-+		.matches = {
-+			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro15,3"),
-+		},
-+	},
-+	{
-+		.matches = {
-+			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,1"),
-+		},
-+	},
-+	{
-+		.matches = {
-+			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,4"),
 +		},
 +	},
 +	{ }
