@@ -1,0 +1,37 @@
+Subject: [PATCH 0/3] Apple GMUX hybrid graphics support for MacBookPro15,1
+
+Hello everyone,
+
+This series will enable hybrid graphics on MacBookPro15,1.
+
+The MacBookPro15,1 normally starts Linux with the discrete GPU as primary.
+On the machines tested here that results in roughly 24 W idle power draw,
+about 12 W of which is attributable to the otherwise unused discrete GPU.
+Selecting the integrated GPU at boot avoids that cost, but the discrete GPU
+cannot currently return after GMUX powers it down, so usable hybrid graphics
+and suspend are not available.
+
+This series provides the missing power lifecycle across apple-gmux, amdgpu
+and the HDA controller. With the integrated GPU as primary, the discrete GPU
+then transitions between DynOff and DynPwr and offloading to the dGPU
+through DRI_PRIME is working as well as external monitor support.
+
+The result has been tested for three weeks on both the 2018 and 2019
+MacBookPro15,1 revisions. Runtime suspend and resume, system suspend and
+resume, repeated GPU wakeups and also a variety of external Thunderbolt
+and USB-C monitors were tested successfully.
+It is a huge step forward in terms of usability, convenience and battery life
+for everyone who tested.
+
+So I have this one question regarding Apple's gpu-power-prefs EFI variable.
+The firmware defaults to the discrete GPU, while selecting the integrated GPU
+is required before this hybrid configuration can take effect. Would setting
+that preference from the kernel be appropriate on a known-good model, or
+should it remain a userspace policy decision? Some discoverable way to select
+the power-efficient configuration would seem preferable to requiring users to
+know about a vendor-specific NVRAM variable before Linux behaves like a hybrid
+graphics laptop.
+
+Thank you for your time and consideration.
+
+Andre

@@ -94,6 +94,21 @@ items:
 
   # --- Available -------------------------------------------------------------
 
+  - id: apple-t2-early-cpu-offlining
+    title: "Fast CPU restore after suspend"
+    state: available
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: ACPI / CPU hotplug
+    authors:
+      - deqrocks
+    link: "https://lore.kernel.org/all/20260812120326.155226-1-dev@deq.rocks/"
+    updated: "2026-08-12"
+    notes: >-
+      Moves secondary CPU hotplug outside the generic CPU PM notifier window
+      on Apple T2 systems, avoiding multi-second delays per CPU during resume.
+
   - id: touchbar-runtime-pm-deadlock
     title: "Touch Bar suspend and resume without PM deadlock"
     state: available
@@ -154,7 +169,7 @@ items:
     title: "Fn double press switches F-keys and media controls"
     state: available
     upstream: submitted
-    version: v1
+    version: v3
     project: Linux kernel
     subsystem: HID / Touch Bar
     authors:
@@ -220,11 +235,15 @@ items:
   - id: hybrid-graphics
     title: "Hybrid graphics and dGPU power management"
     state: available
-    upstream: downstream
+    upstream: submitted
+    version: v1
     project: KAIT2EN Fedora
     subsystem: t2gmux / amdgpu
     authors:
+      - Atharva Tiwari
       - deqrocks
-    link: post-install/configuring-gpus.md
-    updated: "2026-08-03"
-    notes: Runtime GPU switching.
+    link: "https://lore.kernel.org/all/20260812122206.193680-1-dev@deq.rocks/"
+    updated: "2026-08-12"
+    notes: >-
+      Runtime GPU switching is available downstream on MacBookPro15,1. The
+      apple-gmux, amdgpu and ALSA HDA changes were submitted upstream as v1.

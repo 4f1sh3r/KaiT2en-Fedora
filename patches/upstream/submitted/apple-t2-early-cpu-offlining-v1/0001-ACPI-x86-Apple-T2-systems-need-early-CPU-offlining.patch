@@ -1,9 +1,9 @@
-From b17714dadd0c5a32244cc62ee90a2b83cd3a9eb7 Mon Sep 17 00:00:00 2001
+From fbb6cf071030853b7baab92ba22158fb9b6c6807 Mon Sep 17 00:00:00 2001
 From: Andre Eikmeyer <dev@deq.rocks>
 Date: Fri, 24 Jul 2026 17:37:27 +0200
-Subject: [PATCH 2/2] ACPI: x86: Apple T2 systems need early CPU offlining
+Subject: [PATCH] ACPI: x86: Apple T2 systems need early CPU offlining
 
-Hello everyone, 
+Hello everyone,
 
 Linux reports _OSI("Darwin") on x86 Apple systems. On T2 Macs, the
 selected firmware suspend path makes secondary CPU startup during early
@@ -21,14 +21,14 @@ MacBookPro16,2, MacBookAir9,1 and a 27-inch T2 iMac.
 
 Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 ---
- drivers/acpi/x86/apple.c | 121 +++++++++++++++++++++++++++++++++++++++
- 1 file changed, 121 insertions(+)
+ drivers/acpi/x86/apple.c | 140 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 140 insertions(+)
 
 diff --git a/drivers/acpi/x86/apple.c b/drivers/acpi/x86/apple.c
-index 45d0f16f374f..31a9a83d4797 100644
+index 45d0f16..5595a6a 100644
 --- a/drivers/acpi/x86/apple.c
 +++ b/drivers/acpi/x86/apple.c
-@@ -6,7 +6,12 @@
+@@ -6,7 +6,13 @@
  
  #include <linux/acpi.h>
  #include <linux/bitmap.h>
@@ -36,12 +36,13 @@ index 45d0f16f374f..31a9a83d4797 100644
 +#include <linux/cpuhplock.h>
 +#include <linux/init.h>
 +#include <linux/notifier.h>
++#include <linux/pci.h>
  #include <linux/platform_data/x86/apple.h>
 +#include <linux/suspend.h>
  #include <linux/uuid.h>
  #include "../internal.h"
  
-@@ -146,3 +151,119 @@ void acpi_extract_apple_properties(struct acpi_device *adev)
+@@ -146,3 +152,137 @@ out_free:
  	ACPI_FREE(props);
  	bitmap_free(valid);
  }
@@ -51,9 +52,27 @@ index 45d0f16f374f..31a9a83d4797 100644
 + * The ACPI path selected by _OSI("Darwin") leaves Apple T2 systems in a
 + * state where bringing secondary CPUs online during early resume may take
 + * several seconds per CPU. Normal CPU hotplug after platform resume is not
-+ * affected, so move it outside the generic suspend CPU hotplug window.
++ * affected, so we move it outside the generic suspend CPU hotplug window.
 + */
 +static cpumask_var_t apple_t2_offlined_cpus;
++
++#define PCI_DEVICE_ID_APPLE_T2_BRIDGE 0x1801
++
++static bool __init apple_t2_present(void)
++{
++	struct pci_dev *pdev;
++
++	if (!x86_apple_machine)
++		return false;
++
++	pdev = pci_get_device(PCI_VENDOR_ID_APPLE,
++			      PCI_DEVICE_ID_APPLE_T2_BRIDGE, NULL);
++	if (!pdev)
++		return false;
++
++	pci_dev_put(pdev);
++	return true;
++}
 +
 +static void apple_t2_restore_cpus(void)
 +{
@@ -120,8 +139,8 @@ index 45d0f16f374f..31a9a83d4797 100644
 +}
 +
 +/*
-+ * The CPU core PM notifier runs at priority 0. Offline CPUs before it blocks
-+ * hotplug, then restore them after it enables hotplug again.
++ * The CPU core PM notifier runs at priority 0. We offline CPUs before
++ * hotplug is blocked, then restore them after it enables hotplug again.
 + */
 +static struct notifier_block apple_t2_cpu_prepare_nb = {
 +	.notifier_call = apple_t2_cpu_prepare,
@@ -137,7 +156,7 @@ index 45d0f16f374f..31a9a83d4797 100644
 +{
 +	int ret;
 +
-+	if (!has_apple_t2_chip)
++	if (!apple_t2_present())
 +		return 0;
 +
 +	if (!alloc_cpumask_var(&apple_t2_offlined_cpus, GFP_KERNEL))
@@ -163,4 +182,3 @@ index 45d0f16f374f..31a9a83d4797 100644
 +#endif
 -- 
 2.55.0
-

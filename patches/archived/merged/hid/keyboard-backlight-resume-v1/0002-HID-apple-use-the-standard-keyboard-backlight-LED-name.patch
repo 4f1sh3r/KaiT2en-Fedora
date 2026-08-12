@@ -37,4 +37,3 @@ index a5f232cc2b66..0f30cf4670ce 100644
  	/* VHCI re-enumeration restores the cached brightness in the next probe. */
 -- 
 2.55.0
-

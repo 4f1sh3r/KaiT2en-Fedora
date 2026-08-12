@@ -32,6 +32,9 @@ MODULE_DIR="/usr/lib/modules/$KVER/updates/kait2en-gpu-runtime-pm"
 MODPROBE_CONF="/usr/lib/modprobe.d/kait2en-gpu-runtime-pm.conf"
 DRACUT_CONF="/etc/dracut.conf.d/90-kait2en-gpu-runtime-pm.conf"
 BUILD_ID_FILE="$MODULE_DIR/.build-id"
+PATCH_DIR="$REPO_ROOT/patches/runtime/gpu-runtime-pm"
+PATCH_SERIES="$PATCH_DIR/series"
+PATCH_FILES=()
 
 is_supported_model() {
 	local model
@@ -58,15 +61,33 @@ apply_patch_if_needed() {
 	local tree=$1 patch_file=$2
 
 	if patch -d "$tree" -p1 --dry-run --batch --forward --fuzz=3 \
+			--no-backup-if-mismatch \
 			<"$patch_file" >/dev/null 2>&1; then
 		info "applying ${patch_file#"$REPO_ROOT/"}"
-		patch -d "$tree" -p1 --batch --forward --fuzz=3 <"$patch_file"
+		patch -d "$tree" -p1 --batch --forward --fuzz=3 \
+			--no-backup-if-mismatch <"$patch_file"
 	elif patch -d "$tree" -p1 --dry-run --batch --reverse --fuzz=3 \
+			--no-backup-if-mismatch \
 			<"$patch_file" >/dev/null 2>&1; then
 		info "${patch_file#"$REPO_ROOT/"} is already present"
 	else
 		fail "patch does not apply to $KVER: ${patch_file#"$REPO_ROOT/"}"
 	fi
+}
+
+load_patch_series() {
+	local entry
+
+	[[ -r "$PATCH_SERIES" ]] || fail "patch series is missing: ${PATCH_SERIES#"$REPO_ROOT/"}"
+	while IFS= read -r entry || [[ -n "$entry" ]]; do
+		[[ -n "$entry" && "$entry" != \#* ]] || continue
+		[[ "$entry" != */* && "$entry" != .* ]] ||
+			fail "invalid patch series entry: $entry"
+		[[ -f "$PATCH_DIR/$entry" ]] ||
+			fail "patch listed in series is missing: $entry"
+		PATCH_FILES+=("$PATCH_DIR/$entry")
+	done <"$PATCH_SERIES"
+	((${#PATCH_FILES[@]} > 0)) || fail "patch series is empty"
 }
 
 case "$ACTION" in
@@ -84,11 +105,9 @@ if ! is_supported_model; then
 	exit 0
 fi
 
+load_patch_series
 build_id=$(
-	sha256sum \
-		"$REPO_ROOT/patches/amdgpu/0001-drm-amdgpu-reset-VI-ASIC-on-MacBookPro15-1.patch" \
-		"$REPO_ROOT/patches/amdgpu/0002-drm-amdgpu-Add-Apple-GMUX-runtime-PM-support.patch" \
-		"$REPO_ROOT/patches/hda/0001-ALSA-hda-Allow-direct-complete-with-a-powered-off-GPU.patch" |
+	sha256sum "$PATCH_SERIES" "${PATCH_FILES[@]}" |
 		sha256sum | awk '{ print $1 }'
 )
 if [[ -f "$MODULE_DIR/amdgpu.ko.xz" &&
@@ -157,12 +176,9 @@ kernel_tree=${amdgpu_source%/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c}
 git -C "$kernel_tree" apply "$redhat_patch" ||
 	fail "Fedora kernel patch does not apply to its upstream source"
 
-apply_patch_if_needed "$kernel_tree" \
-	"$REPO_ROOT/patches/amdgpu/0001-drm-amdgpu-reset-VI-ASIC-on-MacBookPro15-1.patch"
-apply_patch_if_needed "$kernel_tree" \
-	"$REPO_ROOT/patches/amdgpu/0002-drm-amdgpu-Add-Apple-GMUX-runtime-PM-support.patch"
-apply_patch_if_needed "$kernel_tree" \
-	"$REPO_ROOT/patches/hda/0001-ALSA-hda-Allow-direct-complete-with-a-powered-off-GPU.patch"
+for patch_file in "${PATCH_FILES[@]}"; do
+	apply_patch_if_needed "$kernel_tree" "$patch_file"
+done
 
 trace_header="$kernel_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_trace.h"
 grep -q '^#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/amd/amdgpu$' "$trace_header" ||
