@@ -1,0 +1,109 @@
+# Configuration for the static site generator in scripts/site/build.py.
+# Everything the site says about itself lives here; prose lives in Markdown.
+
+site:
+  name: KAIT2EN Fedora
+  title: KAIT2EN Fedora
+  tagline: Cutting edge T2 Mac support on stock Fedora
+  description: >-
+    KAIT2EN brings cutting edge T2 Mac support to stock Fedora using DKMS
+    modules. Kernel updates come from Fedora, the T2 modules come from us.
+  url: https://kait2en.org
+  language: en
+  copyright: MIT · KAIT2EN Fedora
+  footer_note: Made for T2 Macs that deserve a current kernel
+
+links:
+  repo: https://github.com/kaiT2en/KaiT2en-Fedora
+  issues: https://github.com/kaiT2en/KaiT2en-Fedora/issues
+  discord: https://discord.gg/AGfjRk4ydj
+  matrix: https://matrix.to/#/%23kait2en:matrix.org
+
+nav:
+  - {label: Home, href: index.html}
+  - {label: Documentation, href: documentation.html}
+  - {label: Blog, href: blog.html}
+
+hero:
+  image: img/hero-touchbar.jpg
+  image_alt: Touch Bar and keyboard of a MacBook Pro running KAIT2EN Fedora
+  tagline: Your T2 Mac, on a kernel that keeps moving.
+  sub: >-
+    Stock Fedora with its own kernel updates, plus the current T2 modules as
+    DKMS. Keyboard, trackpad, Touch Bar, audio, Wi-Fi, Bluetooth and suspend —
+    without a forked distribution.
+  note: Vanilla Fedora. DKMS modules. Everything aimed upstream.
+  quotes:
+    - text: KAIT2EN is meant to disappear. Every module and fix that gets upstreamed leaves the repo.
+      source: Project goal
+    - text: There is a distinct difference between making broken things work and fixing things.
+      source: Contributing guide
+
+# The landing page. Section order here is the order on the page and in its
+# sidebar; `group` sets the sidebar heading a section is listed under.
+index:
+  sidebar_title: Home
+  sections:
+    - id: features
+      title: Features & status
+      subtitle: What works today, and what is on its way into mainline Linux.
+      group: Overview
+      type: feature-board
+    - id: concept
+      title: Concept
+      group: Overview
+      type: markdown
+      file: pages/concept.md
+    - id: installation
+      title: Get started
+      group: Get started
+      type: install
+      subtitle: The installation starts in macOS and continues in Fedora.
+      command: |-
+        curl -fsSL https://github.com/kaiT2en/KaiT2en-Fedora/releases/latest/download/install-kait2en-fedora.sh | bash
+      command_label: macOS Terminal
+      note: >-
+        Run this in macOS with an empty USB drive attached. The script downloads
+        and verifies the official Fedora image, collects the Apple firmware from
+        your Mac and writes a bootable installer.
+      actions:
+        - {label: Full installation guide, href: 'documentation.html#installation', style: primary}
+        - {label: Before you start, href: 'documentation.html#before-you-start', style: secondary}
+    - id: community
+      title: Community
+      subtitle: Ask before you break something, or tell us how you broke it.
+      group: Get started
+      type: community
+
+# The single documentation page. One Markdown file becomes one <section>;
+# `split: h2` turns each H2 of a file into its own section instead.
+documentation:
+  title: Documentation
+  description: Install KAIT2EN on a T2 Mac, then set up audio, GPUs and updates.
+  groups:
+    - title: Getting started
+      pages:
+        - {file: installation.md, split: h2}
+    - title: Post-install
+      pages:
+        - {file: post-install/audio-dsp.md}
+        - {file: post-install/configuring-gpus.md, title: Configure GPUs}
+        - {file: post-install/hardware-video-decoding.md}
+        - {file: post-install/updating.md, title: Updating}
+    - title: Reference
+      pages:
+        - {file: reference/installed-files.md}
+
+blog:
+  title: Blog
+  description: Release notes, upstreaming reports and T2 debugging write-ups.
+
+# Old MkDocs URLs that already exist in the wild, kept alive as redirects.
+redirects:
+  "features/": "index.html#features"
+  "installation/": "documentation.html#installation"
+  "post-install/audio-dsp/": "documentation.html#audio-dsp"
+  "post-install/configuring-gpus/": "documentation.html#configure-gpus"
+  "post-install/hardware-video-decoding/": "documentation.html#hardware-video-decoding"
+  "post-install/updating/": "documentation.html#updating"
+  "reference/installed-files/": "documentation.html#installed-files"

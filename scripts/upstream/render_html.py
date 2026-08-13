@@ -1,23 +1,31 @@
-"""Render the feature board as an HTML block for the documentation page."""
+"""Render the feature board as an HTML block for the landing page."""
 
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 from html import escape
 
 from schema import STATE_LABELS, STATES, UPSTREAM, UPSTREAM_LABELS, sorted_for_docs
+
+# How a `link:` naming a page below docs/ turns into a URL. The site builder
+# replaces this because the documentation is a single page of anchors.
+Resolver = Callable[[str], str]
 
 
 def _format_date(value: str) -> str:
     return datetime.date.fromisoformat(value).strftime("%d %b %Y")
 
 
-def _href(item: dict) -> str:
+def _default_resolve(link: str) -> str:
+    return f"{link[: -len('.md')]}.html"
+
+
+def _href(item: dict, resolve: Resolver) -> str:
     link = item.get("link", "")
     if not link or link.startswith("https://"):
         return escape(link, quote=True)
-    # The board lives at docs/features.md, so every page is one level up.
-    return f"../{link[: -len('.md')]}/"
+    return escape(resolve(link), quote=True)
 
 
 def _external(item: dict) -> bool:
@@ -28,10 +36,13 @@ def _target(item: dict) -> str:
     return ' target="_blank" rel="noopener"' if _external(item) else ""
 
 
-def _feature_cell(item: dict) -> str:
+def _feature_cell(item: dict, resolve: Resolver) -> str:
     title = escape(item["title"])
     if item.get("link"):
-        head = f'<a class="board-title" href="{_href(item)}"{_target(item)}>{title}</a>'
+        head = (
+            f'<a class="board-title" href="{_href(item, resolve)}"'
+            f"{_target(item)}>{title}</a>"
+        )
     else:
         head = f'<span class="board-title">{title}</span>'
     if item.get("help"):
@@ -51,26 +62,26 @@ def _feature_cell(item: dict) -> str:
     return "".join(parts)
 
 
-def _upstream_cell(item: dict) -> str:
+def _upstream_cell(item: dict, resolve: Resolver) -> str:
     upstream = item["upstream"]
     pill = f'<span class="board-pill board-pill--{upstream}">{escape(UPSTREAM_LABELS[upstream])}</span>'
     if not item.get("link"):
         return pill
     return (
-        f'<a class="board-upstream-link" href="{_href(item)}"{_target(item)}>{pill}'
+        f'<a class="board-upstream-link" href="{_href(item, resolve)}"{_target(item)}>{pill}'
         f'<span class="board-ext" aria-hidden="true">{"↗" if _external(item) else "→"}</span></a>'
     )
 
 
-def _row(item: dict) -> str:
+def _row(item: dict, resolve: Resolver) -> str:
     state = item["state"]
     return (
         f'<tr class="board-row" data-state="{state}" data-upstream="{item["upstream"]}"'
         f' data-help="{"yes" if item.get("help") else "no"}">'
-        f'<td class="board-cell-feature">{_feature_cell(item)}</td>'
+        f'<td class="board-cell-feature">{_feature_cell(item, resolve)}</td>'
         f'<td class="board-cell-state">'
         f'<span class="board-pill board-pill--{state}">{escape(STATE_LABELS[state])}</span></td>'
-        f'<td class="board-cell-upstream">{_upstream_cell(item)}</td>'
+        f'<td class="board-cell-upstream">{_upstream_cell(item, resolve)}</td>'
         f'<td class="board-cell-updated">'
         f'<time datetime="{item["updated"]}">{_format_date(item["updated"])}</time>'
         f"</td>"
@@ -129,9 +140,8 @@ def _filters(items: list[dict]) -> str:
     )
 
 
-def render(items: list[dict]) -> str:
-    # One contiguous block: Python-Markdown ends raw HTML at the first blank line.
-    rows = "".join(_row(item) for item in sorted_for_docs(items))
+def render(items: list[dict], resolve: Resolver = _default_resolve) -> str:
+    rows = "".join(_row(item, resolve) for item in sorted_for_docs(items))
     return (
         '<div class="board">'
         + _filters(items)

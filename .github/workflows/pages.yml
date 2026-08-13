@@ -1,8 +1,21 @@
-name: Deploy docs
+name: Deploy site
 
 on:
   push:
     branches: [main]
+
+  pull_request:
+    paths:
+      - site.yml
+      - docs/**
+      - blog/**
+      - pages/**
+      - web/**
+      - scripts/site/**
+      - scripts/upstream/**
+      - data/features.yml
+      - requirements-docs.txt
+      - .github/workflows/pages.yml
 
   workflow_dispatch:
 
@@ -14,7 +27,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,13 +39,32 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install documentation dependencies
+      - name: Install site dependencies
         run: pip install -r requirements-docs.txt
 
-      - name: Build documentation
-        run: mkdocs build --strict
+      - name: Build the site
+        run: python scripts/site/build.py
 
-      - name: Publish documentation
+      - name: Upload the built site
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: ./site
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download the built site
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: ./site
+
+      - name: Publish to kait2en.org
         uses: peaceiris/actions-gh-pages@v4
         with:
           deploy_key: ${{ secrets.DOCS_DEPLOY_SSH_KEY }}

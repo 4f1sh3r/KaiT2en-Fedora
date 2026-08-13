@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+
+{% block title %}{{ site.title }} — {{ site.tagline }}{% endblock %}
+
+{% block content %}
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="container">
+            <div class="hero-brand">
+                <h1><img class="hero-logo" src="{{ base }}img/kait2en-wordmark.png" alt="{{ site.name }}"></h1>
+            </div>
+
+            <div class="hero-trust">
+                {% for quote in hero.quotes %}
+                <div class="trust-quote{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}">
+                    <p class="trust-text">&ldquo;{{ quote.text }}&rdquo;</p>
+                    <span class="trust-source">{{ quote.source }}</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="hero-screenshots">
+                <img src="{{ base }}{{ hero.image }}" alt="{{ hero.image_alt }}" class="screenshot-desktop">
+            </div>
+
+            <div class="hero-content">
+                <p class="tagline">{{ hero.tagline }}</p>
+                <p class="tagline-sub">{{ hero.sub }}</p>
+                <p class="tagline-sub"><strong>{{ hero.note }}</strong></p>
+
+                <div class="hero-actions">
+                    <a href="#installation" class="btn btn-primary">Get Started</a>
+                    <a href="{{ links.repo }}" class="btn btn-secondary" target="_blank" rel="noopener">
+                        {{ icon.github(20) }}
+                        GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="page-container">
+        <aside class="page-sidebar page-sidebar--narrow">
+            <h2 class="page-title">{{ sidebar_title }}</h2>
+            <nav class="page-nav">
+                {% for group in sidebar %}
+                <h4>{{ group.title }}</h4>
+                <ul>
+                    {% for entry in group.entries %}
+                    <li><a href="#{{ entry.id }}">{{ entry.title }}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endfor %}
+            </nav>
+        </aside>
+
+        <div class="page-main">
+            {% for section in sections %}
+            <section class="section" id="{{ section.id }}">
+                <div class="container">
+                    {% if section.type == 'install' %}
+                    <div class="installation">
+                        <h2>{{ section.title }}</h2>
+                        {% if section.subtitle %}
+                        <p class="section-subtitle">{{ section.subtitle }}</p>
+                        {% endif %}
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span>{{ section.command_label }}</span>
+                                <button class="copy-btn" type="button" onclick="copyCode()">
+                                    {{ icon.copy(16) }}
+                                    Copy
+                                </button>
+                            </div>
+                            <pre><code id="install-code">{{ section.command }}</code></pre>
+                        </div>
+                        <p class="install-note">{{ section.note }}</p>
+                        <div class="install-links">
+                            {% for action in section.actions %}
+                            <a href="{{ base }}{{ action.href }}" class="btn btn-{{ action.style }}">{{ action.label }}</a>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    {% elif section.type == 'community' %}
+                    <div class="section-head">
+                        <h2>{{ section.title }}</h2>
+                        <p>{{ section.subtitle }}</p>
+                    </div>
+                    <div class="community-grid">
+                        <a href="{{ links.discord }}" class="community-card" target="_blank" rel="noopener">
+                            <h3>{{ icon.discord(20) }} Discord</h3>
+                            <p>Day-to-day support, kernel regression warnings and the upstream work channel.</p>
+                        </a>
+                        <a href="{{ links.matrix }}" class="community-card" target="_blank" rel="noopener">
+                            <h3>{{ icon.matrix(20) }} Matrix</h3>
+                            <p>The same conversations, bridged for everyone who would rather not run Discord.</p>
+                        </a>
+                        <a href="{{ links.issues }}" class="community-card" target="_blank" rel="noopener">
+                            <h3>{{ icon.bug(20) }} Issue tracker</h3>
+                            <p>Reproducible bugs with logs, model identifier and kernel version belong here.</p>
+                        </a>
+                    </div>
+
+                    {% elif section.type == 'feature-board' %}
+                    <div class="section-head">
+                        <h2>{{ section.title }}</h2>
+                        <p>{{ section.subtitle }}</p>
+                    </div>
+                    <div class="page-content">{{ section.html }}</div>
+
+                    {% else %}
+                    <div class="concept-story">
+                        <h2>{{ section.title }}</h2>
+                        {{ section.html }}
+                    </div>
+                    {% endif %}
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+    </main>
+{% endblock %}
+
+{% block modal_toc %}
+            <div class="nav-modal-section">
+                {% for group in sidebar %}
+                <h4>{{ group.title }}</h4>
+                <div class="nav-modal-toc">
+                    {% for entry in group.entries %}
+                    <a href="#{{ entry.id }}" onclick="closeMenu()">{{ entry.title }}</a>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+{% endblock %}

@@ -1,0 +1,154 @@
+{% import "_icons.html" as icon %}
+<!DOCTYPE html>
+<html lang="{{ site.language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ site.title }}{% endblock %}</title>
+    <meta name="description" content="{% block description %}{{ site.description }}{% endblock %}">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:title" content="{{ self.title() }}">
+    <meta property="og:description" content="{{ self.description() }}">
+    <meta property="og:url" content="{{ site.url }}/{{ page_url }}">
+    <meta property="og:image" content="{{ site.url }}/img/og-image.png">
+    <meta property="og:site_name" content="{{ site.name }}">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ self.title() }}">
+    <meta name="twitter:description" content="{{ self.description() }}">
+    <meta name="twitter:image" content="{{ site.url }}/img/og-image.png">
+
+    <link rel="canonical" href="{{ site.url }}/{{ page_url }}">
+    <link rel="alternate" type="application/rss+xml" title="{{ site.name }} blog" href="{{ base }}feed.xml">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ base }}img/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ base }}img/favicon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ base }}img/apple-touch-icon.png">
+
+    <link rel="stylesheet" href="{{ base }}style.css">
+</head>
+<body>
+    <!-- Grid Background -->
+    <div class="grid-bg"></div>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{{ base }}index.html" class="nav-logo" aria-label="{{ site.name }}">
+                <img src="{{ base }}img/kait2en-wordmark.png" alt="{{ site.name }}">
+            </a>
+            <button class="nav-burger" onclick="toggleMenu()" aria-label="Open menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <line x1="3" y1="12" x2="21" y2="12"/>
+                    <line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </button>
+            <div class="nav-links" id="nav-links">
+                {% for item in nav %}
+                <a href="{{ base }}{{ item.href }}"{% if item.href == page_url %} class="active"{% endif %}>{{ item.label }}</a>
+                {% endfor %}
+                <a href="{{ links.discord }}" target="_blank" rel="noopener" class="nav-discord">
+                    {{ icon.discord(16) }}
+                    Discord
+                </a>
+            </div>
+        </div>
+    </nav>
+
+{% block content %}{% endblock %}
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="{{ base }}img/kait2en-wordmark.png" alt="{{ site.name }}">
+                </div>
+
+                <div class="footer-links">
+                    <a href="{{ links.repo }}" target="_blank" rel="noopener">
+                        {{ icon.github(20) }}
+                        GitHub
+                    </a>
+                    <a href="{{ links.issues }}" target="_blank" rel="noopener">
+                        {{ icon.bug(20) }}
+                        Issues
+                    </a>
+                    <a href="{{ base }}documentation.html">
+                        {{ icon.book(20) }}
+                        Documentation
+                    </a>
+                </div>
+
+                <div class="footer-support">
+                    <span>Join the community</span>
+                    <div class="support-links">
+                        <a href="{{ links.discord }}" target="_blank" rel="noopener" class="support-btn discord">
+                            {{ icon.discord(18) }}
+                            Discord
+                        </a>
+                        <a href="{{ links.matrix }}" target="_blank" rel="noopener" class="support-btn matrix">
+                            {{ icon.matrix(18) }}
+                            Matrix
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <p>{{ site.copyright }}</p>
+                <p>{{ site.footer_note }}</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Navigation Modal -->
+    <div id="nav-modal" class="nav-modal">
+        <div class="nav-modal-header">
+            <a href="{{ base }}index.html" class="nav-logo" aria-label="{{ site.name }}">
+                <img src="{{ base }}img/kait2en-wordmark.png" alt="{{ site.name }}">
+            </a>
+            <button class="nav-modal-close" onclick="closeMenu()" aria-label="Close menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="nav-modal-content">
+{% block modal_toc %}{% endblock %}
+            <div class="nav-modal-section">
+                <h4>Navigation</h4>
+                <div class="nav-modal-links">
+                    {% for item in nav %}
+                    <a href="{{ base }}{{ item.href }}"{% if item.href == page_url %} class="active"{% endif %}>{{ item.label }}</a>
+                    {% endfor %}
+                    <a href="{{ links.repo }}" target="_blank" rel="noopener">
+                        {{ icon.github(16) }}
+                        GitHub
+                    </a>
+                    <a href="{{ links.discord }}" target="_blank" rel="noopener">
+                        {{ icon.discord(16) }}
+                        Discord
+                    </a>
+                    <a href="{{ links.matrix }}" target="_blank" rel="noopener">
+                        {{ icon.matrix(16) }}
+                        Matrix
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ base }}main.js"></script>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close">&times;</button>
+        <img id="lightbox-img" src="" alt="">
+    </div>
+</body>
+</html>

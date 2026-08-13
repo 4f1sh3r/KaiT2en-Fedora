@@ -1,2 +1,4 @@
-mkdocs-material
+markdown
+jinja2
+pygments
 pyyaml
