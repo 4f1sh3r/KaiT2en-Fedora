@@ -5,7 +5,7 @@ name: Deploy demo site
 
 on:
   push:
-    branches: [docs/deq-style-site]
+    branches: ["docs/**"]
 
   workflow_dispatch:
 

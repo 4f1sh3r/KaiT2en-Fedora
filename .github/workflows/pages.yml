@@ -62,12 +62,14 @@ jobs:
           name: site
           path: ./website/build
 
+      # gh-pages still holds the old MkDocs build and is kept untouched as a
+      # rollback: pointing the Pages source back at it restores the old site.
       - name: Publish to kait2en.org
         uses: peaceiris/actions-gh-pages@v4
         with:
           deploy_key: ${{ secrets.DOCS_DEPLOY_SSH_KEY }}
           external_repository: kaiT2en/kait2en.github.io
-          publish_branch: gh-pages
+          publish_branch: gh-pages-v2
           publish_dir: ./website/build
           force_orphan: true
           cname: kait2en.org
