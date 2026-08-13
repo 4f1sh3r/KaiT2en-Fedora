@@ -6,15 +6,9 @@ on:
 
   pull_request:
     paths:
-      - site.yml
-      - docs/**
-      - blog/**
-      - pages/**
-      - web/**
-      - scripts/site/**
+      - website/**
       - scripts/upstream/**
       - data/features.yml
-      - requirements-docs.txt
       - .github/workflows/pages.yml
 
   workflow_dispatch:
@@ -40,16 +34,16 @@ jobs:
           python-version: "3.x"
 
       - name: Install site dependencies
-        run: pip install -r requirements-docs.txt
+        run: pip install -r website/requirements.txt
 
       - name: Build the site
-        run: python scripts/site/build.py
+        run: python website/build.py
 
       - name: Upload the built site
         uses: actions/upload-artifact@v4
         with:
           name: site
-          path: ./site
+          path: ./website/build
           retention-days: 7
 
   deploy:
@@ -66,7 +60,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: site
-          path: ./site
+          path: ./website/build
 
       - name: Publish to kait2en.org
         uses: peaceiris/actions-gh-pages@v4
@@ -74,6 +68,6 @@ jobs:
           deploy_key: ${{ secrets.DOCS_DEPLOY_SSH_KEY }}
           external_repository: kaiT2en/kait2en.github.io
           publish_branch: gh-pages
-          publish_dir: ./site
+          publish_dir: ./website/build
           force_orphan: true
           cname: kait2en.org

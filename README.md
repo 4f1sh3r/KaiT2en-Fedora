@@ -23,14 +23,14 @@ Join the KAIT2EN community on [Discord](https://discord.gg/AGfjRk4ydj) or on
 
 ## Website
 
-[kait2en.org](https://kait2en.org) is built from this repository by
-`scripts/site/build.py` and published by CI on every push to `main`. The
-documentation lives in `docs/`, blog posts in `blog/`, and `site.yml` decides
-what appears where.
+Everything behind [kait2en.org](https://kait2en.org) lives in `website/`:
+documentation in `website/docs/`, blog posts in `website/blog/`, and
+`website/site.yml` decides what appears where. CI publishes it on every push to
+`main`.
 
 ```bash
-pip install -r requirements-docs.txt
-python scripts/site/build.py --serve
+pip install -r website/requirements.txt
+python website/build.py --serve
 ```
 
 ## Contributing

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Build the kait2en.org site from Markdown into an output directory.
 
-Content sources:
-  site.yml   site configuration, section order and sidebar grouping
-  docs/      documentation, rendered into one long documentation.html
-  blog/      one Markdown file per post, YAML front matter on top
-  pages/     prose blocks embedded into the landing page
-  web/       Jinja templates and static assets
+Everything the site is made of lives next to this file:
+  site.yml     site configuration, section order and sidebar grouping
+  docs/        documentation, rendered into one long documentation.html
+  blog/        one Markdown file per post, YAML front matter on top
+  pages/       prose blocks embedded into the landing page
+  templates/   Jinja templates
+  static/      stylesheet, script and images, copied verbatim
 
-Usage: python3 scripts/site/build.py [--output site] [--serve [PORT]]
+Usage: python3 website/build.py [--output website/build] [--serve [PORT]]
 """
 
 from __future__ import annotations
@@ -30,11 +31,12 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from markdown.extensions.toc import slugify
 from markupsafe import Markup
 
-ROOT = Path(__file__).resolve().parents[2]
-CONFIG_FILE = ROOT / "site.yml"
-DOCS_DIR = ROOT / "docs"
-BLOG_DIR = ROOT / "blog"
-WEB_DIR = ROOT / "web"
+WEBSITE = Path(__file__).resolve().parent
+ROOT = WEBSITE.parent
+CONFIG_FILE = WEBSITE / "site.yml"
+DOCS_DIR = WEBSITE / "docs"
+BLOG_DIR = WEBSITE / "blog"
+DEFAULT_OUTPUT = WEBSITE / "build"
 
 # The feature board renderer lives with the data it renders.
 sys.path.insert(0, str(ROOT / "scripts" / "upstream"))
@@ -331,7 +333,7 @@ def build_index_sections(config: dict[str, Any], anchors: dict[str, str]) -> lis
         section = dict(raw)
         kind = section.get("type", "markdown")
         if kind == "markdown":
-            source = ROOT / section["file"]
+            source = WEBSITE / section["file"]
             if not source.is_file():
                 raise BuildError(f"site.yml: {section['file']} does not exist")
             _, text = split_front_matter(source)
@@ -455,10 +457,7 @@ def check_links(out: Path) -> None:
 
 
 def copy_static(out: Path) -> None:
-    shutil.copytree(WEB_DIR / "static", out, dirs_exist_ok=True)
-    # The docs reference repository images through docs/assets -> ../assets.
-    shutil.copytree(ROOT / "assets", out / "assets", dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("plymouth"))
+    shutil.copytree(WEBSITE / "static", out, dirs_exist_ok=True)
 
 
 def build(output: Path, site_url: str | None = None, noindex: bool = False) -> None:
@@ -466,7 +465,7 @@ def build(output: Path, site_url: str | None = None, noindex: bool = False) -> N
     if site_url:
         config["site"]["url"] = site_url.rstrip("/")
     env = Environment(
-        loader=FileSystemLoader(WEB_DIR / "templates"),
+        loader=FileSystemLoader(WEBSITE / "templates"),
         undefined=StrictUndefined,
         autoescape=True,
         trim_blocks=True,
@@ -553,8 +552,8 @@ def serve(output: Path, port: int) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", default="site", type=Path,
-                        help="output directory (default: site)")
+    parser.add_argument("--output", default=DEFAULT_OUTPUT, type=Path,
+                        help="output directory (default: website/build)")
     parser.add_argument("--site-url",
                         help="override site.url, for a preview deployment")
     parser.add_argument("--noindex", action="store_true",
@@ -563,7 +562,7 @@ def main() -> int:
                         help="serve the result after building")
     args = parser.parse_args()
 
-    output = args.output if args.output.is_absolute() else ROOT / args.output
+    output = args.output if args.output.is_absolute() else Path.cwd() / args.output
     try:
         build(output, args.site_url, args.noindex)
     except BuildError as exc:

@@ -31,13 +31,13 @@ jobs:
           python-version: "3.x"
 
       - name: Install site dependencies
-        run: pip install -r requirements-docs.txt
+        run: pip install -r website/requirements.txt
 
       - name: Build the site
         run: |
           base="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}/demo"
           echo "Demo URL: ${base}/"
-          python scripts/site/build.py \
+          python website/build.py \
             --output public/demo \
             --site-url "${base}" \
             --noindex

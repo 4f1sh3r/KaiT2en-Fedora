@@ -33,5 +33,4 @@ build/
 # Local generated files
 compile_commands.json
 .vscode/settings.json
-# Anchored: `site/` alone would also swallow scripts/site/.
-/site/
+/website/build/
