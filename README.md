@@ -21,18 +21,6 @@ Follow the [installation guide](https://kait2en.org/documentation.html#installat
 Join the KAIT2EN community on [Discord](https://discord.gg/AGfjRk4ydj) or on
 [Matrix](https://matrix.to/#/%23kait2en:matrix.org).
 
-## Website
-
-Everything behind [kait2en.org](https://kait2en.org) lives in `website/`:
-documentation in `website/docs/`, blog posts in `website/blog/`, and
-`website/site.yml` decides what appears where. CI publishes it on every push to
-`main`.
-
-```bash
-pip install -r website/requirements.txt
-python website/build.py --serve
-```
-
 ## Contributing
 
 Contributions are welcome, especially when they move KAIT2EN fixes closer to
