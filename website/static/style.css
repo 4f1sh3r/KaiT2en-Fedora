@@ -203,7 +203,8 @@ a:hover {
     opacity: 1;
 }
 
-.nav-discord {
+.nav-discord,
+.nav-github {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -215,7 +216,12 @@ a:hover {
     color: #5865f2 !important;
 }
 
-.nav-discord svg {
+.nav-github:hover {
+    color: var(--text-primary) !important;
+}
+
+.nav-discord svg,
+.nav-github svg {
     fill: currentColor;
 }
 

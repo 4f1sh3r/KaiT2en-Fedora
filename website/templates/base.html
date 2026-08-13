@@ -54,6 +54,10 @@
                 {% for item in nav %}
                 <a href="{{ base }}{{ item.href }}"{% if item.href == page_url %} class="active"{% endif %}>{{ item.label }}</a>
                 {% endfor %}
+                <a href="{{ links.repo }}" target="_blank" rel="noopener" class="nav-github">
+                    {{ icon.github(16) }}
+                    GitHub
+                </a>
                 <a href="{{ links.discord }}" target="_blank" rel="noopener" class="nav-discord">
                     {{ icon.discord(16) }}
                     Discord
