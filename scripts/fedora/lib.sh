@@ -46,6 +46,16 @@ kernel_release() {
 	printf '%s\n' "${KERNEL_RELEASE:-$(uname -r)}"
 }
 
+require_kernel_headers() {
+	local release
+	# install_module calls dkms without -k, so the build always targets the
+	# running kernel whatever KERNEL_RELEASE says.
+	release="$(uname -r)"
+
+	[[ -d "/lib/modules/$release/build" ]] ||
+		fail "kernel-devel-$release is missing; run install-dependencies.sh first"
+}
+
 require_min_kernel() {
 	local min_major=$1 min_minor=$2 release major minor
 
