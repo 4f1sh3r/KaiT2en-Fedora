@@ -1312,13 +1312,19 @@ hero-brand h1 {
 .page-content ul,
 .page-content ol {
     margin-bottom: 16px;
-    padding-left: 24px;
+    padding-left: 0;
+    list-style-position: inside;
 }
 
 .page-content li {
     margin-bottom: 8px;
     color: var(--text-secondary);
     line-height: 1.6;
+}
+
+.page-content ul + p,
+.page-content ol + p {
+    margin-top: 24px;
 }
 
 .page-content strong {
@@ -2330,6 +2336,7 @@ a.post-tag:hover {
 .page-content li > ol {
     margin-top: 8px;
     margin-bottom: 0;
+    padding-left: 24px;
 }
 
 .page-content img {
