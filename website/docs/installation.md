@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="../assets/kaiT2en-logo-tr.png" alt="KAIT2EN logo" width="220">
-</p>
-
 # Installation
 
 The installation starts in macOS and continues in Fedora:

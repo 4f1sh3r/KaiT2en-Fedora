@@ -40,7 +40,7 @@ OPTIONAL_FIELDS = ("authors", "link", "help", "notes", "project", "subsystem", "
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "features.yml"
-DOCS_DIR = DATA_FILE.parents[1] / "docs"
+DOCS_DIR = DATA_FILE.parents[1] / "website" / "docs"
 
 
 class UpstreamDataError(Exception):
@@ -108,10 +108,10 @@ def _validate_item(item: object, index: int, seen_ids: set[str]) -> None:
         elif submitted:
             _fail(where, f"'link' must be the upstream URL when upstream is '{item['upstream']}'")
         elif not link.endswith(".md"):
-            _fail(where, "'link' must be an https:// URL or a .md page below docs/")
-        # MkDocs does not check links inside raw HTML, so verify the page here.
+            _fail(where, "'link' must be an https:// URL or a .md page below website/docs/")
+        # The site build catches this too, but a data error should name the data.
         elif not (DOCS_DIR / link).is_file():
-            _fail(where, f"'link' points at docs/{link}, which does not exist")
+            _fail(where, f"'link' points at website/docs/{link}, which does not exist")
     elif submitted:
         _fail(where, f"'link' is required when upstream is '{item['upstream']}'")
 

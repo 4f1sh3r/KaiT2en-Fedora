@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Page not found — {{ site.name }}{% endblock %}
+{% block description %}This page does not exist on {{ site.name }}.{% endblock %}
+
+{% block content %}
+    <main class="container page-container--top">
+        <section class="page-hero">
+            <h1>404</h1>
+            <p>That page does not exist. It may have moved with the documentation.</p>
+            <div class="button-group">
+                <a href="{{ base }}index.html" class="btn btn-primary">Home</a>
+                <a href="{{ base }}documentation.html" class="btn btn-secondary">Documentation</a>
+            </div>
+        </section>
+    </main>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}{{ doc.title }} — {{ site.name }}{% endblock %}
+{% block description %}{{ doc.description }}{% endblock %}
+
+{% block content %}
+    <div class="page-container page-container--top">
+        <aside class="page-sidebar">
+            <h1 class="page-title">{{ doc.title }}</h1>
+            <nav class="page-nav">
+                {% for group in groups %}
+                <h4>{{ group.title }}</h4>
+                <ul>
+                    {% for section in group.sections %}
+                    <li><a href="#{{ section.id }}">{{ section.title }}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endfor %}
+            </nav>
+        </aside>
+
+        <main class="page-content">
+            {% for group in groups %}
+            {% for section in group.sections %}
+            <section id="{{ section.id }}">
+                <h2>{{ section.title }}</h2>
+                {{ section.html }}
+            </section>
+            {% endfor %}
+            {% endfor %}
+        </main>
+    </div>
+{% endblock %}
+
+{% block modal_toc %}
+            <div class="nav-modal-section">
+                {% for group in groups %}
+                <h4>{{ group.title }}</h4>
+                <div class="nav-modal-toc">
+                    {% for section in group.sections %}
+                    <a href="#{{ section.id }}" onclick="closeMenu()">{{ section.title }}</a>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+{% endblock %}

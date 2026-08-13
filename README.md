@@ -7,18 +7,31 @@
 KAIT2EN brings cutting edge T2 Mac support to stock Fedora using DKMS modules.
 You will receive kernel updates directly from Fedora and the latest T2 modules from us.
 
-[Docs](https://kait2en.github.io/) |
+[Docs](https://kait2en.org/documentation.html) |
+[Blog](https://kait2en.org/blog.html) |
 [Community](#community) |
 [Contributing](#contributing)
 
 ## Install
 
-Follow the [installation guide](https://kait2en.github.io/installation/).
+Follow the [installation guide](https://kait2en.org/documentation.html#installation).
 
 ## Community
 
 Join the KAIT2EN community on [Discord](https://discord.gg/AGfjRk4ydj) or on
 [Matrix](https://matrix.to/#/%23kait2en:matrix.org).
+
+## Website
+
+Everything behind [kait2en.org](https://kait2en.org) lives in `website/`:
+documentation in `website/docs/`, blog posts in `website/blog/`, and
+`website/site.yml` decides what appears where. CI publishes it on every push to
+`main`.
+
+```bash
+pip install -r website/requirements.txt
+python website/build.py --serve
+```
 
 ## Contributing
 

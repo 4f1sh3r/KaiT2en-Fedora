@@ -42,14 +42,14 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install documentation dependencies
-        run: pip install -r requirements-docs.txt
+      - name: Install site dependencies
+        run: pip install -r website/requirements.txt
 
       - name: Validate the feature board data
         run: python scripts/upstream/schema.py
 
-      - name: Build documentation
-        run: mkdocs build --strict
+      - name: Build the site
+        run: python website/build.py
 
   discord:
     needs: validate

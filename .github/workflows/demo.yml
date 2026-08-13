@@ -1,0 +1,70 @@
+name: Deploy demo site
+
+# Preview deployment for a fork: publishes the site to the fork's own GitHub
+# Pages under /demo/. The real site is deployed by pages.yml from upstream.
+
+on:
+  push:
+    branches: ["docs/**"]
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: demo-site
+  cancel-in-progress: true
+
+jobs:
+  demo:
+    if: github.repository != 'kaiT2en/KaiT2en-Fedora'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install site dependencies
+        run: pip install -r website/requirements.txt
+
+      - name: Build the site
+        run: |
+          base="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}/demo"
+          echo "Demo URL: ${base}/"
+          python website/build.py \
+            --output public/demo \
+            --site-url "${base}" \
+            --noindex
+
+      - name: Redirect the Pages root to the demo
+        run: |
+          touch public/.nojekyll
+          cat > public/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en"><head><meta charset="utf-8">
+          <meta name="robots" content="noindex, nofollow">
+          <meta http-equiv="refresh" content="0; url=demo/">
+          <title>KAIT2EN Fedora demo</title></head>
+          <body>The demo lives at <a href="demo/">demo/</a>.</body></html>
+          HTML
+
+      - name: Publish to the fork's GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./public
+          force_orphan: true
+
+      - name: Summary
+        run: |
+          url="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY#*/}/demo/"
+          echo "### Demo deployed" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "<${url}>" >> "${GITHUB_STEP_SUMMARY}"
