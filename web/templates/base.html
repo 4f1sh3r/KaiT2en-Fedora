@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ site.title }}{% endblock %}</title>
     <meta name="description" content="{% block description %}{{ site.description }}{% endblock %}">
+{% if noindex %}
+    <meta name="robots" content="noindex, nofollow">
+{% endif %}
 
     <!-- Open Graph -->
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">

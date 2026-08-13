@@ -54,7 +54,11 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name != 'pull_request'
+    # A fork has no deploy key and must not publish kait2en.org; it previews
+    # through demo.yml instead.
+    if: >-
+      github.event_name != 'pull_request'
+      && github.repository == 'kaiT2en/KaiT2en-Fedora'
     runs-on: ubuntu-latest
 
     steps:

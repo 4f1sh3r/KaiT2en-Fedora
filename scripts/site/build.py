@@ -461,8 +461,10 @@ def copy_static(out: Path) -> None:
                     ignore=shutil.ignore_patterns("plymouth"))
 
 
-def build(output: Path) -> None:
+def build(output: Path, site_url: str | None = None, noindex: bool = False) -> None:
     config = read_config()
+    if site_url:
+        config["site"]["url"] = site_url.rstrip("/")
     env = Environment(
         loader=FileSystemLoader(WEB_DIR / "templates"),
         undefined=StrictUndefined,
@@ -487,6 +489,7 @@ def build(output: Path) -> None:
         "links": config["links"],
         "nav": config["nav"],
         "posts": posts,
+        "noindex": noindex,
     }
 
     def write(name: str, template: str, **context: Any) -> None:
@@ -552,13 +555,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", default="site", type=Path,
                         help="output directory (default: site)")
+    parser.add_argument("--site-url",
+                        help="override site.url, for a preview deployment")
+    parser.add_argument("--noindex", action="store_true",
+                        help="ask search engines to skip the pages")
     parser.add_argument("--serve", nargs="?", const=8000, type=int, metavar="PORT",
                         help="serve the result after building")
     args = parser.parse_args()
 
     output = args.output if args.output.is_absolute() else ROOT / args.output
     try:
-        build(output)
+        build(output, args.site_url, args.noindex)
     except BuildError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
