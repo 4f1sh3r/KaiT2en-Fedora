@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - KAIT2EN Fedora</title>
+    <meta name="description" content="Install KAIT2EN on a T2 Mac, then set up audio, GPUs and updates.">
+    <meta name="robots" content="noindex, nofollow">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Documentation - KAIT2EN Fedora">
+    <meta property="og:description" content="Install KAIT2EN on a T2 Mac, then set up audio, GPUs and updates.">
+    <meta property="og:url" content="https://4f1sh3r.github.io/KaiT2en-Fedora/demo/documentation.html">
+    <meta property="og:image" content="https://4f1sh3r.github.io/KaiT2en-Fedora/demo/img/og-image.png">
+    <meta property="og:site_name" content="KAIT2EN Fedora">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Documentation - KAIT2EN Fedora">
+    <meta name="twitter:description" content="Install KAIT2EN on a T2 Mac, then set up audio, GPUs and updates.">
+    <meta name="twitter:image" content="https://4f1sh3r.github.io/KaiT2en-Fedora/demo/img/og-image.png">
+
+    <link rel="canonical" href="https://4f1sh3r.github.io/KaiT2en-Fedora/demo/documentation.html">
+    <link rel="alternate" type="application/rss+xml" title="KAIT2EN Fedora blog" href="feed.xml">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="img/favicon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Grid Background -->
+    <div class="grid-bg"></div>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo" aria-label="KAIT2EN Fedora">
+                <img src="img/kait2en-wordmark.png" alt="KAIT2EN Fedora">
+            </a>
+            <button class="nav-burger" onclick="toggleMenu()" aria-label="Open menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <line x1="3" y1="12" x2="21" y2="12"/>
+                    <line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="documentation.html" class="active">Documentation</a>
+                <a href="blog.html">Blog</a>
+                <a href="https://github.com/kaiT2en/KaiT2en-Fedora" target="_blank" rel="noopener" class="nav-github">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+
+                    GitHub
+                </a>
+                <a href="https://discord.gg/AGfjRk4ydj" target="_blank" rel="noopener" class="nav-discord">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.51 12.51 0 0 0-.617-1.25.077.077 0 0 0-.079-.036A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127c-.598.35-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.332-.955 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.332-.946 2.418-2.157 2.418z"/></svg>
+
+                    Discord
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container page-container--top">
+        <aside class="page-sidebar">
+            <h1 class="page-title">Documentation</h1>
+            <nav class="page-nav">
+                <h4>Getting started</h4>
+                <ul>
+                    <li><a href="#installation">Installation</a></li>
+                    <li><a href="#before-you-start">Before you start</a></li>
+                    <li><a href="#create-the-fedora-usb-drive">Create the Fedora USB drive</a></li>
+                    <li><a href="#install-fedora">Install Fedora</a></li>
+                    <li><a href="#finish-the-kait2en-installation">Finish the KAIT2EN installation</a></li>
+                </ul>
+                <h4>Post-install</h4>
+                <ul>
+                    <li><a href="#audio-dsp">Audio DSP</a></li>
+                    <li><a href="#configure-gpus">Configure GPUs</a></li>
+                    <li><a href="#hardware-video-decoding">Hardware video decoding</a></li>
+                    <li><a href="#updating">Updating</a></li>
+                </ul>
+                <h4>Reference</h4>
+                <ul>
+                    <li><a href="#installed-files">Installed files</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="page-content">
+            <section id="installation">
+                <h2>Installation</h2>
+                <p>The installation starts in macOS and continues in Fedora:</p>
+<ol>
+<li>In macOS Recovery, disable Secure Boot and allow booting from external media.</li>
+<li>In macOS, create a separate partition for Fedora.</li>
+<li>Boot macOS and run the KAIT2EN installer.</li>
+<li>Choose a supported Fedora edition and an empty USB drive.</li>
+<li>The installer downloads and verifies the official Fedora image.</li>
+<li>It collects the Apple Wi-Fi firmware from your Mac and, where required, the
+   PCIe Bluetooth firmware.</li>
+<li>It writes the unchanged Fedora image to the USB drive, then adds separate
+   KAIT2EN boot files for keyboard, trackpad, firmware, and installer support.</li>
+<li>Boot the USB drive and install Fedora. After the first login, the guided
+   KAIT2EN setup installs the remaining drivers and system integration.</li>
+<li>After another reboot, you can enjoy KAIT2EN on top of vanilla Fedora.</li>
+</ol>
+<p>The installer currently supports Fedora Workstation, Fedora KDE Desktop and
+Fedora COSMIC Spin. We strongly recommend installing Workstation (Gnome)
+because that is what we devs use ourselves. KDE and Cosmic are generally more
+problematic. We can't help you with that because we don't use it.</p>
+            </section>
+            <section id="before-you-start">
+                <h2>Before you start</h2>
+                <p>You need:</p>
+<ul>
+<li>a T2 Mac with macOS still installed</li>
+<li>an empty USB drive</li>
+<li>an internet connection in macOS</li>
+</ul>
+<p>Back up important data before changing partitions or boot settings.</p>
+<p>Keep macOS installed. It is the clean source for Apple firmware and can recover
+T2/bridgeOS hardware states.</p>
+<h4 id="disable-apple-secure-boot">Disable Apple Secure Boot<a class="headerlink" href="#disable-apple-secure-boot">#</a></h4>
+<ul>
+<li>Shut down the Mac.</li>
+<li>Turn it on and immediately hold <code>Command-R</code> until macOS Recovery starts.</li>
+<li>Select a macOS administrator account and enter its password when prompted.</li>
+<li>From the menu bar, open <code>Utilities</code> &gt; <code>Startup Security Utility</code>.</li>
+<li>Select the macOS system disk if the utility asks for one.</li>
+<li>Set the following options:</li>
+</ul>
+<p><code>Secure Boot: No Security</code></p>
+<p><code>Allowed Boot Media: Allow booting from external or removable media</code></p>
+<ul>
+<li>Close Startup Security Utility and restart into macOS.</li>
+</ul>
+<p>Apple Secure Boot cannot boot standard Fedora while it is enabled. The installer
+checks the current setting and warns when it cannot confirm that Secure Boot is
+disabled.</p>
+<h4 id="create-space-for-fedora">Create space for Fedora<a class="headerlink" href="#create-space-for-fedora">#</a></h4>
+<p>Open Disk Utility in macOS. Select the internal macOS disk or container, choose
+<code>Partition</code>, and add a real <code>exFAT</code> partition for Fedora. Do not add an APFS
+volume. Fedora will reformat this partition during installation; <code>exFAT</code> only
+makes it easy to identify.</p>
+<p>Choose the size carefully because resizing the partitions later is not a small
+maintenance task. Keep at least <code>50 GB</code> for macOS so there is enough space for
+updates, firmware work, and recovery tasks. Give the remaining space you want
+to use for Linux to the new partition.</p>
+<p>Do not delete the EFI partition or macOS.</p>
+            </section>
+            <section id="create-the-fedora-usb-drive">
+                <h2>Create the Fedora USB drive</h2>
+                <p>Boot macOS and connect the empty USB drive. Open Terminal and run:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://github.com/kaiT2en/KaiT2en-Fedora/releases/latest/download/install-kait2en-fedora.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>Choose the Fedora desktop and USB drive. The script downloads and verifies the
+official Fedora image, finds the Apple Wi-Fi firmware used by this Mac and asks
+for an exact confirmation before erasing the USB drive.</p>
+<p>The official Fedora image itself is not modified. After writing the verified
+vanilla image, the script adds KAIT2EN boot files only to the USB drive's EFI
+partition. Separate initramfs overlays provide the temporary input drivers and
+installer integration at boot; Fedora's live system and installation payload
+remain unchanged.</p>
+<p>Be exact when selecting the drive. All data on it will be destroyed.</p>
+            </section>
+            <section id="install-fedora">
+                <h2>Install Fedora</h2>
+                <p>Shut down or reboot the Mac. Hold <code>Option</code> during startup and select the orange
+<code>EFI Boot</code> entry for the Fedora USB drive. The KAIT2EN Fedora entry starts
+automatically.</p>
+<p>Keyboard, trackpad, and Wi-Fi should work in the live system and installer. The
+live system installs the Apple Wi-Fi firmware from the USB drive for itself, so
+you can connect to a network before or instead of installing Fedora.</p>
+<p>Macs whose Bluetooth controller sits on PCIe (BCM4377) also get their Apple
+Bluetooth firmware in the live system, so a Bluetooth keyboard or mouse can be
+paired before installing. Every other T2 Mac drives Bluetooth over UART and
+needs no separate firmware file.</p>
+<p>Install Fedora normally. Use custom partitioning and select the Linux partition
+you created in macOS. Do not erase the whole disk or macOS. When reinstalling,
+format an existing Linux <code>/boot</code> partition so old kernels do not fill it.</p>
+<p>After installation finishes, remove the USB drive and boot the installed Fedora
+system.</p>
+<h4 id="if-the-live-system-does-not-start">If the live system does not start<a class="headerlink" href="#if-the-live-system-does-not-start">#</a></h4>
+<p>The boot menu offers a few troubleshooting entries that are only needed when the
+normal boot does not work. Try them in this order and stop at the first one that
+works:</p>
+<ol>
+<li><code>Troubleshooting: KaiT2en with boot messages</code> shows the console instead of
+   the logo. Photograph the last lines for a bug report.</li>
+<li><code>Troubleshooting: KaiT2en with the dedicated GPU disabled</code> keeps <code>amdgpu</code>
+   out of the boot and leaves the Intel GPU fully accelerated.</li>
+<li><code>Troubleshooting: KaiT2en with basic graphics</code> adds <code>nomodeset</code>. Rendering
+   is done in software and feels slow, but it can run the installation.</li>
+<li><code>Troubleshooting: KaiT2en with basic graphics and conservative PCIe</code> is the
+   last resort and also covers a power off coming from PCIe or Thunderbolt.</li>
+</ol>
+<p>All of them keep the KAIT2EN input drivers. If entry 2 or 3 was needed, make
+the fix permanent afterwards as described in
+<a href="#configure-gpus">Configure GPUs</a>.</p>
+<h4 id="if-hardware-is-missing-in-the-live-system">If hardware is missing in the live system<a class="headerlink" href="#if-hardware-is-missing-in-the-live-system">#</a></h4>
+<p>KAIT2EN supports the known T2 configurations, but Apple shipped several
+controller and firmware variants. If keyboard, trackpad, Wi-Fi, or PCIe
+Bluetooth support is missing, collect diagnostics before continuing with the
+installation.</p>
+<p>The individual helpers can be run manually to see the Wi-Fi or Bluetooth setup
+result directly:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>/run/kait2en/kait2en-live-wifi
+sudo<span class="w"> </span>/run/kait2en/kait2en-live-bluetooth
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>For a complete diagnostic archive, run:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>/run/kait2en/kait2en-live-diagnostics<span class="w"> </span>--rerun
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>This reruns the firmware setup while recording what happened. The archive lands
+on a second USB drive when one is mounted, otherwise in <code>/tmp</code>; the path is
+printed at the end. It contains host names, MAC addresses, and the names of
+nearby wireless networks, so inspect it before attaching it to a bug report.</p>
+            </section>
+            <section id="finish-the-kait2en-installation">
+                <h2>Finish the KAIT2EN installation</h2>
+                <p>Sign in to Fedora and connect to Wi-Fi. A terminal opens automatically and
+starts the KAIT2EN installer in two phases. Do not close this window and follow
+the prompts.</p>
+<p>The first phase updates Fedora and prepares the new kernel. Reboot when asked.
+After signing in again, the second phase opens automatically and runs the
+regular KAIT2EN installer. Reboot once more after it completes successfully.</p>
+<p>If the terminal does not appear, open one and run this command without <code>sudo</code>:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>kait2en-install
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>The installer asks for administrator access when it is needed. It can also be
+started again at any later time to update KAIT2EN.</p>
+            </section>
+            <section id="audio-dsp">
+                <h2>Audio DSP</h2>
+                <p>This page explains the audio DSP support that KAIT2EN installs automatically.
+It is not an installation guide. Supported Macs receive the matching profile
+during the regular KAIT2EN installation; unsupported models continue to use
+the native T2 audio devices.</p>
+<h3 id="dsp-in-general">DSP in general<a class="headerlink" href="#dsp-in-general">#</a></h3>
+<p>The T2 audio driver exposes the physical speaker channels, but it does not
+contain the model-specific processing Apple applies before those channels reach
+the internal speakers. KAIT2EN provides that processing as a PipeWire filter
+graph.</p>
+<p>Depending on the model, the graph</p>
+<ul>
+<li>distributes stereo audio across the physical woofer and tweeter channels</li>
+<li>applies model-specific FIR filters to correct the frequency response;</li>
+<li>adds virtual-bass processing where appropriate and controls peaks before
+they reach the internal speakers.</li>
+</ul>
+<p>On supported Macs, the resulting output appears as <strong>DSP Speakers</strong> device. The
+unprocessed <strong>Apple Internal Speakers</strong> device remains available for comparison
+and diagnostics. Headphones do not pass through the speaker DSP graph.</p>
+<h3 id="supported-models">Supported models<a class="headerlink" href="#supported-models">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>DSP profile</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MacBook Air 2018</td>
+<td><code>MacBookAir8,1</code></td>
+</tr>
+<tr>
+<td>MacBook Air 2019</td>
+<td><code>MacBookAir8,2</code></td>
+</tr>
+<tr>
+<td>MacBook Air 2020 (Intel)</td>
+<td><code>MacBookAir9,1</code></td>
+</tr>
+<tr>
+<td>MacBook Pro 15-inch 2018/2019</td>
+<td><code>MacBookPro15,1</code></td>
+</tr>
+<tr>
+<td>MacBook Pro 13-inch 2019, two Thunderbolt ports</td>
+<td><code>MacBookPro15,4</code></td>
+</tr>
+<tr>
+<td>MacBook Pro 16-inch 2019</td>
+<td><code>MacBookPro16,1</code></td>
+</tr>
+<tr>
+<td>MacBook Pro 13-inch 2020, four Thunderbolt ports</td>
+<td><code>MacBookPro16,2</code></td>
+</tr>
+<tr>
+<td>MacBook Pro 13-inch 2020, two Thunderbolt ports</td>
+<td><code>MacBookPro16,3</code></td>
+</tr>
+<tr>
+<td>MacBook Pro 16-inch 2019</td>
+<td><code>MacBookPro16,4</code></td>
+</tr>
+</tbody>
+</table>
+<p>The installer identifies the model from DMI and only deploys a graph when an
+explicit matching profile exists. KAIT2EN does not reuse a profile on an
+unlisted model.</p>
+<h3 id="automatic-selection">Automatic selection<a class="headerlink" href="#automatic-selection">#</a></h3>
+<p>The WirePlumber software-DSP integration gives the DSP sink a higher session
+priority than the underlying speaker sink. WirePlumber should therefore select
+the DSP output automatically when the profile is first created.</p>
+<h3 id="profile-origins-and-support">Profile origins and support<a class="headerlink" href="#profile-origins-and-support">#</a></h3>
+<p>The KAIT2EN DSP implementation originated from
+<a href="https://github.com/lemmyg/t2-apple-audio-dsp">lemmyg's t2-apple-audio-dsp</a>,
+but it is no longer a direct copy of that project. Its graphs have been
+substantially reworked, adapted to the KAIT2EN UCM profiles and WirePlumber
+software-DSP integration, and extended with model-specific measurements and
+FIRs from <a href="https://github.com/AsahiLinux/asahi-audio">Asahi Linux</a> or our own.</p>
+<p>Problems with these profiles must be reported to the
+<a href="https://github.com/kaiT2en/KaiT2en-Fedora/issues">KAIT2EN issue tracker</a>.
+Do not report KAIT2EN DSP behavior to lemmyg's project: its current routing,
+filter graphs and UCM integration are maintained here.</p>
+<p>The exact source and license information for each profile is recorded in the
+DSP module and alongside imported FIR files.</p>
+<h3 id="check-the-active-output">Check the active output<a class="headerlink" href="#check-the-active-output">#</a></h3>
+<p>The sound settings should show the model-specific DSP output on a supported
+Mac. PipeWire can also list it directly:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>wpctl<span class="w"> </span>status
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>The active sink is marked with an asterisk. If the DSP device is missing after
+the regular installation and a reboot, include the model identifier and this
+output in a KAIT2EN issue:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>cat<span class="w"> </span>/sys/class/dmi/id/product_name
+wpctl<span class="w"> </span>status
+journalctl<span class="w"> </span>--user<span class="w"> </span>-b<span class="w"> </span>-u<span class="w"> </span>wireplumber<span class="w"> </span>-u<span class="w"> </span>pipewire<span class="w"> </span>-u<span class="w"> </span>pipewire-pulse
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+            </section>
+            <section id="configure-gpus">
+                <h2>Configure GPUs</h2>
+                <p>If a Mac has a dGPU, it will use it for boot and it will also use it as primary
+display adapter by default. An iMac is no exception in that aspect, but it is
+not able to switch between internal and dedicated GPU because the display lines
+from iGPU to display are missing. So on iMacs, the iGPU is only used for offloading.
+Thus, if you are an iMac user, this guide is not for you.
+Same for Mac Pro users, since Mac Pros have no iGPU.
+This guide is only for Macbook Pro users.</p>
+<h3 id="macbookpro151-enable-hybrid-graphics">MacBookPro15,1: enable hybrid graphics<a class="headerlink" href="#macbookpro151-enable-hybrid-graphics">#</a></h3>
+<p>KaiT2en installs <strong>T2 Hybrid GPU Control</strong> on the MacBookPro15,1. Open it from
+the application menu and enable <strong>Hybrid graphics</strong>.</p>
+<p>Hybrid graphics makes the integrated GPU the display GPU. Applications can
+still use the AMD GPU through PRIME offload. The kernel wakes it automatically
+for accelerated work and returns it to D3cold when it becomes idle. This keeps
+the dGPU available without paying its idle power cost.</p>
+<p>The installer builds the required AMDGPU and HDA modules for the current Fedora
+kernel. The app reports whether the required runtime-PM support is active.</p>
+<p>The discrete-GPU boot option remains available as a recovery setting. Rebooting
+is always a separate action so changing the stored boot GPU does not restart the
+system unexpectedly.</p>
+<p>Other Intel/AMD MacBook Pro models continue to use <strong>T2 GPU Control</strong>. Hybrid
+runtime PM is not enabled on those models because their dGPU power-on path is
+not yet reliable.</p>
+            </section>
+            <section id="hardware-video-decoding">
+                <h2>Hardware video decoding</h2>
+                <p>Fedora's GPU drivers do not expose hardware decoding for codecs such as H.264
+and H.265. This affects both AMD GPUs and Intel iGPUs. Browsers and media
+players can therefore fall back to CPU decoding even though the GPU contains a
+supported video decoder.</p>
+<p>T2 Macs do not provide AV1 hardware decoding. YouTube should use H.264 or a
+hardware-supported VP9 profile to avoid unnecessary CPU load.</p>
+<h3 id="install-the-va-api-drivers">Install the VA-API drivers<a class="headerlink" href="#install-the-va-api-drivers">#</a></h3>
+<p>Run the installer from the KAIT2EN repository:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>bash<span class="w"> </span>./scripts/fedora/install-hardware-video-decoding.sh
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>The script enables RPM Fusion, installs the appropriate VA-API drivers for every
+detected Intel and AMD GPU, and checks each render node. Review the final output:
+H.264 and VP9 decoding and encoding are reported as <code>available</code> or <code>missing</code> for
+each GPU.</p>
+<p>No general system upgrade is performed. Browser configuration is still required
+as described below.</p>
+<h3 id="brave-and-youtube">Brave and YouTube<a class="headerlink" href="#brave-and-youtube">#</a></h3>
+<p>Open Brave's system settings and enable <strong>Use graphics acceleration when
+available</strong>, then restart Brave.</p>
+<p>YouTube normally chooses between H.264, VP9 and AV1 based on the capabilities
+reported by the browser. T2 Macs cannot decode AV1 in hardware. To force
+YouTube to request H.264 in Brave, install
+<a href="https://chromewebstore.google.com/detail/h264ify/aleakchihdccplidncghkekgioiakgal">h264ify from the Chrome Web Store</a>.
+This does not interfere with Brave Shields or its ad blocking.</p>
+<p>H.264 streams on YouTube are commonly limited to 1080p. Disable the extension
+when a higher resolution is more important than lower CPU use.</p>
+<p>Start a YouTube video, right-click it and open <strong>Stats for nerds</strong>. The codec
+field identifies the selected stream:</p>
+<ul>
+<li><code>avc1</code> is H.264.</li>
+<li><code>vp09</code> is VP9.</li>
+<li><code>av01</code> is AV1.</li>
+</ul>
+<p>For the forced H.264 configuration, the field must start with <code>avc1</code>.</p>
+<p>Open <code>brave://gpu</code> and check that <strong>Video Decode</strong> reports hardware
+acceleration. For the active playback session, <code>brave://media-internals</code>
+provides the more useful per-stream decoder details.</p>
+<h3 id="firefox-and-youtube">Firefox and YouTube<a class="headerlink" href="#firefox-and-youtube">#</a></h3>
+<p>In Firefox settings, leave hardware acceleration enabled. Open <code>about:config</code>,
+set the following preference to <code>false</code>, and restart Firefox:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>media.av1.enabled
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>This disables AV1 but still allows YouTube to select VP9. To force H.264,
+install
+<a href="https://addons.mozilla.org/firefox/addon/enhanced-h264ify/">enhanced-h264ify from Mozilla Add-ons</a>
+and block VP9 and AV1 while leaving H.264 enabled.</p>
+<p>Use YouTube's <strong>Stats for nerds</strong> as described above. Firefox also reports its
+decoder support under <code>about:support</code> in the codec and media sections.</p>
+<h3 id="test-outside-the-browser">Test outside the browser<a class="headerlink" href="#test-outside-the-browser">#</a></h3>
+<p>MPV can confirm that VA-API works independently of browser configuration:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>mpv<span class="w"> </span>--no-config<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--hwdec<span class="o">=</span>vaapi-copy<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--hwdec-codecs<span class="o">=</span>all<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--vaapi-device<span class="o">=</span>/dev/dri/renderD128<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--term-playing-msg<span class="o">=</span><span class="s1">&#39;Hardware decoder: ${hwdec-current}&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>/path/to/video.mp4
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>Replace the render node and video path as required. A hardware-decoded stream
+reports <code>vaapi-copy</code> instead of <code>no</code>.</p>
+            </section>
+            <section id="updating">
+                <h2>Updating</h2>
+                <p>KAIT2EN is meant to disappear. It's part of the concept. It serves the purpose
+of upstreaming code fixes. Every module and fix that gets upstreamed will disappear from
+the repo. Until we are left with a few T2 specific apps and other things that can't be upstreamed.
+Maybe it will survive as a collection of helpful apps for T2 Macs.</p>
+<p>As long as this isn't the case, we need to update the Fedora kernel and our modules and apps.
+The question how to do that has kept us a bit busy. We could go COPR and offer .rpm.
+But the project is yet too small to fund itself.</p>
+<h3 id="updating-kait2en">Updating KAIT2EN<a class="headerlink" href="#updating-kait2en">#</a></h3>
+<p>Open a terminal and run:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>kait2en-install
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>This updates the KAIT2EN Git checkout and runs the regular project installer.
+Review its output and reboot after it completes successfully.</p>
+<h3 id="updating-fedora">Updating Fedora<a class="headerlink" href="#updating-fedora">#</a></h3>
+<p>You just update Fedora like everyone else. DKMS will notice and recompile our modules against the
+latest kernel. It's always worth visiting the <a href="https://discord.gg/AGfjRk4ydj">KAIT2EN community on Discord</a> or <a href="https://matrix.to/#/%23kait2en:matrix.org">Matrix</a> to make sure you won't run into issues like kernel regressions.</p>
+<h3 id="so-you-messed-up">So you messed up?<a class="headerlink" href="#so-you-messed-up">#</a></h3>
+<p>You can mess up DKMS when upgrading the kernel. For example when interrupting DKMS while the new Kernel is booting.
+Then you are left with half broken KAIT2EN modules. To repair this, just boot into an older kernel and clean up the new.</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>#replace the kernel version 7.1.3-201.fc44.x86_64 with your own
+sudo dracut --force /boot/initramfs-7.1.3-201.fc44.x86_64.img 7.1.3-201.fc44.x86_64 
+sudo kernel-install add 7.1.3-201.fc44.x86_64 /lib/modules/7.1.3-201.fc44.x86_64/vmlinuz
+sudo grubby --set-default /boot/vmlinuz-7.1.3-201.fc44.x86_64
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<h3 id="murphys-law-we-will-mess-up">Murphy's law: We <strong>WILL</strong> mess up!<a class="headerlink" href="#murphys-law-we-will-mess-up">#</a></h3>
+<p>We are humans. We will mess up at some point. We recommend not to update when
+you don't have an external keyboard/mouse around. Like when you are travelling.
+But you should always be able to use GRUB to boot into an older kernel anyways.
+But be warned that when we mess up, you could loose VHCI devices or WiFi.
+And remember we are not paid. We will waste your time and we don't accept complaints.</p>
+            </section>
+            <section id="installed-files">
+                <h2>Installed files</h2>
+                <p>KAIT2EN keeps Fedora's vanilla kernel and installs T2 hardware support as a
+separate layer. The changes we are doing to your system are documented here to
+provide transparency to users and devs.</p>
+<h3 id="project-checkout-and-updater">Project checkout and updater<a class="headerlink" href="#project-checkout-and-updater">#</a></h3>
+<p>The guided installer creates a clean checkout of the <code>main</code> branch at:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/usr/local/src/KaiT2en-Fedora
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p><code>kait2en-install</code> fast-forwards this checkout and runs
+<code>scripts/fedora/install.sh</code>. It refuses to overwrite local changes or use a
+checkout with an unexpected Git remote. Its persistent files are:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/usr/local/bin/kait2en-install
+/var/lib/kait2en-installer/state
+~/.local/state/kait2en/install.log
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<h3 id="kernel-modules">Kernel modules<a class="headerlink" href="#kernel-modules">#</a></h3>
+<p>The installer copies each module source to <code>/usr/src/&lt;name&gt;-&lt;version&gt;/</code>,
+registers it with DKMS and builds it for the running Fedora kernel. DKMS keeps
+its build state below <code>/var/lib/dkms/</code> and rebuilds the modules for later
+kernel updates. <code>modinfo -n &lt;module&gt;</code> prints the installed kernel object path.</p>
+<table>
+<thead>
+<tr>
+<th>DKMS source</th>
+<th>Installed module</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>t2bce_dma</code></td>
+<td><code>t2bce_dma</code></td>
+<td>Shared DMA queue engine for T2 BCE clients</td>
+</tr>
+<tr>
+<td><code>t2bce_core</code></td>
+<td><code>t2bce_core</code></td>
+<td>T2 bridge PCI device, mailbox, power management and transport</td>
+</tr>
+<tr>
+<td><code>t2bce_vhci</code></td>
+<td><code>t2bce_vhci</code></td>
+<td>Virtual USB host for internal T2 input devices</td>
+</tr>
+<tr>
+<td><code>t2bce_audio</code></td>
+<td><code>t2bce_audio</code></td>
+<td>Apple T2 audio driver</td>
+</tr>
+<tr>
+<td><code>t2smc</code></td>
+<td><code>t2smc</code></td>
+<td>Fan, temperature, charge-limit and RTC access through hwmon</td>
+</tr>
+<tr>
+<td><code>t2bdrm</code></td>
+<td><code>t2bdrm</code></td>
+<td>Touch Bar DRM display device</td>
+</tr>
+<tr>
+<td><code>t2touchbar</code></td>
+<td><code>t2hid</code>, <code>t2touchbar_bl</code>, <code>t2touchbar_kbd</code></td>
+<td>Internal HID quirks, Touch Bar backlight and keyboard mode</td>
+</tr>
+<tr>
+<td><code>hid_t2magicmouse</code></td>
+<td><code>hid_t2magicmouse</code></td>
+<td>Internal trackpad support with the required Asahi patches</td>
+</tr>
+<tr>
+<td><code>t2mfi_fastcharge</code></td>
+<td><code>t2mfi_fastcharge</code></td>
+<td>Fast-charge control for Apple MFi devices</td>
+</tr>
+<tr>
+<td><code>t2gmux</code></td>
+<td><code>t2gmux</code></td>
+<td>GMUX handling on dual-GPU Macs</td>
+</tr>
+<tr>
+<td><code>t2thunderbolt</code></td>
+<td><code>t2thunderbolt</code></td>
+<td>Thunderbolt power-management ordering and T2 PCI quirks</td>
+</tr>
+<tr>
+<td><code>t2smp</code></td>
+<td><code>t2smp</code></td>
+<td>Defers secondary CPU hotplug to avoid firmware-sensitive resume delays</td>
+</tr>
+</tbody>
+</table>
+<p>The installer also writes
+<code>/etc/kernel/install.d/39-kait2en-dkms-cleanup.install</code>. The hook removes stale
+DKMS build state before a kernel installation is retried.</p>
+<p>On the MacBookPro15,1, the app installer also builds the AMDGPU and Intel HDA
+modules with the hybrid runtime-PM patches and installs them for the running
+kernel at:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/usr/lib/modules/&lt;kernel&gt;/updates/kait2en-gpu-runtime-pm/amdgpu.ko.xz
+/usr/lib/modules/&lt;kernel&gt;/updates/kait2en-gpu-runtime-pm/snd-hda-intel.ko.xz
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>The corresponding modprobe and dracut configuration is installed as
+<code>/usr/lib/modprobe.d/kait2en-gpu-runtime-pm.conf</code> and
+<code>/etc/dracut.conf.d/90-kait2en-gpu-runtime-pm.conf</code>.</p>
+<h3 id="kernel-arguments">Kernel arguments<a class="headerlink" href="#kernel-arguments">#</a></h3>
+<p><code>install-kernel-args.sh</code> updates every installed kernel entry with
+<code>grubby --update-kernel=ALL</code>. Inspect the effective arguments with:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>grubby<span class="w"> </span>--info<span class="o">=</span>DEFAULT
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>KAIT2EN adds these arguments to every installed kernel through <code>grubby</code>:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>intel_iommu=on
+iommu=pt
+pm_async=off
+brcmfmac.p2pon=0
+pcie_aspm=force
+pcie_aspm.policy=powersave
+pcie_ports=native
+pci=noaer
+mem_sleep_default=deep
+initcall_blacklist=cmos_init,magicmouse_driver_init
+module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>On MacBook Pro models where PCI discovery finds an AMD display device, the
+installer additionally enables GuC submission and HuC firmware loading for the
+Intel GPU:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>i915.enable_guc=2
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>KAIT2EN does not install a custom kernel or a separate GRUB configuration file.</p>
+<h3 id="audio-configuration">Audio configuration<a class="headerlink" href="#audio-configuration">#</a></h3>
+<p>The ALSA UCM profiles define the T2 speaker, microphone and headset paths:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/usr/share/alsa/ucm2/AppleT2/HiFi-x2.conf
+/usr/share/alsa/ucm2/AppleT2/HiFi-x4.conf
+/usr/share/alsa/ucm2/AppleT2/HiFi-x6.conf
+/usr/share/alsa/ucm2/conf.d/AppleT2x2/AppleT2x2.conf
+/usr/share/alsa/ucm2/conf.d/AppleT2x4/AppleT2x4.conf
+/usr/share/alsa/ucm2/conf.d/AppleT2x6/AppleT2x6.conf
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>The installer deploys model-specific FIR filters and a generated WirePlumber
+rule on these models: <code>MacBookAir8,1</code>, <code>MacBookAir8,2</code>, <code>MacBookAir9,1</code>,
+<code>MacBookPro15,1</code>, <code>MacBookPro15,4</code>, <code>MacBookPro16,1</code>, <code>MacBookPro16,2</code>,
+<code>MacBookPro16,3</code> and <code>MacBookPro16,4</code>.</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/usr/share/kait2en/audio-dsp/&lt;profile&gt;/
+/etc/wireplumber/wireplumber.conf.d/51-kait2en-t2-dsp.conf
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>Every other model exits the DSP step without creating these files.
+See <a href="#audio-dsp">Audio DSP</a> for the supported-model table,
+audio behavior and diagnostics.</p>
+<h3 id="system-configuration-and-services">System configuration and services<a class="headerlink" href="#system-configuration-and-services">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/etc/systemd/system/kait2en-suspend.service</code></td>
+<td>Calls the suspend helper before <code>sleep.target</code> and again after resume</td>
+</tr>
+<tr>
+<td><code>/usr/local/libexec/kait2en/kait2en-suspend.sh</code></td>
+<td>Handles the BCM4377 suspend workaround described below</td>
+</tr>
+<tr>
+<td><code>/etc/udev/rules.d/90-kait2en-t2-network.rules</code></td>
+<td>Renames the internal T2 debug interface to <code>t2_ncm</code> and excludes it from NetworkManager</td>
+</tr>
+<tr>
+<td><code>/etc/systemd/system/kait2en-t2-ncm-down.service</code></td>
+<td>Starts when <code>t2_ncm</code> appears</td>
+</tr>
+<tr>
+<td><code>/usr/local/libexec/kait2en/kait2en-t2-ncm-down.sh</code></td>
+<td>Keeps the internal debug interface down</td>
+</tr>
+<tr>
+<td><code>/usr/share/plymouth/themes/kait2en/</code></td>
+<td>Fedora's spinner theme with the KAIT2EN watermark</td>
+</tr>
+<tr>
+<td><code>/boot/initramfs-&lt;running-kernel&gt;.img</code></td>
+<td>Rebuilt by Dracut after modules and ACPI handling are complete</td>
+</tr>
+</tbody>
+</table>
+<p><code>kait2en-suspend.service</code> is enabled on every installation. Before suspend, it
+checks for a Broadcom PCI device with vendor ID <code>0x14e4</code> and device ID <code>0x5f69</code>,
+<code>0x5f71</code>, <code>0x5f72</code> or <code>0x5fa0</code>. If one is present, it unloads <code>brcmfmac_wcc</code>,
+  <code>brcmfmac</code> and <code>hci_bcm4377</code> in that order. After resume it loads <code>brcmfmac</code>
+  and <code>brcmfmac_wcc</code>, waits five seconds, then loads <code>hci_bcm4377</code>.</p>
+<p>If the controller is absent, the service logs that the fix is not needed and
+does not unload a module. State files for modules successfully unloaded by
+the helper exist only until resume below <code>/run/kait2en-suspend/</code>.</p>
+<p>The installer checks the running kernel log for two known Apple ACPI firmware
+errors. It only deploys an override when the error is present and the generated
+table passes validation with <code>iasl</code>:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/usr/local/lib/firmware/acpi/*.aml
+/usr/local/lib/firmware/acpi/.kait2en-*.sha256
+/etc/dracut.conf.d/t2-acpi-fix.conf
+/var/backups/t2-acpi-fix/&lt;timestamp&gt;/
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>The backup contains every managed file that existed before deployment and a
+manifest. KAIT2EN only replaces or removes an ACPI table when its ownership
+marker contains the table's current SHA-256 checksum. Existing unmarked tables
+and modified managed tables are left unchanged and reported as conflicts.</p>
+<h3 id="apple-firmware-from-the-installer-usb-drive">Apple firmware from the installer USB drive<a class="headerlink" href="#apple-firmware-from-the-installer-usb-drive">#</a></h3>
+<p>The guided installer copies Apple's own firmware for this Mac from the USB drive
+into the installed system, renamed to the file names the Linux drivers ask for:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/usr/lib/firmware/brcm/brcmfmac&lt;chip&gt;-pcie.apple,&lt;board&gt;*
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>Macs with the BCM4377 PCIe Bluetooth controller (<code>14e4:5fa0</code>) additionally get
+the two Bluetooth blobs. Every other T2 Mac drives Bluetooth over UART and gets
+nothing here:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/usr/lib/firmware/brcm/brcmbt&lt;chip&gt;&lt;stepping&gt;-apple,&lt;board&gt;[-&lt;vendor&gt;].bin
+/usr/lib/firmware/brcm/brcmbt&lt;chip&gt;&lt;stepping&gt;-apple,&lt;board&gt;[-&lt;vendor&gt;].ptb
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>The exact names are taken from what the driver asked for in the kernel log. The
+outcome of the Bluetooth step is recorded in the installed system at:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>/var/log/kait2en/bluetooth-firmware.log
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<h3 id="desktop-applications">Desktop applications<a class="headerlink" href="#desktop-applications">#</a></h3>
+<p><code>t2-fan-control</code>, <code>t2-smc-control</code>, and <code>t2-power-explorer</code> are built from the
+checkout and installed system-wide under <code>/usr/local</code>. The MacBookPro15,1 gets
+<code>t2-hybrid-gpu-control</code>; other MacBook Pro models with Intel and AMD display
+devices get <code>t2-dgpu-control</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Application</th>
+<th>Installed files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T2 Fan Control</td>
+<td><code>/usr/local/bin/t2-fancontrol-gtk</code>, <code>/usr/local/share/applications/org.t2fancontrol.gtk.desktop</code>, <code>/usr/local/share/icons/hicolor/scalable/apps/org.t2fancontrol.gtk.svg</code>, <code>/usr/local/lib/systemd/system/t2-fancontrol.service</code></td>
+</tr>
+<tr>
+<td>T2 SMC Control</td>
+<td><code>/usr/local/bin/t2-smc-control</code>, <code>/usr/local/share/applications/org.t2smccontrol.gtk.desktop</code>, <code>/usr/local/share/icons/hicolor/scalable/apps/org.t2smccontrol.gtk.svg</code>, <code>/usr/local/lib/systemd/system/kait2en-t2-smc-charge-limit.service</code></td>
+</tr>
+<tr>
+<td>T2 Power Explorer</td>
+<td><code>/usr/local/bin/t2-power-explorer</code>, <code>/usr/local/libexec/t2-power-explorer-status</code>, <code>/usr/local/share/applications/org.t2powerexplorer.gtk.desktop</code>, <code>/usr/local/share/icons/hicolor/scalable/apps/org.t2powerexplorer.gtk.svg</code>, <code>/usr/share/polkit-1/actions/org.t2powerexplorer.policy</code></td>
+</tr>
+<tr>
+<td>T2 Hybrid GPU Control</td>
+<td><code>/usr/local/bin/t2-hybrid-gpu-control</code>, <code>/usr/local/libexec/t2-hybrid-gpu-control-helper</code>, <code>/usr/local/libexec/t2-hybrid-gpu-control-status</code>, <code>/usr/local/share/applications/org.t2hybridgpucontrol.gtk.desktop</code>, <code>/usr/local/share/icons/hicolor/scalable/apps/org.t2hybridgpucontrol.gtk.svg</code>, <code>/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.policy</code>, <code>/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.status.policy</code></td>
+</tr>
+<tr>
+<td>T2 GPU Control</td>
+<td><code>/usr/local/bin/t2-dgpu-control</code>, <code>/usr/local/libexec/t2-dgpu-control-helper</code>, <code>/usr/local/libexec/t2-dgpu-control-status</code>, <code>/usr/local/share/applications/org.t2dgpucontrol.gtk.desktop</code>, <code>/usr/local/share/icons/hicolor/scalable/apps/org.t2dgpucontrol.gtk.svg</code>, <code>/usr/local/lib/systemd/system/kait2en-dgpu-off.service</code>, <code>/usr/local/lib/systemd/system/kait2en-dgpu-suspend.service</code>, <code>/usr/local/lib/systemd/system/kait2en-amdgpu-profile.service</code>, <code>/usr/local/lib/systemd/system/kait2en-amdgpu-profile-resume.service</code>, <code>/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.policy</code>, <code>/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.status.policy</code></td>
+</tr>
+</tbody>
+</table>
+<p>T2 SMC Control creates <code>/etc/t2-smc-control/config.txt</code> only after a charge
+limit is saved. Its system service restores that value at boot. T2 Fan Control's
+service starts immediately and persists fan curves across boot and resume.
+T2 Hybrid GPU Control does not install system services. T2 GPU Control enables
+its units only when the corresponding options are applied in the app. Both
+privileged helpers validate the GPU layout and accept only the fixed operations
+exposed by their UI.</p>
+<p><code>react-drm</code> is installed for the desktop user only when the DMI product name is
+one of <code>MacBookPro15,1</code>, <code>MacBookPro15,2</code>, <code>MacBookPro15,3</code>, <code>MacBookPro15,4</code>,
+<code>MacBookPro16,1</code>, <code>MacBookPro16,2</code>, <code>MacBookPro16,3</code> or <code>MacBookPro16,4</code>:</p>
+<div class="code-wrap"><div class="highlight"><pre><span></span><code>~/react-drm/
+~/.config/systemd/user/react-drm.service
+/etc/udev/rules.d/99-react-drm.rules
+</code></pre></div><button class="copy-btn" type="button" onclick="copyBlock(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+
+<p>The installer adds that user to the <code>video</code> and <code>input</code> groups. When the active
+desktop reported by the user's systemd environment contains <code>gnome</code>, it also
+installs Window Monitor Pro below <code>~/.local/share/gnome-shell/extensions/</code> for
+application-aware controls. Every other DMI product name exits this step before
+installing react-drm dependencies or files.</p>
+            </section>
+        </main>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="img/kait2en-wordmark.png" alt="KAIT2EN Fedora">
+                </div>
+
+                <div class="footer-links">
+                    <a href="https://github.com/kaiT2en/KaiT2en-Fedora" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+
+                        GitHub
+                    </a>
+                    <a href="https://github.com/kaiT2en/KaiT2en-Fedora/issues" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M19 7l-3 2M5 7l3 2M19 20l-3-2M5 20l3-2M22 13h-6M8 13H2"/></svg>
+
+                        Issues
+                    </a>
+                    <a href="documentation.html">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+
+                        Documentation
+                    </a>
+                </div>
+
+                <div class="footer-support">
+                    <span>Join the community</span>
+                    <div class="support-links">
+                        <a href="https://discord.gg/AGfjRk4ydj" target="_blank" rel="noopener" class="support-btn discord">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.51 12.51 0 0 0-.617-1.25.077.077 0 0 0-.079-.036A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127c-.598.35-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.332-.955 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.332-.946 2.418-2.157 2.418z"/></svg>
+
+                            Discord
+                        </a>
+                        <a href="https://matrix.to/#/%23kait2en:matrix.org" target="_blank" rel="noopener" class="support-btn matrix">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M6.5 3H3v18h3.5"/><path d="M17.5 3H21v18h-3.5"/><path d="M8 16.5v-8"/><path d="M8 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/><path d="M12.5 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/></svg>
+
+                            Matrix
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <p>MIT · KAIT2EN Fedora</p>
+                <p>Made for T2 Macs that deserve a current kernel</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Navigation Modal -->
+    <div id="nav-modal" class="nav-modal">
+        <div class="nav-modal-header">
+            <a href="index.html" class="nav-logo" aria-label="KAIT2EN Fedora">
+                <img src="img/kait2en-wordmark.png" alt="KAIT2EN Fedora">
+            </a>
+            <button class="nav-modal-close" onclick="closeMenu()" aria-label="Close menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="nav-modal-content">
+            <div class="nav-modal-section">
+                <h4>Getting started</h4>
+                <div class="nav-modal-toc">
+                    <a href="#installation" onclick="closeMenu()">Installation</a>
+                    <a href="#before-you-start" onclick="closeMenu()">Before you start</a>
+                    <a href="#create-the-fedora-usb-drive" onclick="closeMenu()">Create the Fedora USB drive</a>
+                    <a href="#install-fedora" onclick="closeMenu()">Install Fedora</a>
+                    <a href="#finish-the-kait2en-installation" onclick="closeMenu()">Finish the KAIT2EN installation</a>
+                </div>
+                <h4>Post-install</h4>
+                <div class="nav-modal-toc">
+                    <a href="#audio-dsp" onclick="closeMenu()">Audio DSP</a>
+                    <a href="#configure-gpus" onclick="closeMenu()">Configure GPUs</a>
+                    <a href="#hardware-video-decoding" onclick="closeMenu()">Hardware video decoding</a>
+                    <a href="#updating" onclick="closeMenu()">Updating</a>
+                </div>
+                <h4>Reference</h4>
+                <div class="nav-modal-toc">
+                    <a href="#installed-files" onclick="closeMenu()">Installed files</a>
+                </div>
+            </div>
+            <div class="nav-modal-section">
+                <h4>Navigation</h4>
+                <div class="nav-modal-links">
+                    <a href="index.html">Home</a>
+                    <a href="documentation.html" class="active">Documentation</a>
+                    <a href="blog.html">Blog</a>
+                    <a href="https://github.com/kaiT2en/KaiT2en-Fedora" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+
+                        GitHub
+                    </a>
+                    <a href="https://discord.gg/AGfjRk4ydj" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.51 12.51 0 0 0-.617-1.25.077.077 0 0 0-.079-.036A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127c-.598.35-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.332-.955 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.332-.946 2.418-2.157 2.418z"/></svg>
+
+                        Discord
+                    </a>
+                    <a href="https://matrix.to/#/%23kait2en:matrix.org" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M6.5 3H3v18h3.5"/><path d="M17.5 3H21v18h-3.5"/><path d="M8 16.5v-8"/><path d="M8 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/><path d="M12.5 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/></svg>
+
+                        Matrix
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close">&times;</button>
+        <img id="lightbox-img" src="" alt="">
+    </div>
+</body>
+</html>

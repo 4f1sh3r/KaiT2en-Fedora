@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAIT2EN Fedora - Cutting edge T2 Mac support on stock Fedora</title>
+    <meta name="description" content="KAIT2EN brings cutting edge T2 Mac support to stock Fedora using DKMS modules. Kernel updates come from Fedora, the T2 modules come from us.">
+    <meta name="robots" content="noindex, nofollow">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="KAIT2EN Fedora - Cutting edge T2 Mac support on stock Fedora">
+    <meta property="og:description" content="KAIT2EN brings cutting edge T2 Mac support to stock Fedora using DKMS modules. Kernel updates come from Fedora, the T2 modules come from us.">
+    <meta property="og:url" content="https://4f1sh3r.github.io/KaiT2en-Fedora/demo/">
+    <meta property="og:image" content="https://4f1sh3r.github.io/KaiT2en-Fedora/demo/img/og-image.png">
+    <meta property="og:site_name" content="KAIT2EN Fedora">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="KAIT2EN Fedora - Cutting edge T2 Mac support on stock Fedora">
+    <meta name="twitter:description" content="KAIT2EN brings cutting edge T2 Mac support to stock Fedora using DKMS modules. Kernel updates come from Fedora, the T2 modules come from us.">
+    <meta name="twitter:image" content="https://4f1sh3r.github.io/KaiT2en-Fedora/demo/img/og-image.png">
+
+    <link rel="canonical" href="https://4f1sh3r.github.io/KaiT2en-Fedora/demo/">
+    <link rel="alternate" type="application/rss+xml" title="KAIT2EN Fedora blog" href="feed.xml">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="img/favicon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Grid Background -->
+    <div class="grid-bg"></div>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo" aria-label="KAIT2EN Fedora">
+                <img src="img/kait2en-wordmark.png" alt="KAIT2EN Fedora">
+            </a>
+            <button class="nav-burger" onclick="toggleMenu()" aria-label="Open menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <line x1="3" y1="12" x2="21" y2="12"/>
+                    <line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html" class="active">Home</a>
+                <a href="documentation.html">Documentation</a>
+                <a href="blog.html">Blog</a>
+                <a href="https://github.com/kaiT2en/KaiT2en-Fedora" target="_blank" rel="noopener" class="nav-github">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+
+                    GitHub
+                </a>
+                <a href="https://discord.gg/AGfjRk4ydj" target="_blank" rel="noopener" class="nav-discord">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.51 12.51 0 0 0-.617-1.25.077.077 0 0 0-.079-.036A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127c-.598.35-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.332-.955 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.332-.946 2.418-2.157 2.418z"/></svg>
+
+                    Discord
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="container">
+            <div class="hero-brand">
+                <h1><img class="hero-logo" src="img/kait2en-wordmark.png" alt="KAIT2EN Fedora"></h1>
+            </div>
+
+            <div class="hero-trust">
+                <div class="trust-quote active" data-index="0">
+                    <p class="trust-text">&ldquo;KAIT2EN is meant to disappear. Every module and fix that gets upstreamed leaves the repo.&rdquo;</p>
+                    <span class="trust-source">Project goal</span>
+                </div>
+                <div class="trust-quote" data-index="1">
+                    <p class="trust-text">&ldquo;There is a distinct difference between making broken things work and fixing things.&rdquo;</p>
+                    <span class="trust-source">Contributing guide</span>
+                </div>
+            </div>
+
+            <div class="hero-screenshots">
+                <img src="img/hero-touchbar.jpg" alt="Touch Bar and keyboard of a MacBook Pro running KAIT2EN Fedora" class="screenshot-desktop">
+            </div>
+
+            <div class="hero-content">
+                <p class="tagline">Your T2 Mac, on a kernel that keeps moving.</p>
+                <p class="tagline-sub">Stock Fedora with its own kernel updates, plus the current T2 modules as DKMS. Keyboard, trackpad, Touch Bar, audio, Wi-Fi, Bluetooth and suspend - without a forked distribution.</p>
+                <p class="tagline-sub"><strong>Vanilla Fedora. DKMS modules. Everything aimed upstream.</strong></p>
+
+                <div class="hero-actions">
+                    <a href="#installation" class="btn btn-primary">Get Started</a>
+                    <a href="https://github.com/kaiT2en/KaiT2en-Fedora" class="btn btn-secondary" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+
+                        GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="page-container">
+        <aside class="page-sidebar page-sidebar--narrow">
+            <h2 class="page-title">Home</h2>
+            <nav class="page-nav">
+                <h4>Overview</h4>
+                <ul>
+                    <li><a href="#features">Features &amp; status</a></li>
+                    <li><a href="#concept">Concept</a></li>
+                </ul>
+                <h4>Get started</h4>
+                <ul>
+                    <li><a href="#installation">Get started</a></li>
+                    <li><a href="#community">Community</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <div class="page-main">
+            <section class="section" id="features">
+                <div class="container">
+                    <div class="section-head">
+                        <h2>Features &amp; status</h2>
+                        <p>What works today, and what is on its way into mainline Linux.</p>
+                    </div>
+                    <div class="page-content"><div class="board"><div class="board-filters"><div class="board-filter-group" role="group" aria-label="Filter by status"><span class="board-filter-label">Status</span><button class="board-chip is-active" aria-pressed="true" type="button" data-filter="all">All<span class="board-count">16</span></button><button class="board-chip board-chip--help" aria-pressed="false" type="button" data-filter="help">🙋 Help wanted<span class="board-count">2</span></button><button class="board-chip board-chip--in-progress" aria-pressed="false" type="button" data-filter="state:in-progress">In progress<span class="board-count">5</span></button><button class="board-chip board-chip--available" aria-pressed="false" type="button" data-filter="state:available">Available<span class="board-count">11</span></button></div><div class="board-filter-group" role="group" aria-label="Filter by upstream"><span class="board-filter-label">Upstream</span><button class="board-chip board-chip--downstream" aria-pressed="false" type="button" data-filter="upstream:downstream">Downstream only<span class="board-count">3</span></button><button class="board-chip board-chip--submitted" aria-pressed="false" type="button" data-filter="upstream:submitted">Submitted<span class="board-count">7</span></button><button class="board-chip board-chip--merged" aria-pressed="false" type="button" data-filter="upstream:merged">Merged<span class="board-count">5</span></button><button class="board-chip board-chip--revoked" aria-pressed="false" type="button" data-filter="upstream:revoked">Withdrawn<span class="board-count">1</span></button></div></div><div class="board-table-wrap"><table class="board-table"><thead><tr><th scope="col">Feature</th><th scope="col">Status</th><th scope="col">Upstream</th><th scope="col">Updated</th></tr></thead><tbody><tr class="board-row" data-state="in-progress" data-upstream="submitted" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://patchwork.kernel.org/project/linux-wireless/patch/20260810150552.25375-1-alexander@fischermail.me/" target="_blank" rel="noopener">Wi-Fi PM_MAX power management</a><span class="board-notes">Adds an opt-in PM_MAX mode that relaxes the Wi-Fi latency tolerance and allows deeper package C-states while keeping PM_FAST as the default.</span><span class="board-meta">Linux kernel · Wi-Fi / brcmfmac · v3 · @4f1sh3r</span></td><td class="board-cell-state"><span class="board-pill board-pill--in-progress">In progress</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://patchwork.kernel.org/project/linux-wireless/patch/20260810150552.25375-1-alexander@fischermail.me/" target="_blank" rel="noopener"><span class="board-pill board-pill--submitted">Submitted</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-08-10">10 Aug 2026</time></td></tr><tr class="board-row" data-state="in-progress" data-upstream="downstream" data-help="yes"><td class="board-cell-feature"><a class="board-title" href="documentation.html#audio-dsp">Audio DSP</a><span class="board-help" title="Help wanted">Help wanted</span><span class="board-notes">Speaker protection and FIR filter profiles that make the internal speakers usable at full volume. Tied to Apple&#x27;s hardware, so this stays downstream.</span><span class="board-help-text">🙋 FIRs from machines not yet supported.</span><span class="board-meta">KAIT2EN Fedora · t2bce_audio · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--in-progress">In progress</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="documentation.html#audio-dsp"><span class="board-pill board-pill--downstream">Downstream only</span><span class="board-ext" aria-hidden="true">→</span></a></td><td class="board-cell-updated"><time datetime="2026-08-03">03 Aug 2026</time></td></tr><tr class="board-row" data-state="in-progress" data-upstream="downstream" data-help="yes"><td class="board-cell-feature"><span class="board-title">Package C-states</span><span class="board-help" title="Help wanted">Help wanted</span><span class="board-notes">Getting the platform into deep package C-states so idle power draw and battery life come closer to macOS.</span><span class="board-help-text">🙋 Powertop and turbostat readings from different T2 models.</span><span class="board-meta">KAIT2EN Fedora · Power management · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--in-progress">In progress</span></td><td class="board-cell-upstream"><span class="board-pill board-pill--downstream">Downstream only</span></td><td class="board-cell-updated"><time datetime="2026-08-03">03 Aug 2026</time></td></tr><tr class="board-row" data-state="in-progress" data-upstream="submitted" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://patchwork.kernel.org/project/linux-usb/patch/20260731161842.12636-1-atharvatiwarilinuxdev@gmail.com/" target="_blank" rel="noopener">Thunderbolt device links</a><span class="board-meta">Linux kernel · Thunderbolt · v7 · @ruiCON</span></td><td class="board-cell-state"><span class="board-pill board-pill--in-progress">In progress</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://patchwork.kernel.org/project/linux-usb/patch/20260731161842.12636-1-atharvatiwarilinuxdev@gmail.com/" target="_blank" rel="noopener"><span class="board-pill board-pill--submitted">Submitted</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-07-31">31 Jul 2026</time></td></tr><tr class="board-row" data-state="in-progress" data-upstream="submitted" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://gitlab.freedesktop.org/upower/upower/-/merge_requests/335" target="_blank" rel="noopener">Keyboard backlight after re-enumeration</a><span class="board-notes">The backlight did not come back on after the keyboard re-enumerated.</span><span class="board-meta">upower · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--in-progress">In progress</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://gitlab.freedesktop.org/upower/upower/-/merge_requests/335" target="_blank" rel="noopener"><span class="board-pill board-pill--submitted">Submitted</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-07-29">29 Jul 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="submitted" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://lore.kernel.org/all/20260812120326.155226-1-dev@deq.rocks/" target="_blank" rel="noopener">Fast CPU restore after suspend</a><span class="board-notes">Moves secondary CPU hotplug outside the generic CPU PM notifier window on Apple T2 systems, avoiding multi-second delays per CPU during resume.</span><span class="board-meta">Linux kernel · ACPI / CPU hotplug · v1 · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://lore.kernel.org/all/20260812120326.155226-1-dev@deq.rocks/" target="_blank" rel="noopener"><span class="board-pill board-pill--submitted">Submitted</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-08-12">12 Aug 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="submitted" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://lore.kernel.org/all/20260812144750.36797-1-dev@deq.rocks/" target="_blank" rel="noopener">Hybrid graphics and dGPU power management</a><span class="board-notes">Runtime GPU switching is available downstream on MacBookPro15,1. The apple-gmux, amdgpu and ALSA HDA changes were submitted upstream as v3.</span><span class="board-meta">KAIT2EN Fedora · t2gmux / amdgpu · v1 · @byte, @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://lore.kernel.org/all/20260812144750.36797-1-dev@deq.rocks/" target="_blank" rel="noopener"><span class="board-pill board-pill--submitted">Submitted</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-08-12">12 Aug 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="submitted" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://patchwork.kernel.org/project/linux-input/patch/20260810140352.35866-1-dev@deq.rocks/" target="_blank" rel="noopener">Touch Bar suspend and resume without PM deadlock</a><span class="board-notes">Avoids nested runtime PM references in the HID callbacks that could stall Touch Bar suspend and resume.</span><span class="board-meta">Linux kernel · HID / Touch Bar · v1 · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://patchwork.kernel.org/project/linux-input/patch/20260810140352.35866-1-dev@deq.rocks/" target="_blank" rel="noopener"><span class="board-pill board-pill--submitted">Submitted</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-08-10">10 Aug 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="downstream" data-help="no"><td class="board-cell-feature"><span class="board-title">Touch Bar control center (react-drm)</span><span class="board-notes">Replaces the standard Touch Bar interface: function keys, media and brightness controls, application-aware panels and system information.</span><span class="board-meta">KAIT2EN Fedora · t2bdrm / react-drm · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><span class="board-pill board-pill--downstream">Downstream only</span></td><td class="board-cell-updated"><time datetime="2026-08-03">03 Aug 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="merged" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://github.com/systemd/systemd/pull/43255" target="_blank" rel="noopener">Display brightness restored after reboot</a><span class="board-notes">The backlight had no stable path ID, so the brightness setting was lost on every reboot.</span><span class="board-meta">systemd · udev · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://github.com/systemd/systemd/pull/43255" target="_blank" rel="noopener"><span class="board-pill board-pill--merged">Merged</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-08-02">02 Aug 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="revoked" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://patchwork.kernel.org/project/linux-usb/patch/20260730210655.15514-1-dev@deq.rocks/" target="_blank" rel="noopener">Thunderbolt controller stays powered (15,1)</a><span class="board-notes">Withdrawn upstream, still investigating.</span><span class="board-meta">Linux kernel · USB / xHCI · v1 · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://patchwork.kernel.org/project/linux-usb/patch/20260730210655.15514-1-dev@deq.rocks/" target="_blank" rel="noopener"><span class="board-pill board-pill--revoked">Withdrawn</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-07-30">30 Jul 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="merged" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://gitlab.gnome.org/GNOME/gnome-shell/-/merge_requests/4302" target="_blank" rel="noopener">Volume slider without DSP crackling</a><span class="board-notes">Dragging the Quick Settings volume slider caused audible crackles on PipeWire DSP sinks.</span><span class="board-meta">GNOME Shell · Quick Settings · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://gitlab.gnome.org/GNOME/gnome-shell/-/merge_requests/4302" target="_blank" rel="noopener"><span class="board-pill board-pill--merged">Merged</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-07-27">27 Jul 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="submitted" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://patchwork.kernel.org/project/linux-input/patch/20260722141221.13844-1-dev@deq.rocks/" target="_blank" rel="noopener">Fn double press switches F-keys and media controls</a><span class="board-meta">Linux kernel · HID / Touch Bar · v3 · @AdityaGarg8, @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://patchwork.kernel.org/project/linux-input/patch/20260722141221.13844-1-dev@deq.rocks/" target="_blank" rel="noopener"><span class="board-pill board-pill--submitted">Submitted</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-07-22">22 Jul 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="merged" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://lore.kernel.org/all/20260722125734.6541-1-dev@deq.rocks/" target="_blank" rel="noopener">dGPU wakes up on MacBookPro15,1</a><span class="board-notes">The SMU was dead after resume, leaving the discrete GPU unusable.</span><span class="board-meta">Linux kernel · PCI / amdgpu · v1 · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://lore.kernel.org/all/20260722125734.6541-1-dev@deq.rocks/" target="_blank" rel="noopener"><span class="board-pill board-pill--merged">Merged</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-07-22">22 Jul 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="merged" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://patchwork.kernel.org/project/linux-input/patch/20260718121527.15924-1-dev@deq.rocks/" target="_blank" rel="noopener">Keyboard backlight after resume</a><span class="board-notes">The butterfly keyboard backlight came back on at 0% after resume, and now uses the same LED naming as the magic keyboards.</span><span class="board-meta">Linux kernel · HID / Input · v1 · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://patchwork.kernel.org/project/linux-input/patch/20260718121527.15924-1-dev@deq.rocks/" target="_blank" rel="noopener"><span class="board-pill board-pill--merged">Merged</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-07-18">18 Jul 2026</time></td></tr><tr class="board-row" data-state="available" data-upstream="merged" data-help="no"><td class="board-cell-feature"><a class="board-title" href="https://patchwork.kernel.org/project/linux-input/patch/20260718151241.7496-1-dev@deq.rocks/" target="_blank" rel="noopener">Keyboard backlight brightness levels</a><span class="board-notes">The backlight reports were parsed with the wrong endianness.</span><span class="board-meta">Linux kernel · HID / Input · v1 · @deqrocks</span></td><td class="board-cell-state"><span class="board-pill board-pill--available">Available</span></td><td class="board-cell-upstream"><a class="board-upstream-link" href="https://patchwork.kernel.org/project/linux-input/patch/20260718151241.7496-1-dev@deq.rocks/" target="_blank" rel="noopener"><span class="board-pill board-pill--merged">Merged</span><span class="board-ext" aria-hidden="true">↗</span></a></td><td class="board-cell-updated"><time datetime="2026-07-18">18 Jul 2026</time></td></tr></tbody></table></div><p class="board-empty" hidden>Nothing matches this filter.</p></div></div>
+
+                </div>
+            </section>
+            <section class="section" id="concept">
+                <div class="container">
+                    <div class="concept-story">
+                        <h2>Concept</h2>
+                        <h3 id="ambitions">Ambitions<a class="headerlink" href="#ambitions">#</a></h3>
+<p><strong>Fix things, do not work around them.</strong> There is a distinct difference between
+making broken things work and fixing things.
+<strong>Stay on the distribution.</strong> Wrap Fedora, do not fork it.</p>
+<p>KAIT2EN is meant to disappear. Every module and every fix that lands upstream
+leaves this repository. What remains at the end are the few T2-specific
+applications that cannot be upstreamed at all.</p>
+<h3 id="architecture">Architecture<a class="headerlink" href="#architecture">#</a></h3>
+<p>Fedora keeps its own kernel and its own update path. KAIT2EN adds T2 hardware
+support next to it as DKMS modules: <code>t2bce</code> for the Apple T2 bridge and its USB,
+audio and storage endpoints, <code>t2touchbar</code> and <code>hid_t2magicmouse</code> for input,
+<code>t2bdrm</code> for the Touch Bar display, <code>t2gmux</code> for graphics switching, <code>t2smc</code> for
+sensors and charging, and a handful of smaller pieces.</p>
+<p>Because everything is DKMS, a Fedora kernel update is a normal Fedora kernel
+update. DKMS notices the new kernel and rebuilds our modules against it. You are
+not waiting for anyone to rebase a distribution kernel.</p>
+<h3 id="installation-2">Installation<a class="headerlink" href="#installation-2">#</a></h3>
+<p>The installer never modifies the official Fedora image. It downloads and
+verifies the image Fedora publishes, writes it to a USB drive unchanged, and
+then adds separate KAIT2EN boot files to the drive's EFI partition. Keyboard,
+trackpad and Wi-Fi come up in the live system through initramfs overlays, so
+Fedora's own installation payload stays exactly as shipped.</p>
+<p>Apple firmware is collected from your own Mac. Nothing is redistributed, and
+macOS stays installed as the clean source for it.</p>
+<h3 id="upstreaming">Upstreaming<a class="headerlink" href="#upstreaming">#</a></h3>
+<p>The feature board above is not decoration. Each row says what a user gets today
+and, separately, what is happening to that work upstream: prepared, submitted,
+merged, or rejected with a reason. Patches carry the names of the people who
+sent them, and the links go to the mailing list or merge request itself.</p>
+<p>That second axis exists because the two answers genuinely differ. A merged
+kernel patch can be invisible to users for two releases, and a downstream-only
+feature can be the most useful thing we ship.</p>
+                    </div>
+                </div>
+            </section>
+            <section class="section" id="installation">
+                <div class="container">
+                    <div class="installation">
+                        <h2>Get started</h2>
+                        <p class="section-subtitle">The installation starts in macOS and continues in Fedora.</p>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span>macOS Terminal</span>
+                                <button class="copy-btn" type="button" onclick="copyCode()">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+
+                                    Copy
+                                </button>
+                            </div>
+                            <pre><code id="install-code">curl -fsSL https://github.com/kaiT2en/KaiT2en-Fedora/releases/latest/download/install-kait2en-fedora.sh | bash</code></pre>
+                        </div>
+                        <p class="install-note">Run this in macOS with an empty USB drive attached. The script downloads and verifies the official Fedora image, collects the Apple firmware from your Mac and writes a bootable installer.</p>
+                        <div class="install-links">
+                            <a href="documentation.html#installation" class="btn btn-primary">Full installation guide</a>
+                            <a href="documentation.html#before-you-start" class="btn btn-secondary">Before you start</a>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+            <section class="section" id="community">
+                <div class="container">
+                    <div class="section-head">
+                        <h2>Community</h2>
+                        <p>Ask before you break something, or tell us how you broke it.</p>
+                    </div>
+                    <div class="community-grid">
+                        <a href="https://discord.gg/AGfjRk4ydj" class="community-card" target="_blank" rel="noopener">
+                            <h3><svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.51 12.51 0 0 0-.617-1.25.077.077 0 0 0-.079-.036A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127c-.598.35-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.332-.955 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.332-.946 2.418-2.157 2.418z"/></svg>
+ Discord</h3>
+                            <p>Day-to-day support, kernel regression warnings and the upstream work channel.</p>
+                        </a>
+                        <a href="https://matrix.to/#/%23kait2en:matrix.org" class="community-card" target="_blank" rel="noopener">
+                            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M6.5 3H3v18h3.5"/><path d="M17.5 3H21v18h-3.5"/><path d="M8 16.5v-8"/><path d="M8 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/><path d="M12.5 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/></svg>
+ Matrix</h3>
+                            <p>The same conversations, bridged for everyone who would rather not run Discord.</p>
+                        </a>
+                        <a href="https://github.com/kaiT2en/KaiT2en-Fedora/issues" class="community-card" target="_blank" rel="noopener">
+                            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M19 7l-3 2M5 7l3 2M19 20l-3-2M5 20l3-2M22 13h-6M8 13H2"/></svg>
+ Issue tracker</h3>
+                            <p>Reproducible bugs with logs, model identifier and kernel version belong here.</p>
+                        </a>
+                    </div>
+
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="img/kait2en-wordmark.png" alt="KAIT2EN Fedora">
+                </div>
+
+                <div class="footer-links">
+                    <a href="https://github.com/kaiT2en/KaiT2en-Fedora" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+
+                        GitHub
+                    </a>
+                    <a href="https://github.com/kaiT2en/KaiT2en-Fedora/issues" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M19 7l-3 2M5 7l3 2M19 20l-3-2M5 20l3-2M22 13h-6M8 13H2"/></svg>
+
+                        Issues
+                    </a>
+                    <a href="documentation.html">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+
+                        Documentation
+                    </a>
+                </div>
+
+                <div class="footer-support">
+                    <span>Join the community</span>
+                    <div class="support-links">
+                        <a href="https://discord.gg/AGfjRk4ydj" target="_blank" rel="noopener" class="support-btn discord">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.51 12.51 0 0 0-.617-1.25.077.077 0 0 0-.079-.036A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127c-.598.35-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.332-.955 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.332-.946 2.418-2.157 2.418z"/></svg>
+
+                            Discord
+                        </a>
+                        <a href="https://matrix.to/#/%23kait2en:matrix.org" target="_blank" rel="noopener" class="support-btn matrix">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M6.5 3H3v18h3.5"/><path d="M17.5 3H21v18h-3.5"/><path d="M8 16.5v-8"/><path d="M8 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/><path d="M12.5 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/></svg>
+
+                            Matrix
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-bottom">
+                <p>MIT · KAIT2EN Fedora</p>
+                <p>Made for T2 Macs that deserve a current kernel</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Navigation Modal -->
+    <div id="nav-modal" class="nav-modal">
+        <div class="nav-modal-header">
+            <a href="index.html" class="nav-logo" aria-label="KAIT2EN Fedora">
+                <img src="img/kait2en-wordmark.png" alt="KAIT2EN Fedora">
+            </a>
+            <button class="nav-modal-close" onclick="closeMenu()" aria-label="Close menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="nav-modal-content">
+            <div class="nav-modal-section">
+                <h4>Overview</h4>
+                <div class="nav-modal-toc">
+                    <a href="#features" onclick="closeMenu()">Features &amp; status</a>
+                    <a href="#concept" onclick="closeMenu()">Concept</a>
+                </div>
+                <h4>Get started</h4>
+                <div class="nav-modal-toc">
+                    <a href="#installation" onclick="closeMenu()">Get started</a>
+                    <a href="#community" onclick="closeMenu()">Community</a>
+                </div>
+            </div>
+            <div class="nav-modal-section">
+                <h4>Navigation</h4>
+                <div class="nav-modal-links">
+                    <a href="index.html" class="active">Home</a>
+                    <a href="documentation.html">Documentation</a>
+                    <a href="blog.html">Blog</a>
+                    <a href="https://github.com/kaiT2en/KaiT2en-Fedora" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+
+                        GitHub
+                    </a>
+                    <a href="https://discord.gg/AGfjRk4ydj" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.51 12.51 0 0 0-.617-1.25.077.077 0 0 0-.079-.036A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127c-.598.35-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.332-.955 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.332-.946 2.418-2.157 2.418z"/></svg>
+
+                        Discord
+                    </a>
+                    <a href="https://matrix.to/#/%23kait2en:matrix.org" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M6.5 3H3v18h3.5"/><path d="M17.5 3H21v18h-3.5"/><path d="M8 16.5v-8"/><path d="M8 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/><path d="M12.5 10.6c.4-1.4 1.4-2.1 2.5-2.1 1.2 0 2 .9 2 2.3v5.7"/></svg>
+
+                        Matrix
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close">&times;</button>
+        <img id="lightbox-img" src="" alt="">
+    </div>
+</body>
+</html>
