@@ -50,3 +50,11 @@ tags: [meta]
 The filename date prefix is optional; the `date` field is what orders posts.
 Set `draft: true` to keep a post out of the build. Everything below the front
 matter is normal Markdown, and CI publishes it on the next push to `main`.
+
+To see a draft before pushing it, build the site locally and open the address
+it prints:
+
+```bash
+pip install -r requirements-docs.txt
+python scripts/site/build.py --serve
+```
