@@ -1,43 +1,23 @@
-### Ambitions
+### Now This Is not Easy to Explain
 
-**Fix things, do not work around them.** There is a distinct difference between
-making broken things work and fixing things.
-**Stay on the distribution.** Wrap Fedora, do not fork it.
+The Linux mainline kernel still lacks drivers for certain T2 hardware components. Traditional distributions like CachyOS or T2 Linux solve this by shipping custom-patched kernels. The downside is you lose the standard distribution kernel, and updates are delayed while you wait for maintainers to rebuild each new release.
 
-KAIT2EN is meant to disappear. Every module and every fix that lands upstream
-leaves this repository. What remains at the end are the few T2-specific
-applications that cannot be upstreamed at all.
+Since we are currently the source of many of these missing drivers, getting updates into external distributions takes time. Many third-party maintainers also naturally lack deep T2-specific context, making regressions more likely. With KAIT2EN we jump over that. Users can test and we can submit to upstream directly. Third party maintainers can choose to package our code or just profit from upstreamed patches.
 
-### Architecture
+### Stream Me Up, Linus!
 
-Fedora keeps its own kernel and its own update path. KAIT2EN adds T2 hardware
-support next to it as DKMS modules: `t2bce` for the Apple T2 bridge and its USB,
-audio and storage endpoints, `t2touchbar` and `hid_t2magicmouse` for input,
-`t2bdrm` for the Touch Bar display, `t2gmux` for graphics switching, `t2smc` for
-sensors and charging, and a handful of smaller pieces.
+KAIT2EN is specialized exclusively for T2 Macs, it delivers T2 support to unmodified Fedora Linux using DKMS modules and dedicated T2 utilities. For you this is like cherry-picking: standard upstream kernels directly from Fedora, combined with immediate hardware fixes straight from us.
 
-Because everything is DKMS, a Fedora kernel update is a normal Fedora kernel
-update. DKMS notices the new kernel and rebuilds our modules against it. You are
-not waiting for anyone to rebase a distribution kernel.
+Because we rely on out-of-tree modules, we can test and iterate without full kernel recompilations. This streamlined architecture lets us roll out fixes and handle feature requests in minutes. Literally. All while working toward our goal, which is upstreaming every driver into the official Linux kernel.
 
-### Installation
+### Yes, We Know There Is Apple Silicon
 
-The installer never modifies the official Fedora image. It downloads and
-verifies the image Fedora publishes, writes it to a USB drive unchanged, and
-then adds separate KAIT2EN boot files to the drive's EFI partition. Keyboard,
-trackpad and Wi-Fi come up in the live system through initramfs overlays, so
-Fedora's own installation payload stays exactly as shipped.
+Our motivation is simple: we truly believe T2 MacBooks can make the perfect Linux laptops. Once everything is properly fixed, models like the MacBook Pro 15,1 or MacBook Air 9,1 run cool, offer great battery life, and cost very little. All while keeping Apple’s exceptional build quality, Retina displays, and Touch Bar. We even recently got hybrid graphics working on the 15,1 and built a custom Audio DSP setup. Because these features are difficult to package in traditional distributions, they are currently exclusive to KAIT2EN while we work on upstreaming them.
+So this is x86 architecture and we won't get anywhere near to what Apple Silicon/Asahi can do. But the message is not to buy into T2 Macs. It's about making them usable and act sustainable. If you already own a T2 Mac, you will appreciate. Because you know and we know that this era of devices was always kinda meh! even at their time. But on Linux they are great. Even the "portable pan": MacBook Air 9,1.
 
-Apple firmware is collected from your own Mac. Nothing is redistributed, and
-macOS stays installed as the clean source for it.
+### Is The Grass Greener On The KAIT2EN Side?
 
-### Upstreaming
+Our grass is KAIT2EN red. There is a lot of discussions and arguing involved. It's the sound of moving gears while trying to find solutions for everyone. We move fast, and our frequent update cycle might feel relentless. Staying informed means following announcements in our Discord community or checking GitHub for updates.
 
-The feature board above is not decoration. Each row says what a user gets today
-and, separately, what is happening to that work upstream: prepared, submitted,
-merged, or rejected with a reason. Patches carry the names of the people who
-sent them, and the links go to the mailing list or merge request itself.
-
-That second axis exists because the two answers genuinely differ. A merged
-kernel patch can be invisible to users for two releases, and a downstream-only
-feature can be the most useful thing we ship.
+Updating is entirely up to you, but KAIT2EN is built for active testing, not passive convenience. We share this project because we need real-world testers to validate our fixes. Not updating will lead to a non-working Mac once outdated DKMS modules will stop compiling against a updated kernel.
+This is something you should keep in mind before jumping in.
