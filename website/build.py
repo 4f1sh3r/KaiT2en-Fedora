@@ -519,10 +519,15 @@ def build(output: Path, site_url: str | None = None, noindex: bool = False) -> N
         "noindex": noindex,
     }
 
+    base_url = config["site"]["url"].rstrip("/")
+
     def write(name: str, template: str, **context: Any) -> None:
         depth = name.count("/")
+        # The homepage is canonically the bare root, which is what the sitemap
+        # lists and what inbound links point at.
+        canonical = f"{base_url}/{'' if name == 'index.html' else name}"
         page = env.get_template(template).render(
-            base="../" * depth, page_url=name, **shared, **context
+            base="../" * depth, page_url=name, canonical=canonical, **shared, **context
         )
         target = output / name
         target.parent.mkdir(parents=True, exist_ok=True)
