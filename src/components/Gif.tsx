@@ -36,7 +36,7 @@ interface Decoded {
 // expects on little-endian (memory order B,G,R,A). GIF alpha is effectively
 // 1-bit (0 or 255), so the common paths are exact copies; the general branch
 // covers the rare partially-transparent pixel correctly.
-function toPremultBGRA(rgba: Uint8Array, w: number, h: number): Buffer {
+export function toPremultBGRA(rgba: Uint8Array, w: number, h: number): Buffer {
   const out = Buffer.allocUnsafe(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     const s = i * 4;

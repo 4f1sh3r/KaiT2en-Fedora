@@ -52,10 +52,23 @@ export const KEY = {
   ENTER:          28,
   ESC:             1,
   BACKSPACE:      14,
-  // Letters used in browser combos
+  PAGEUP:        104,
+  PAGEDOWN:      109,
+  GRAVE:          41,
+  F5:             63,
+  F10:            68,
+  F11:            87,
+  // Letters used in browser/editor combos
+  KEY_B:          48,
+  KEY_COMMA:      51,
+  KEY_F:          33,
+  KEY_H:          35,
+  KEY_P:          25,
   KEY_R:          19,
+  KEY_S:          31,
   KEY_T:          20,
   KEY_W:          17,
+  KEY_Z:          44,
 } as const;
 
 // Touch Bar raw axis ranges
