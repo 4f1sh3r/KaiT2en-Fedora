@@ -55,6 +55,6 @@ To see a draft before pushing it, build the site locally and open the address
 it prints:
 
 ```bash
-pip install -r requirements-docs.txt
-python scripts/site/build.py --serve
+pip install -r website/requirements.txt
+python website/build.py --serve
 ```

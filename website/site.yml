@@ -1,4 +1,4 @@
-# Configuration for the static site generator in scripts/site/build.py.
+# Configuration for the static site generator in website/build.py.
 # Everything the site says about itself lives here; prose lives in Markdown.
 
 site:
