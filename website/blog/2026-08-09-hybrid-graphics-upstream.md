@@ -81,8 +81,8 @@ The current series is available in the
 
 ## Phoronics picked it up the same day
 
-Actually impressive how fast these guys are. And also the fact that they picked it up
-shows that hybrid graphics support on Apple MacBooks is a desperately wanted feature by users.
-Also I believe this will be an interesting find for all other muxed Macbooks like T1 etc..,
-Here is the link to the
-[Phoronics article]https://www.phoronix.com/news/Linux-2026-Patches-For-2018-MBP
+Actually impressive how fast these guys are. And also the fact that they picked
+it up shows that hybrid graphics support on Apple MacBooks is a desperately
+wanted feature by users. Also I believe this will be an interesting find for all
+other muxed Macbooks like T1 etc.., Here is the link to the
+[Phoronics article](https://www.phoronix.com/news/Linux-2026-Patches-For-2018-MBP)

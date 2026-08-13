@@ -50,7 +50,7 @@ Several versions looked promising for one boot. Some even survived suspend.
 Then the next wake ended at a beachball, a dead GPU or a desktop that had to be
 restarted from a TTY.
 
-## This seems to be our Waterloo!
+## This seems to be our Waterloo
 
 Literally this was 18 hour days, 3 days in a row, 2 devs hammering trial and error
 code with at one poor tester with a MacBook16,1.

@@ -17,7 +17,7 @@ one could take several seconds. On a six-core MacBook Pro with Hyper-Threading
 that adds up quickly. The screen could already be lit while keyboard, trackpad
 and the rest of the system were still waiting for the CPU parade to finish.
 
-All in all 30 seconds wake time on an I7 with 12 cores. Users with I9 even 
+All in all 30 seconds wake time on an I7 with 12 cores. Users with I9 even
 reported 1 minute and 30 seconds.
 
 ## The clock was telling us something
@@ -27,9 +27,8 @@ offline and bringing it back after the machine had resumed was fast. It was
 only slow during the early resume path. The `smpboot` aka CPU-bringup and
 EC-unblock.
 
-Long story short:
-The solution was to move the secondary CPUs offline before the generic 
-suspend code closes the CPU hotplug window, then restore them after the 
+Long story short: The solution was to move the secondary CPUs offline before the
+generic suspend code closes the CPU hotplug window, then restore them after the
 platform has resumed far enough for normal hotplug to be fast again.
 
 That changed the experience from a machine slowly assembling itself after
@@ -52,7 +51,8 @@ The current submission is available in the
 
 ## And still... 5 seconds is too slow
 
-This one was easier. The Apple platform explicitly denied advanced error reporting (AER).
-But Linux would still use it by default. Luckily, someone with far greater knowledge than
-I will ever have, implemented the kernel param `pci=noaer`. And that is what KAIT2EN ships
-with now and what makes the embedded controller unblock instantly.
+This one was easier. The Apple platform explicitly denied advanced error
+reporting (AER). But Linux would still use it by default. Luckily, someone with
+far greater knowledge than I will ever have, implemented the kernel param
+`pci=noaer`. And that is what KAIT2EN ships with now and what makes the embedded
+controller unblock instantly.

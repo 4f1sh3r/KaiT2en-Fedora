@@ -49,4 +49,3 @@ stable path for the Apple PNP device. That change was
 [merged into systemd](https://github.com/systemd/systemd/pull/43255).
 
 This bugged us from 2019 until mid 2026!
-
