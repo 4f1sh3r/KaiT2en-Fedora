@@ -396,6 +396,34 @@ def write_feed(config: dict[str, Any], posts: list[Post], out: Path) -> None:
     (out / "feed.xml").write_text(feed, encoding="utf-8")
 
 
+def write_sitemap(
+    config: dict[str, Any], posts: list[Post], out: Path, noindex: bool
+) -> None:
+    base = config["site"]["url"].rstrip("/")
+    if noindex:
+        (out / "robots.txt").write_text("User-agent: *\nDisallow: /\n", encoding="utf-8")
+        return
+
+    # No lastmod on the static pages: a build-date stamp would claim every page
+    # changed on every deploy. Posts carry a real date, so they get one.
+    urls = [f"<url><loc>{base}/</loc></url>"]
+    urls += [f"<url><loc>{base}/{page}</loc></url>"
+             for page in ("documentation.html", "blog.html")]
+    urls += [f"<url><loc>{base}/{post.url}</loc>"
+             f"<lastmod>{post.date.isoformat()}</lastmod></url>" for post in posts]
+
+    (out / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(urls)
+        + "</urlset>\n",
+        encoding="utf-8",
+    )
+    (out / "robots.txt").write_text(
+        f"User-agent: *\nAllow: /\nSitemap: {base}/sitemap.xml\n", encoding="utf-8"
+    )
+
+
 def write_redirects(config: dict[str, Any], out: Path) -> None:
     for source, target in (config.get("redirects") or {}).items():
         page = out / source.strip("/") / "index.html"
@@ -527,6 +555,7 @@ def build(output: Path, site_url: str | None = None, noindex: bool = False) -> N
     write("404.html", "404.html")
 
     write_feed(config, posts, output)
+    write_sitemap(config, posts, output, noindex)
     write_redirects(config, output)
     copy_static(output)
     (output / ".nojekyll").write_text("", encoding="utf-8")
