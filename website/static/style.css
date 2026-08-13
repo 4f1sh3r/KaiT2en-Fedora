@@ -7,9 +7,10 @@
     --border: #2b2b2b;
     --text-primary: #e0e0e0;
     --text-secondary: #b6b6b6;
-    /* The logo red, exactly as it appears in the wordmark. */
-    --accent: #d10228;
-    --accent-muted: rgba(209, 2, 40, 0.6);
+    /* The official KAIT2EN red. The wordmark bitmap samples very slightly
+       darker (#d10228); this value is the authoritative one. */
+    --accent: #d6032a;
+    --accent-muted: rgba(214, 3, 42, 0.6);
     --accent-secondary: rgba(224, 224, 224, 0.85);
     --danger: #ff4757;
     --warning: #ffa502;
@@ -145,7 +146,7 @@ a:hover {
 .btn-secondary:hover {
     opacity: 1;
     border-color: var(--accent);
-    box-shadow: 0 0 10px rgba(209, 2, 40, 0.2);
+    box-shadow: 0 0 10px rgba(214, 3, 42, 0.2);
 }
 
 /* Navbar */
@@ -1576,7 +1577,7 @@ hero-brand h1 {
 }
 
 .math-box {
-    background: rgba(209, 2, 40, 0.1);
+    background: rgba(214, 3, 42, 0.1);
     border: 1px solid var(--accent);
     border-radius: 8px;
     padding: 16px 24px;
@@ -2014,8 +2015,8 @@ hero-brand h1 {
    ========================================================================== */
 
 /* deq's accent is a bright green that carries black text. The KAIT2EN red is
-   dark enough that black on it drops to 3.7:1, so anything sitting on a filled
-   accent surface is white instead. */
+   dark enough that black on it drops to 3.9:1, so anything sitting on a filled
+   accent surface is white instead (5.4:1). */
 .btn-primary,
 .badge,
 .download-btn.primary,
@@ -2728,7 +2729,7 @@ a.board-title:hover {
 .support-btn.matrix:hover {
     opacity: 1;
     border-color: var(--accent);
-    box-shadow: 0 0 10px rgba(209, 2, 40, 0.2);
+    box-shadow: 0 0 10px rgba(214, 3, 42, 0.2);
 }
 
 /* deq pairs a desktop and a phone screenshot here; this hero has one image,
