@@ -386,7 +386,7 @@ def write_feed(config: dict[str, Any], posts: list[Post], out: Path) -> None:
     feed = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<rss version="2.0"><channel>'
-        f"<title>{xml_escape(config['site']['name'])} — {xml_escape(config['blog']['title'])}</title>"
+        f"<title>{xml_escape(config['site']['name'])} - {xml_escape(config['blog']['title'])}</title>"
         f"<link>{base}/blog.html</link>"
         f"<description>{xml_escape(config['blog']['description'])}</description>"
         f"<language>{config['site']['language']}</language>"

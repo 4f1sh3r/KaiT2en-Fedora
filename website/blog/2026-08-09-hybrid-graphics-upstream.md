@@ -22,7 +22,7 @@ accelerated work and the kernel puts it back afterwards. You keep the discrete
 GPU without paying its idle cost.
 
 The switch lives in **T2 Hybrid GPU Control**, installed automatically on that
-model. Changing the stored boot GPU never reboots for you — that is always a
+model. Changing the stored boot GPU never reboots for you - that is always a
 separate, deliberate action, because the discrete-GPU setting is also the
 recovery path when something goes wrong.
 
@@ -45,7 +45,7 @@ directly while the device is off.
 
 Version three of the series is out for review. The board on the front page
 tracks it, and the row will change state on its own the moment something
-happens — the data behind it is the same data that drives the
+happens - the data behind it is the same data that drives the
 `#upstream-work` channel on Discord.
 
 Until then it works here, downstream, on one specific model. That is the honest

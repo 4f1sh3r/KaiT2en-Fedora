@@ -30,7 +30,7 @@ hero:
   tagline: Your T2 Mac, on a kernel that keeps moving.
   sub: >-
     Stock Fedora with its own kernel updates, plus the current T2 modules as
-    DKMS. Keyboard, trackpad, Touch Bar, audio, Wi-Fi, Bluetooth and suspend —
+    DKMS. Keyboard, trackpad, Touch Bar, audio, Wi-Fi, Bluetooth and suspend -
     without a forked distribution.
   note: Vanilla Fedora. DKMS modules. Everything aimed upstream.
   quotes:
