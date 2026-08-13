@@ -16,15 +16,16 @@ With KAIT2EN we jump over the middlemen. It is a unified platform. We take care 
 
 So KAIT2EN is specialized exclusively for T2 Macs. We deliver T2 drivers and dedicated T2 utilities. For you this is like cherry-picking: standard upstream kernels directly from Fedora, combined with immediate hardware fixes straight from us.
 
-Because we rely on out-of-tree modules, we can test and iterate without full kernel recompilations. This streamlined architecture lets us roll out fixes and handle feature requests in minutes. Literally. All while working toward our goal, which is upstreaming every driver into the official Linux kernel, while dropping them downstream. This means, when we are done, T2 people can install Linux from official sources just like everyone else. And specialized distros or repos that aree scattered all around the interwebs are no longer needed to maintain the code.
+Because we rely on out-of-tree modules, we can test and iterate without full kernel recompilations. This streamlined architecture lets us roll out fixes and handle feature requests in minutes. Literally. All while working toward our goal, which is upstreaming every driver into the official Linux kernel, while dropping them downstream. This means, when we are done, T2 people can install Linux from official sources just like everyone else. And specialized distros or repos that are scattered all around the interwebs are no longer needed to maintain the code.
 
 ### Yes, We Know There Is Apple Silicon...
 
-But someone meeds to close the gap! We truly believe T2 MacBooks can make the perfect Linux laptops. Once everything is properly fixed, models like the MacBook Pro 15,1 or MacBook Air 9,1 run cool, offer great battery life, and cost very little. All while keeping Apple’s exceptional build quality, Retina displays, and Touch Bar.
+But someone needs to close the gap! We truly believe T2 MacBooks can make the perfect Linux laptops. Once everything is properly fixed, models like the MacBook Pro 15,1 or MacBook Air 9,1 run cool, offer great battery life, and cost very little. All while keeping Apple’s exceptional build quality, Retina displays, and Touch Bar.
+(Mentioning these two models specifically, because they are running perfectly on KAIT2EN. Also the 15,2 does. Generally 16,x Macbooks are more problematic).
 
-So this is x86 architecture and we won't get anywhere near to what Apple Silicon/Asahi can do. But the message is not to buy into T2 Macs. It's about making them usable and act sustainable. If you already own a T2 Mac, you will appreciate. Because you know and we know that this era of devices was always kinda meh! Even at their time. But on Linux they are great. Even the "portable egg fryer" MacBook Air 9,1 is. 
+So this is x86 architecture and we won't get anywhere near to what Asahi with Apple Silicon can do. But the message is not to buy into T2 Macs. It's about making them usable and act sustainable. If you already own a T2 Mac, you will appreciate. Because you know and we know that this era of devices was always kinda "meh!". Even at their time. But on Linux they are great. Even the "portable egg fryer" MacBook Air 9,1 is. 
 
-And actually, before Apple began with their security chip shenanigans, Apple computers have always been great for Linux.
+And actually, before Apple began with their security chip shenanigans, Apple computers have always been great for Linux. Let's put butterfly keyboards, flexgate, staingate and whatnotgate to side now. They are still sexy. Aren't they? And if you can get hold of one for cheap for study or travel, you will appreciate when you just can run Linux on it natively. Without the need of reading half the Internet about how to make it work. Somehow.
 
 ### Is The Grass Greener On The KAIT2EN Side?
 
