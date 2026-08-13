@@ -18,7 +18,7 @@ takes anywhere in a twenty-five second window is usually several.
 ## Measuring the wrong thing
 
 The first round of instrumentation logged `ktime_get()` around every stage of
-the resume path. The numbers made no sense — stages that could not possibly take
+the resume path. The numbers made no sense - stages that could not possibly take
 long were reported as taking seconds, and the total never added up to the delay
 the user actually felt.
 
@@ -47,6 +47,6 @@ looking at.
 
 ## Where it stands
 
-The delay is fixed. One port still resets on resume — the one the internal
-keyboard and trackpad hang off — and that reset is expected, quick, and
+The delay is fixed. One port still resets on resume - the one the internal
+keyboard and trackpad hang off - and that reset is expected, quick, and
 harmless. If you see it in `dmesg`, it is not the bug this post is about.
