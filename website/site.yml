@@ -27,17 +27,17 @@ nav:
 hero:
   image: img/hero-touchbar.jpg
   image_alt: Touch Bar and keyboard of a MacBook Pro running KAIT2EN Fedora
-  tagline: Your T2 Mac, on a kernel that keeps moving.
+  tagline: You Run It, We Fix It.
   sub: >-
-    Stock Fedora with its own kernel updates, plus the current T2 modules as
-    DKMS. Keyboard, trackpad, Touch Bar, audio, Wi-Fi, Bluetooth and suspend -
-    without a forked distribution.
-  note: Vanilla Fedora. DKMS modules. Everything aimed upstream.
+    We bring Linux to your T2 Mac with instant driver fixes, straight from the developers.
+  note: Vanilla Fedora. DKMS modules. Aimed upstream.
   quotes:
+    - text: We truly believe T2 MacBooks can make the best Linux laptops.
+      source:
     - text: KAIT2EN is meant to disappear. Every module and fix that gets upstreamed leaves the repo.
-      source: Project goal
-    - text: There is a distinct difference between making broken things work and fixing things.
-      source: Contributing guide
+      source:
+    - text: There is a distinct difference in making broken things work and fixing things.
+      source:
 
 # The landing page. Section order here is the order on the page and in its
 # sidebar; `group` sets the sidebar heading a section is listed under.

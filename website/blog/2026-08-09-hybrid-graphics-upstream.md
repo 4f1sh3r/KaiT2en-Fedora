@@ -1,53 +1,88 @@
 ---
-title: Hybrid graphics on the MacBookPro15,1, and the road upstream
-date: 2026-08-09
-author: KAIT2EN
+title: The MacBookPro15,1 finally has hybrid graphics
+date: 2026-08-12
+author: André Eikmeyer
 summary: >-
-  Sample post. Runtime power management for the discrete GPU shipped
-  downstream first; here is what the upstream series looks like.
+  The discrete GPU can finally sleep while Intel drives the display, saving
+  roughly 12 watts without giving up PRIME offload or external monitors.
 tags: [graphics, upstream]
 ---
 
-*This is placeholder text for the new blog. Replace it with a real post.*
+The MacBookPro15,1 normally boots Linux with its AMD GPU in charge of the
+display. It works, it is fast and it uses around 24 watts while doing almost
+nothing. Roughly half of that disappears when the discrete GPU is actually
+allowed to turn off.
 
-On a MacBookPro15,1 the discrete AMD GPU is wired up as the display GPU by
-default, and it never idles. That costs battery for no benefit whenever you are
-reading a terminal.
+That missing half is why hybrid graphics mattered so much.
 
-## What hybrid mode does
+With Intel as the primary GPU, the desktop runs on the integrated graphics and
+the AMD GPU can stay in D3cold. An application using `DRI_PRIME=1` wakes it on
+demand. An external monitor wakes it because the display outputs are connected
+there. Close the application or unplug the monitor and it goes back to sleep.
 
-With hybrid graphics enabled, the integrated GPU drives the display and the AMD
-GPU stays in D3cold until something asks for it. PRIME offload wakes it for
-accelerated work and the kernel puts it back afterwards. You keep the discrete
-GPU without paying its idle cost.
+That is how everyone expects a dual-GPU laptop to behave. It just took quite a
+lot of work to make this particular one agree.
 
-The switch lives in **T2 Hybrid GPU Control**, installed automatically on that
-model. Changing the stored boot GPU never reboots for you - that is always a
-separate, deliberate action, because the discrete-GPU setting is also the
-recovery path when something goes wrong.
+## Turning it off was the easy part
 
-## The upstream series
+Apple GMUX can cut power to the GPU. The hard part was getting the Polaris GPU
+back after that happened. The normal GMUX sequence left its PCI configuration
+space inaccessible. Following the additional link transitions exposed by the
+firmware made power-on reliable on both the 2018 and 2019 revisions.
 
-Three patches, and they have to go together:
+Before runtime switching was possible at all, AMDGPU also needed a reset quirk
+for this machine. Without it the GPU's SMU could remain dead after resume. That
+smaller foundation patch was
+[merged upstream](https://lore.kernel.org/all/20260722125734.6541-1-dev@deq.rocks/)
+before the larger hybrid series was ready.
 
-| Patch | Subsystem | What it does |
-| --- | --- | --- |
-| 1 | `platform/x86` | Teach `apple-gmux` the MacBookPro15,1 dGPU power-off sequence |
-| 2 | `drm/amdgpu` | Consult Apple GMUX for runtime PM |
-| 3 | `ALSA/hda` | Allow direct-complete when the GPU is already powered off |
+AMDGPU still had to learn that GMUX is a valid runtime power method. Linux
+already understood other laptop power schemes, just not this one.
 
-The third one surprises people. The GPU carries an HDA audio function for HDMI
-output, and if that function insists on being resumed during system suspend, the
-whole runtime-PM arrangement unravels. Suspend has to be allowed to complete
-directly while the device is off.
+Then system suspend woke the powered-off GPU again for its HDMI audio
+function. That was the final surprise: the graphics fix needed a small ALSA
+change so an audio device attached to a GPU that is physically off can remain
+off during suspend.
 
-## Why it is not merged yet
+Three subsystems, one feature.
 
-Version three of the series is out for review. The board on the front page
-tracks it, and the row will change state on its own the moment something
-happens - the data behind it is the same data that drives the
-`#upstream-work` channel on Discord.
+## Making it usable
 
-Until then it works here, downstream, on one specific model. That is the honest
-description of the situation, which is exactly what the two-axis board was
-built to show.
+The firmware preference for the boot GPU lives in an Apple NVRAM variable.
+Expecting users to discover and write that variable by hand would turn a
+working kernel feature into trivia for people who already know the answer.
+
+KAIT2EN therefore installs **T2 Hybrid GPU Control** on the 15,1. It selects
+the integrated boot GPU, shows whether the discrete GPU is in DynOff or DynPwr
+and leaves ordinary PRIME offload to the desktop and applications.
+
+The feature has been tested with repeated wakeups, suspend and resume, and a
+collection of Thunderbolt and USB-C displays. It is now our default path for
+this model.
+
+## Upstream is where it should live
+
+The downstream version requires KAIT2EN to rebuild parts of AMDGPU whenever
+Fedora updates the kernel. That is inconvenient for users and a maintenance
+job we do not want forever.
+
+The three-patch series has now been sent upstream to the platform, AMDGPU and
+ALSA maintainers. Review already improved the HDA integration and caught a PCI
+device lifecycle problem in the GMUX patch. It also produced several revisions
+in one afternoon, including one correction after we checked what Apple's ACPI
+methods really return instead of assuming.
+
+That process can look messy from outside. It is still better than carrying the
+same private kernel patch for years. The goal is a future Fedora kernel where
+the 15,1 simply has hybrid graphics, whether KAIT2EN is installed or not.
+
+The current series is available in the
+[kernel mailing list archive](https://lore.kernel.org/all/20260812144750.36797-1-dev@deq.rocks/).
+
+## Phoronics picked it up the same day
+
+Actually impressive how fast these guys are. And also the fact that they picked it up
+shows that hybrid graphics support on Apple MacBooks is a desperately wanted feature by users.
+Also I believe this will be an interesting find for all other muxed Macbooks like T1 etc..,
+Here is the link to the
+[Phoronics article]https://www.phoronix.com/news/Linux-2026-Patches-For-2018-MBP
