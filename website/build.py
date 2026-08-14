@@ -9,6 +9,10 @@ Everything the site is made of lives next to this file:
   templates/   Jinja templates
   static/      stylesheet, script and images, copied verbatim
 
+Images are referenced relative to the output page: `img/x.png` from a page in
+the output root, `../img/x.png` from a blog post. The link check catches the
+mistake either way.
+
 Usage: python3 website/build.py [--output website/build] [--serve [PORT]]
 """
 

@@ -35,6 +35,12 @@ function closeLightbox() {
     document.body.style.overflow = '';
 }
 
+// Images written in Markdown open in the lightbox, without any per-image markup.
+document.addEventListener('click', (e) => {
+    const img = e.target.closest('.page-content img, .concept-story img');
+    if (img && !img.closest('a')) openLightbox(img);
+});
+
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeLightbox();

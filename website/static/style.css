@@ -2339,10 +2339,33 @@ a.post-tag:hover {
     padding-left: 24px;
 }
 
-.page-content img {
+.page-content img,
+.concept-story img {
     max-width: 100%;
     height: auto;
     border-radius: 8px;
+    cursor: zoom-in;
+}
+
+/* A linked image follows its link instead of opening the lightbox. */
+.page-content a img,
+.concept-story a img {
+    cursor: pointer;
+}
+
+.page-content p > img:only-child,
+.page-content figure img {
+    display: block;
+}
+
+.page-content figure {
+    margin: 0 0 16px;
+}
+
+.page-content figcaption {
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
 }
 
 .page-content table {
