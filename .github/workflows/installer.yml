@@ -37,14 +37,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Static checks
-        run: bash tests/installer/static-check.sh
+        run: bash scripts/tests/static-check.sh
       - name: Validate Fedora edition catalog
         run: |
           curl --fail --location --retry 3 \
             --output /tmp/fedora-releases.json \
             https://fedoraproject.org/releases.json
           FEDORA_RELEASES_JSON=/tmp/fedora-releases.json \
-            bash tests/installer/edition-catalog.sh "${{ matrix.target }}"
+            bash scripts/tests/edition-catalog.sh "${{ matrix.target }}"
       - name: Build ${{ matrix.target }}
         run: ./scripts/fedora/build-installer.sh --target "${{ matrix.target }}"
       - uses: actions/upload-artifact@v6

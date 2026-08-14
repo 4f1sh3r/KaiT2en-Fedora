@@ -24,17 +24,17 @@ shell_files=(
 	scripts/fedora/lib.sh
 	scripts/macos/download-fedora-iso.sh
 	scripts/macos/prepare-fedora-installer.sh
-	tests/installer/edition-catalog.sh
-	tests/installer/iso-download.sh
-	tests/installer/install-launcher.sh
-	tests/installer/static-check.sh
-	tests/installer/prepare-install.sh
-	tests/installer/release-bootstrap.sh
-	tests/installer/bt-firmware.sh
-	tests/installer/live-bluetooth.sh
-	tests/installer/live-wifi.sh
-	tests/installer/terminal-launcher.sh
-	tests/installer/wifi-firmware.sh
+	scripts/tests/edition-catalog.sh
+	scripts/tests/iso-download.sh
+	scripts/tests/install-launcher.sh
+	scripts/tests/static-check.sh
+	scripts/tests/prepare-install.sh
+	scripts/tests/release-bootstrap.sh
+	scripts/tests/bt-firmware.sh
+	scripts/tests/live-bluetooth.sh
+	scripts/tests/live-wifi.sh
+	scripts/tests/terminal-launcher.sh
+	scripts/tests/wifi-firmware.sh
 )
 for file in "${shell_files[@]}"; do
 	bash -n "$file"
@@ -180,14 +180,14 @@ patch_name=$(
 
 git apply --unidiff-zero --check "packaging/installer/patches/$patch_name"
 
-bash tests/installer/wifi-firmware.sh
-bash tests/installer/bt-firmware.sh
-bash tests/installer/live-wifi.sh
-bash tests/installer/live-bluetooth.sh
-bash tests/installer/prepare-install.sh
-bash tests/installer/install-launcher.sh
-bash tests/installer/release-bootstrap.sh
-bash tests/installer/terminal-launcher.sh
-bash tests/installer/iso-download.sh
-bash tests/installer/edition-catalog.sh
+bash scripts/tests/wifi-firmware.sh
+bash scripts/tests/bt-firmware.sh
+bash scripts/tests/live-wifi.sh
+bash scripts/tests/live-bluetooth.sh
+bash scripts/tests/prepare-install.sh
+bash scripts/tests/install-launcher.sh
+bash scripts/tests/release-bootstrap.sh
+bash scripts/tests/terminal-launcher.sh
+bash scripts/tests/iso-download.sh
+bash scripts/tests/edition-catalog.sh
 printf 'Installer static checks passed.\n'
