@@ -26,17 +26,17 @@ items:
   - id: brcmfmac-pm-max-power-management
     title: "Wi-Fi PM_MAX power management"
     state: in-progress
-    upstream: submitted
+    upstream: revoked
     version: v3
     project: Linux kernel
     subsystem: Wi-Fi / brcmfmac
     authors:
       - 4f1sh3r
     link: "https://patchwork.kernel.org/project/linux-wireless/patch/20260810150552.25375-1-alexander@fischermail.me/"
-    updated: "2026-08-10"
+    updated: "2026-08-15"
     notes: >-
-      Adds an opt-in PM_MAX mode that relaxes the Wi-Fi latency tolerance and
-      allows deeper package C-states while keeping PM_FAST as the default.
+      Withdrawn after extended BCM4364 testing found intermittent 50-250 ms
+      latency spikes with PM_MAX. PM_FAST remains the driver default.
 
   - id: audio-dsp
     title: "Audio DSP"
