@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "messages": {
+    "kait2en-is-through-the-door": {
+      "message_id": "1537944789788528673",
+      "hash": "71a446251b375575710863c4e57704ba2265406996f7d21c9d695af9083129a6"
+    },
+    "the-resume-that-took-a-minute": {
+      "message_id": "1537944793789767701",
+      "hash": "11fad68b2ebb31fde8278b6ce875c444515be57b251b2707faef58cce591bd64"
+    },
+    "making-the-speakers-sound-like-speakers": {
+      "message_id": "1537944797652844655",
+      "hash": "f7f982a5e5a4e284db1be8d5e4bfa48ffd44e0ba2be75b48be15b202a0b0107a"
+    },
+    "the-small-things-you-touch-every-day": {
+      "message_id": "1537944800693592115",
+      "hash": "13d00343beb3c8546f2557bf62bd5ed0e732a13abe39c722d37eced3ca32a698"
+    },
+    "three-watts-and-a-dead-usb-port": {
+      "message_id": "1537944804489564180",
+      "hash": "f042e2bb07816a136ad3a201854324cd54e0c8e2e43705c2d10a5d5195738238"
+    },
+    "the-navi-rabbit-hole": {
+      "message_id": "1537944807979225138",
+      "hash": "ed3f08f9d2906419baf9e2ffefb0abd0441174c03889c25d1de54a298b209cc0"
+    },
+    "more-than-a-fan-controller": {
+      "message_id": "1537944822151643197",
+      "hash": "6fd4308bdfc28ae95b35b12ee5860fd59bc877b4373a23dc06be8097689509f2"
+    },
+    "where-did-the-watts-go": {
+      "message_id": "1537944826559860758",
+      "hash": "583bfb2b836d292fbc7bca661062c4700f4e940b194c37e37c415c4668aa7d0b"
+    },
+    "hybrid-graphics-upstream": {
+      "message_id": "1537944829592346819",
+      "hash": "58d014b7255a350d34fccd845ab1295d57ac6c72ec7b5e620f59267ee64e1c50"
+    },
+    "enfant-terrible": {
+      "message_id": "1537944833694634086",
+      "hash": "1ed93cba3ebd24b6902cc50febdbfc5e8a9eff5a58416d60dcd3b13720e42519"
+    }
+  }
+}
