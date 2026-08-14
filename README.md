@@ -26,10 +26,12 @@ Join the KAIT2EN community on [Discord](https://discord.gg/AGfjRk4ydj) or on
 Contributions are welcome, especially when they move KAIT2EN fixes closer to
 clean upstream Linux support.
 
-Please keep changes and PR descriptions focused. You may use AI for debugging,
-but we will notice slop and refuse to review or merge obvious slop. We are not
-interested in workarounds. There is a distinct difference between making broken
-things work and fixing things.
+Please keep changes and PR descriptions focused.
+**We will reject PRs and Issues when we notice we are talking to AI!**
+At least talk to us in person.
+We are not interested in workarounds.
+We are not interested in major AI refactories.
+There is a distinct difference between making broken things work and fixing things.
 
 ## License
 
