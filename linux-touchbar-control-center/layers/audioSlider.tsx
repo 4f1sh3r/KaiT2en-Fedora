@@ -4,6 +4,9 @@ import { Box, Text, Button } from 'react-drm';
 import { MdVolumeOff, MdVolumeDown, MdVolumeUp } from 'react-icons/md';
 import { BackButton } from '../components/BackButton';
 import { useLayers } from './index';
+import { createLogger } from '../lib/utils/logger';
+
+const log = createLogger('audioSlider');
 
 // When running as root the session socket isn't inherited — pass it explicitly.
 const PW_ENV: NodeJS.ProcessEnv = {
@@ -45,11 +48,11 @@ function applyVolume(pct: number): void {
   if (USE_WPCTL) {
     execFile('wpctl', ['set-volume', '@DEFAULT_AUDIO_SINK@', pct.toFixed(2)],
       { env: PW_ENV },
-      (err) => { if (err) console.error('[audioSlider] wpctl:', err.message); },
+      (err) => { if (err) log.error('wpctl:', err.message); },
     );
   } else {
     execFile('pactl', ['set-sink-volume', '@DEFAULT_SINK@', `${Math.round(pct * 100)}%`],
-      (err) => { if (err) console.error('[audioSlider] pactl:', err.message); },
+      (err) => { if (err) log.error('pactl:', err.message); },
     );
   }
 }

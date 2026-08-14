@@ -1,6 +1,6 @@
 import { keys } from '../services/keyInjector';
 import { execFile } from 'child_process';
-import { vscodeKeysFor } from '../config';
+import { vscodeKeysFor } from '../lib/utils/configLoader';
 
 function focusWindow(windowClass: string): void {
   if (process.env.WAYLAND_DISPLAY) {

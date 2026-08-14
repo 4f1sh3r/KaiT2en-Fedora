@@ -7,7 +7,10 @@ import { KEY } from 'react-drm';
 import dbus, { MessageBus, ClientInterface } from 'dbus-next';
 import { Fzf, byLengthAsc } from 'fzf';
 import { useActiveWindow } from './useActiveWindow';
-import { KONSOLE } from '../config';
+import { KONSOLE } from '../lib/utils/configLoader';
+import { createLogger } from '../lib/utils/logger';
+
+const log = createLogger('konsole');
 
 // ── History ──────────────────────────────────────────────────────────────────
 
@@ -817,7 +820,7 @@ export function useKonsole() {
       setSuggestions([]);
     } catch (e) {
       // Konsole ≥22.04 gates sendText behind KonsoleWindow/EnableSecuritySensitiveDBusAPI in konsolerc
-      console.error('konsole sendText failed:', e instanceof Error ? e.message : e);
+      log.error('sendText failed:', e instanceof Error ? e.message : e);
     }
   }, [getSessionIface]);
 

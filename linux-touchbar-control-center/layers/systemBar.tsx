@@ -10,7 +10,7 @@ import { Box, Text, Button, LayoutContext, NativeDrawContext, DisplaySizeContext
 import type { BoxNode } from 'react-drm';
 import { MdArrowDownward, MdArrowUpward, MdCancel, MdDeveloperBoard, MdDeviceHub, MdMemory, MdReplay, MdRouter, MdThermostat, MdWhatshot, MdWifi } from 'react-icons/md';
 import type { IconType } from 'react-icons';
-import { CAVA, SYSTEMBAR } from '../config';
+import { CAVA, SYSTEMBAR } from '../lib/utils/configLoader';
 import { useLayers } from './index';
 import { BackButton } from '../components/BackButton';
 

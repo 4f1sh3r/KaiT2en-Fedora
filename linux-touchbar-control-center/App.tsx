@@ -4,7 +4,7 @@ import { Box, Gif, Text, animated, useSpringValue } from 'react-drm';
 import type { KeyboardReader } from 'react-drm';
 import { LayerHost } from './layers';
 
-import { ESC_KEY, DOCK, FN_LAYER } from './config';
+import { ESC_KEY, DOCK, FN_LAYER } from './lib/utils/configLoader';
 import { EscKey } from './components/EscKey';
 import { SafeArea } from './components/SafeArea';
 import { BootScreen } from './components/BootScreen';

@@ -1,8 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { KeyboardReader, PreviewDisplay, createDisplay, renderHot, resolveKeyCode, startPreviewServer } from 'react-drm';
-import { DISPLAY, SCREENSHOT, SLEEP } from './config';
+import { DISPLAY, SCREENSHOT, SLEEP } from './lib/utils/configLoader';
 import { attachTouchBar, ensureTouchBarAttached, watchSleep } from './services/suspend';
+import { createLogger } from './lib/utils/logger';
+
+const log = createLogger('react-drm');
 
 // The app owns the Touch Bar lifecycle in every run mode — manual `npm run
 // dev` and react-drm.service alike: attach at startup, quiesce before system
@@ -14,7 +17,7 @@ const isPreview = process.env.REACT_DRM_BACKEND === 'preview';
 async function main() {
   if (SLEEP.enabled && !isPreview) {
     await ensureTouchBarAttached().catch(e => {
-      console.warn('[react-drm] Touch Bar attach failed:', e instanceof Error ? e.message : e);
+      log.warn('Touch Bar attach failed:', e instanceof Error ? e.message : e);
     });
   }
 
@@ -36,9 +39,9 @@ async function main() {
       fs.mkdirSync(SCREENSHOT.dir, { recursive: true });
       const file = path.join(SCREENSHOT.dir, `touchbar-${new Date().toISOString().replace(/[:.]/g, '-')}.png`);
       display.screenshot(file);
-      console.log(`[react-drm] screenshot saved: ${file}`);
+      log.info(`screenshot saved: ${file}`);
     } catch (e) {
-      console.error('[react-drm] screenshot failed:', e instanceof Error ? e.message : e);
+      log.error('screenshot failed:', e instanceof Error ? e.message : e);
     }
   });
 
@@ -66,7 +69,7 @@ async function main() {
         result.resume();
       },
     }).catch(e => {
-      console.warn('[react-drm] sleep watcher unavailable:', e instanceof Error ? e.message : e);
+      log.warn('sleep watcher unavailable:', e instanceof Error ? e.message : e);
     });
   }
 
@@ -89,6 +92,6 @@ async function main() {
 }
 
 main().catch(e => {
-  console.error('[react-drm] startup failed:', e instanceof Error ? e.message : e);
+  log.error('startup failed:', e instanceof Error ? e.message : e);
   process.exit(1);
 });

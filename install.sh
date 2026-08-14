@@ -600,9 +600,19 @@ install_dependencies() {
   command -v npm >/dev/null 2>&1 || fail "npm is unavailable after package installation"
 }
 
+seed_user_config() {
+  local blueprint="$REPO_ROOT/linux-touchbar-control-center/config.blueprint.ts"
+  local live="$REPO_ROOT/linux-touchbar-control-center/config.ts"
+  if [[ ! -e "$live" ]]; then
+    info "Seeding editable config from the blueprint"
+    cp "$blueprint" "$live"
+  fi
+}
+
 build_project() {
   info "Installing npm dependencies"
   (cd "$REPO_ROOT" && npm ci)
+  seed_user_config
   info "Building react-drm and the control center"
   (cd "$REPO_ROOT/linux-touchbar-control-center" && npm run build)
 }

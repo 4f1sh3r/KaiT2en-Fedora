@@ -4,7 +4,7 @@ import { BackButton } from '../components/BackButton';
 import { useActiveWindow } from '../hooks/useActiveWindow';
 import { launchApp } from '../services/launch';
 import { appIconSource } from '../services/appIcon';
-import { DOCK, type DockApp } from '../config';
+import { DOCK, type DockApp } from '../lib/utils/configLoader';
 
 // Resolve every app's theme icon once at module load (app boot) — not on the
 // first dock switch, which would block the transition while the icon theme is
