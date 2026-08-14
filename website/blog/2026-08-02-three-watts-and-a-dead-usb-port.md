@@ -16,9 +16,10 @@ largest remaining wins.
 And for a moment it was.
 
 Both controllers suspended, the machine reached package C7, external displays
-still worked and idle power dropped. Then a Samsung T7 stopped appearing when
-plugged in. Another SATA-to-USB adapter worked only through one particular hub.
-USB 2 was fine. USB 3 hotplug was not.
+still worked and idle power dropped. And then @ants reported external mass storage
+was no longer mounting, while other USB periphery was still warking.
+Another SATA-to-USB adapter worked only through one particular hub.
+USB 2 was fine. USB 3 UAS was not.
 
 The first half of the result looked exactly like what we wanted:
 
@@ -27,7 +28,7 @@ The first half of the result looked exactly like what we wanted:
 0000:7c:00.0  auto  suspended  D3hot
 ```
 
-The missing Samsung T7 was the part no power statistic could show us.
+The missing mass storage was not obvious. How could it be? We forgot to test it.
 
 <figure>
   <img src="../img/blog/pc3.jpg" alt="PowerTOP showing the MacBookPro15,1 limited to package C3">
@@ -41,15 +42,17 @@ hotplug and made the immediate problem disappear. It also threw away a large
 part of the power saving we had just found.
 
 Worse, two nominally identical 15,1 machines initially behaved differently.
-One looked healthy, one looked broken. That sent us toward a race condition in
+Mine looked healthy, @ants' looked broken. That sent us toward a race condition in
 the driver until we realised our test environments were not actually equal.
-One module was available much earlier during boot than the other.
+One module was available much earlier during boot than the other. Because one of
+us forced it in initrd. Guess who?
 
 That is exactly how a workaround grows into a bad upstream quirk: test two
 different setups, mistake the difference for hardware behaviour, then freeze
 the accident into the kernel.
 
-We withdrew the xHCI patch.
+We withdrew the xHCI patch. Although I believe timing in-tree could work well.
+This is for another day though.
 
 The withdrawn submission remains in
 [Patchwork](https://patchwork.kernel.org/project/linux-usb/patch/20260730210655.15514-1-dev@deq.rocks/).
@@ -60,22 +63,17 @@ otherwise rediscover the same attractive workaround.
 
 Letting Linux manage the PCIe port services with `pcie_ports=native` restored
 USB 3 hotplug without forcing the controllers to stay in D0. It also made the
-PCIe tree behave much more consistently during runtime power management.
+PCIe tree behave much more consistent during runtime power management.
+But say goodbye to pkg pc7. We only reach it when Thunderbolt is dead it seems.
 
 <figure>
   <img src="../img/blog/pc7.jpg" alt="PowerTOP showing package C7 residency on the MacBookPro15,1">
   <figcaption>Afterwards the same machine spent more than half of the sample in package C7, with working USB 3 hotplug.</figcaption>
 </figure>
 
-That does not mean the whole Thunderbolt story is finished. The RTD3 path can
-still interact badly with full system suspend, and we are not going to call a
-machine fixed when it occasionally needs a hard reset. But we now have a much
-better baseline: deep package sleep and working USB 3, without an xHCI quirk
-that hides the real problem.
+Sometimes it is better withdrawing a patch before other people have to
+live with it just because you had a keyhole perspective.
 
-Sometimes upstream progress is a patch being accepted. Sometimes it is
-withdrawing your own patch before other people have to live with it.
-
-The related Thunderbolt device-link work is still moving upstream separately;
-its current revision can be followed in
+The related Thunderbolt device-link work is still moving upstream separately,
+with `@byte` carrying the current revision through review. It can be followed in
 [Patchwork](https://patchwork.kernel.org/project/linux-usb/patch/20260731161842.12636-1-atharvatiwarilinuxdev@gmail.com/).

@@ -29,7 +29,8 @@ holding a modifier for an entire application is not a great interface.
 
 The Fn double-press patch adds a persistent layer switch. Two quick presses
 toggle between media controls and F-keys, while the normal hold behaviour
-remains available. That work is in its
+remains available. The original patch was written by `@AdityaGarg8` and then
+carried through review and further revisions with KAIT2EN. That work is in its
 [third upstream revision](https://patchwork.kernel.org/project/linux-input/patch/20260722141221.13844-1-dev@deq.rocks/).
 
 Later runtime-PM testing found a deeper Touch Bar issue. Suspending one of its

@@ -78,6 +78,7 @@ Both tools came from the same lesson: power management becomes much easier
 when the relationships are visible. A list of red values is not an
 explanation.
 
-Wi-Fi is another part of the same package C-state work. Alexander Fischer's
-opt-in PM_MAX series is tracked in
+Wi-Fi is another part of the same package C-state work. Alexander Fischer,
+better known as `@4f1sh3r` the God of Install, is working on the
+opt-in PM_MAX series tracked in
 [Patchwork](https://patchwork.kernel.org/project/linux-wireless/patch/20260810150552.25375-1-alexander@fischermail.me/).

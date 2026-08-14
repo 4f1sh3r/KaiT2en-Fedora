@@ -32,12 +32,17 @@ firmware made power-on reliable on both the 2018 and 2019 revisions.
 
 Before runtime switching was possible at all, AMDGPU also needed a reset quirk
 for this machine. Without it the GPU's SMU could remain dead after resume. That
-smaller foundation patch was
+smaller foundation started with an idea and rough patch from `@FrederickGeek8`.
+I turned it into an upstream submission, and roughly one day later it was
 [merged upstream](https://lore.kernel.org/all/20260722125734.6541-1-dev@deq.rocks/)
 before the larger hybrid series was ready.
 
 AMDGPU still had to learn that GMUX is a valid runtime power method. Linux
 already understood other laptop power schemes, just not this one.
+
+The missing GMUX power-on sequence was developed with `@byte`. It became the
+platform side of the final series and the bit that made the Polaris GPU return
+reliably instead of disappearing behind inaccessible PCI configuration space.
 
 Then system suspend woke the powered-off GPU again for its HDMI audio
 function. That was the final surprise: the graphics fix needed a small ALSA

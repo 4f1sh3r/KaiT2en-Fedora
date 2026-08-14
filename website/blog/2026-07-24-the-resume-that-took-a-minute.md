@@ -51,6 +51,16 @@ The current submission is available in the
 
 ## And still... 5 seconds is too slow
 
+One log made the remaining pause rather difficult to miss:
+
+```text
+[18192.022603] ACPI: PM: Waking up from system sleep state S3
+[18211.601135] ACPI: EC: interrupt unblocked
+```
+
+That is another 19.58 seconds between leaving S3 and unblocking the embedded
+controller interrupts, with no CPU parade left to blame.
+
 This one was easier. The Apple platform explicitly denied advanced error
 reporting (AER). But Linux would still use it by default. Luckily, someone with
 far greater knowledge than I will ever have, implemented the kernel param

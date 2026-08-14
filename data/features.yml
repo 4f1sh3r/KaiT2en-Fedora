@@ -186,6 +186,7 @@ items:
     project: Linux kernel
     subsystem: PCI / amdgpu
     authors:
+      - FrederickGeek8
       - deqrocks
     link: "https://lore.kernel.org/all/20260722125734.6541-1-dev@deq.rocks/"
     updated: "2026-07-22"
