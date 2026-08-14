@@ -46,7 +46,7 @@ off during suspend.
 
 Three subsystems, one feature.
 
-## Making it usable
+## Making it convenient to use
 
 The firmware preference for the boot GPU lives in an Apple NVRAM variable.
 Expecting users to discover and write that variable by hand would turn a

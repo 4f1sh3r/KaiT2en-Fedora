@@ -61,6 +61,19 @@ The corresponding modprobe and dracut configuration is installed as
 `/usr/lib/modprobe.d/kait2en-gpu-runtime-pm.conf` and
 `/etc/dracut.conf.d/90-kait2en-gpu-runtime-pm.conf`.
 
+Unlike the T2 modules above, these patched AMDGPU and HDA modules are not built
+by DKMS. After a Fedora kernel update, boot the new kernel before rebuilding
+them for its exact release:
+
+```bash
+cd /usr/local/src/KaiT2en-Fedora
+sudo ./scripts/fedora/install-gpu-runtime-pm.sh
+sudo reboot
+```
+
+The script installs the modules for the running kernel and rebuilds that
+kernel's initramfs.
+
 ## Kernel arguments
 
 `install-kernel-args.sh` updates every installed kernel entry with
