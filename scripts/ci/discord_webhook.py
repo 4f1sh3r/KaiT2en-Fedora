@@ -1,18 +1,12 @@
-#!/usr/bin/env python3
-"""Announce the upstream submissions from data/features.yml in Discord.
+"""Post and edit Discord messages through an incoming webhook.
 
-One webhook message per submission; the message id is remembered in
-data/discord-state.json so a status change edits the existing message instead
-of posting a new one.
-
-Usage:
-    DISCORD_UPSTREAM_WEBHOOK=https://discord.com/api/webhooks/... \\
-        python3 scripts/upstream/sync_discord.py [--dry-run]
+Shared by the sync scripts in this directory. Each of them renders its own
+messages and keeps its own state file; everything below is the transport and
+the create-or-edit bookkeeping they have in common.
 """
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import os
@@ -20,17 +14,15 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from render_discord import render  # noqa: E402
-from schema import SUBMITTED_UPSTREAM, DATA_FILE, UpstreamDataError, load_items  # noqa: E402
-
-STATE_FILE = DATA_FILE.parent / "discord-state.json"
-STATE_VERSION = 1
-
 WEBHOOK_PREFIXES = ("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")
+DRY_RUN_WEBHOOK = "https://discord.com/api/webhooks/0/dry-run"
+
+# Message flag 1 << 2: the link is still clickable, Discord just does not
+# expand it into a preview card.
+SUPPRESS_EMBEDS = 4
 
 REQUEST_PAUSE = 0.6
 MAX_ATTEMPTS = 5
@@ -38,6 +30,15 @@ MAX_ATTEMPTS = 5
 
 class SyncError(Exception):
     pass
+
+
+@dataclass
+class Entry:
+    """One message to keep in sync. `note` only shows up in the run log."""
+
+    key: str
+    content: str
+    note: str = ""
 
 
 def _redact(url: str) -> str:
@@ -54,7 +55,7 @@ def _request(url: str, payload: dict, method: str) -> dict:
             method=method,
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": "KaiT2en-upstream-sync/1.0 (+https://github.com/kaiT2en/KaiT2en-Fedora)",
+                "User-Agent": "KaiT2en-sync/1.0 (+https://github.com/kaiT2en/KaiT2en-Fedora)",
             },
         )
         try:
@@ -91,9 +92,24 @@ def _payload(content: str) -> dict:
     return {"content": content, "allowed_mentions": {"parse": []}}
 
 
-def post(webhook: str, content: str) -> str:
+def resolve_webhook(env_name: str, dry_run: bool) -> str:
+    """Read and sanity-check the webhook URL, or return a placeholder."""
+    webhook = os.environ.get(env_name, "").strip()
+    if not webhook:
+        if dry_run:
+            return DRY_RUN_WEBHOOK
+        raise SyncError(f"{env_name} is not set")
+    if not webhook.startswith(WEBHOOK_PREFIXES):
+        raise SyncError(f"{env_name} does not look like a Discord webhook URL")
+    return webhook.rstrip("/")
+
+
+def post(webhook: str, content: str, suppress_embeds: bool = False) -> str:
+    payload = _payload(content)
+    if suppress_embeds:
+        payload["flags"] = SUPPRESS_EMBEDS
     separator = "&" if "?" in webhook else "?"
-    result = _request(f"{webhook}{separator}wait=true", _payload(content), "POST")
+    result = _request(f"{webhook}{separator}wait=true", payload, "POST")
     message_id = result.get("id")
     if not message_id:
         raise SyncError("Discord accepted the message but returned no message id")
@@ -102,6 +118,8 @@ def post(webhook: str, content: str) -> str:
 
 def patch(webhook: str, message_id: str, content: str) -> bool:
     """Return False if the message is gone and has to be posted again."""
+    # No flags here: editing a webhook message cannot change them, and the ones
+    # set when it was posted stay in place.
     try:
         _request(f"{webhook}/messages/{message_id}", _payload(content), "PATCH")
         return True
@@ -111,52 +129,51 @@ def patch(webhook: str, message_id: str, content: str) -> bool:
         raise
 
 
-def load_state() -> dict:
-    if not STATE_FILE.exists():
-        return {"version": STATE_VERSION, "messages": {}}
+def load_state(path: Path, version: int) -> dict:
+    if not path.exists():
+        return {"version": version, "messages": {}}
     try:
-        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        state = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise SyncError(f"{STATE_FILE.name} is not valid JSON: {exc}") from None
-    if state.get("version") != STATE_VERSION:
-        raise SyncError(
-            f"{STATE_FILE.name} has version {state.get('version')}, expected {STATE_VERSION}"
-        )
+        raise SyncError(f"{path.name} is not valid JSON: {exc}") from None
+    if state.get("version") != version:
+        raise SyncError(f"{path.name} has version {state.get('version')}, expected {version}")
     state.setdefault("messages", {})
     return state
 
 
-def save_state(state: dict, order: list[str]) -> None:
+def save_state(path: Path, state: dict, order: list[str]) -> None:
     messages = state["messages"]
-    ranked = sorted(messages, key=lambda i: (order.index(i) if i in order else len(order), i))
+    ranked = sorted(messages, key=lambda k: (order.index(k) if k in order else len(order), k))
     state["messages"] = {key: messages[key] for key in ranked}
-    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def sync(webhook: str, dry_run: bool) -> int:
-    items = load_items()
-    state = load_state()
+def sync(
+    webhook: str,
+    entries: list[Entry],
+    state: dict,
+    state_file: Path,
+    dry_run: bool,
+    suppress_embeds: bool = False,
+) -> int:
+    """Post or edit one message per entry, in the order they are given."""
     messages = state["messages"]
-
     created = updated = unchanged = 0
     changed_state = False
 
-    for item in items:
-        item_id = item["id"]
-        # The channel announces submissions, not the board. Everything else is
-        # documentation-site only, unless it has already been announced once.
-        if item["upstream"] not in SUBMITTED_UPSTREAM and item_id not in messages:
-            continue
-        content = render(item)
+    for entry in entries:
+        key, content = entry.key, entry.content
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        known = messages.get(item_id)
+        known = messages.get(key)
 
         if known and known.get("hash") == digest:
             unchanged += 1
             continue
 
         action = "update" if known else "post"
-        print(f"{'would ' if dry_run else ''}{action}: {item_id} [{item['upstream']}]", flush=True)
+        note = f" [{entry.note}]" if entry.note else ""
+        print(f"{'would ' if dry_run else ''}{action}: {key}{note}", flush=True)
         if dry_run:
             created += action == "post"
             updated += action == "update"
@@ -164,63 +181,31 @@ def sync(webhook: str, dry_run: bool) -> int:
 
         if known:
             if patch(webhook, known["message_id"], content):
-                messages[item_id] = {"message_id": known["message_id"], "hash": digest}
+                messages[key] = {"message_id": known["message_id"], "hash": digest}
                 updated += 1
             else:
                 print(f"  message {known['message_id']} is gone, posting a new one", flush=True)
-                messages[item_id] = {"message_id": post(webhook, content), "hash": digest}
+                message_id = post(webhook, content, suppress_embeds)
+                messages[key] = {"message_id": message_id, "hash": digest}
                 created += 1
         else:
-            messages[item_id] = {"message_id": post(webhook, content), "hash": digest}
+            message_id = post(webhook, content, suppress_embeds)
+            messages[key] = {"message_id": message_id, "hash": digest}
             created += 1
 
         changed_state = True
         time.sleep(REQUEST_PAUSE)
 
-    known_ids = {item["id"] for item in items}
-    for orphan in sorted(set(messages) - known_ids):
+    order = [entry.key for entry in entries]
+    for orphan in sorted(set(messages) - set(order)):
         print(
             f"warning: '{orphan}' has a Discord message ({messages[orphan]['message_id']}) "
-            f"but is no longer in {DATA_FILE.name}; the message is left untouched",
+            "but no source entry any more; the message is left untouched",
             file=sys.stderr,
         )
 
     if changed_state and not dry_run:
-        save_state(state, [item["id"] for item in items])
+        save_state(state_file, state, order)
 
     print(f"done: {created} posted, {updated} updated, {unchanged} unchanged")
     return 0
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="report what would be posted or edited without calling Discord",
-    )
-    args = parser.parse_args()
-
-    webhook = os.environ.get("DISCORD_UPSTREAM_WEBHOOK", "").strip()
-    if not webhook:
-        if args.dry_run:
-            webhook = "https://discord.com/api/webhooks/0/dry-run"
-        else:
-            print("error: DISCORD_UPSTREAM_WEBHOOK is not set", file=sys.stderr)
-            return 1
-    elif not webhook.startswith(WEBHOOK_PREFIXES):
-        print(
-            "error: DISCORD_UPSTREAM_WEBHOOK does not look like a Discord webhook URL",
-            file=sys.stderr,
-        )
-        return 1
-
-    try:
-        return sync(webhook.rstrip("/"), args.dry_run)
-    except (SyncError, UpstreamDataError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

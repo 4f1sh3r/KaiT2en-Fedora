@@ -7,7 +7,7 @@ on:
   pull_request:
     paths:
       - website/**
-      - scripts/upstream/**
+      - scripts/ci/**
       - data/features.yml
       - .github/workflows/pages.yml
 

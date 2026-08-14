@@ -42,8 +42,8 @@ DOCS_DIR = WEBSITE / "docs"
 BLOG_DIR = WEBSITE / "blog"
 DEFAULT_OUTPUT = WEBSITE / "build"
 
-# The feature board renderer lives with the data it renders.
-sys.path.insert(0, str(ROOT / "scripts" / "upstream"))
+# The feature board renderer lives with the other CI scripts.
+sys.path.insert(0, str(ROOT / "scripts" / "ci"))
 
 MD_EXTENSIONS = [
     "extra",

@@ -1,18 +1,20 @@
-name: Feature board and Discord sync
+name: Blog and Discord sync
 
 on:
   push:
     branches: [main]
     paths:
-      - data/features.yml
+      - website/blog/**
+      - website/site.yml
       - scripts/ci/**
-      - .github/workflows/upstream-discord.yml
+      - .github/workflows/blog-discord.yml
 
   pull_request:
     paths:
-      - data/features.yml
+      - website/blog/**
+      - website/site.yml
       - scripts/ci/**
-      - .github/workflows/upstream-discord.yml
+      - .github/workflows/blog-discord.yml
 
   workflow_dispatch:
     inputs:
@@ -27,7 +29,7 @@ permissions:
 # No cancel-in-progress: an interrupted run could post messages without
 # committing the state file, and the next run would post them again.
 concurrency:
-  group: upstream-discord
+  group: blog-discord
 
 jobs:
   validate:
@@ -44,9 +46,6 @@ jobs:
 
       - name: Install site dependencies
         run: pip install -r website/requirements.txt
-
-      - name: Validate the feature board data
-        run: python scripts/ci/schema.py
 
       - name: Build the site
         run: python website/build.py
@@ -70,18 +69,19 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install dependencies
-        run: pip install pyyaml
+      # The full set: the sync reads the posts through website/build.py.
+      - name: Install site dependencies
+        run: pip install -r website/requirements.txt
 
       # The secret lives on kaiT2en/KaiT2en-Fedora; on a fork it is empty and
       # skipping is the correct outcome, not a failure.
       - name: Check for webhook secret
         id: webhook
         env:
-          DISCORD_UPSTREAM_WEBHOOK: ${{ secrets.DISCORD_UPSTREAM_WEBHOOK }}
+          DISCORD_BLOG_WEBHOOK: ${{ secrets.DISCORD_BLOG_WEBHOOK }}
         run: |
-          if [ -z "${DISCORD_UPSTREAM_WEBHOOK}" ]; then
-            echo "::notice::DISCORD_UPSTREAM_WEBHOOK is not set, skipping the Discord sync"
+          if [ -z "${DISCORD_BLOG_WEBHOOK}" ]; then
+            echo "::notice::DISCORD_BLOG_WEBHOOK is not set, skipping the Discord sync"
             echo "configured=false" >> "${GITHUB_OUTPUT}"
           else
             echo "configured=true" >> "${GITHUB_OUTPUT}"
@@ -90,9 +90,9 @@ jobs:
       - name: Sync to Discord
         if: steps.webhook.outputs.configured == 'true'
         env:
-          DISCORD_UPSTREAM_WEBHOOK: ${{ secrets.DISCORD_UPSTREAM_WEBHOOK }}
+          DISCORD_BLOG_WEBHOOK: ${{ secrets.DISCORD_BLOG_WEBHOOK }}
         run: |
-          python scripts/ci/sync_discord.py \
+          python scripts/ci/sync_blog_discord.py \
             ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Commit message-id state
@@ -100,14 +100,14 @@ jobs:
         run: |
           # --porcelain, not `git diff`: on the first run the state file is
           # still untracked.
-          if [ -z "$(git status --porcelain -- data/discord-state.json)" ]; then
+          if [ -z "$(git status --porcelain -- data/blog-discord-state.json)" ]; then
             echo "No state change to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/discord-state.json
-          git commit -m "upstream: update Discord message state [skip ci]"
+          git add data/blog-discord-state.json
+          git commit -m "blog: update Discord message state [skip ci]"
           # Pushes with GITHUB_TOKEN do not trigger workflows, so this cannot loop.
           for attempt in 1 2 3; do
             if git push origin "HEAD:${GITHUB_REF_NAME}"; then
