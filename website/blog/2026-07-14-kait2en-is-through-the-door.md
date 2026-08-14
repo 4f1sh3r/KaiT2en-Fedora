@@ -4,7 +4,8 @@ date: 2026-07-14
 author: Andre Eikmeyer
 summary: >- 
   This is a copy of the text I wrote on Reddit when I released KaiT2EN
-in July 2026 tags: [announcements]
+  in July 2026 
+tags: [announcements]
 ---
 
 *This is a copy of the text I wrote on Reddit in July 2026 when KAIT2EN was
