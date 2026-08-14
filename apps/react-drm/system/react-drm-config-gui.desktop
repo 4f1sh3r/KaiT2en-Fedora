@@ -1,0 +1,9 @@
+# The KaiT2en installer replaces Exec with the absolute deployment paths.
+[Desktop Entry]
+Type=Application
+Name=Touch Bar Config
+Comment=Edit the touch bar's config.ts
+Exec=react-drm-config-gui
+Icon=preferences-system
+Terminal=false
+Categories=Settings;

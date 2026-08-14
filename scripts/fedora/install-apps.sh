@@ -16,8 +16,9 @@ require_root
 require_repo_root
 require_fedora
 require_command \
-	awk chown cut dnf env getent grep id install mktemp modinfo npm rm rpm \
-	sleep sudo systemctl tar tr udevadm usermod
+	awk chown cut desktop-file-validate dnf env getent grep id install mktemp \
+	modinfo npm rm rpm sleep sudo systemctl tar tr udevadm \
+	update-desktop-database usermod
 if [[ "$install_mode" == all ]]; then
 	require_command cargo make
 fi
@@ -137,6 +138,7 @@ install_react_drm() {
 	local installed_node_packages=() package daemon unit group groups
 	local missing_groups=()
 	local service_dir service_file temporary_file workdir_q start_q detach_q
+	local app_dir launcher_file launcher_tmp
 	local desktop extension_uuid extension_src extension_dst
 	if ! has_t2_touchbar_model; then
 		return
@@ -262,6 +264,22 @@ install_react_drm() {
 	info "building react-drm"
 	run_as_target npm --prefix "$dst" ci
 	run_as_target npm --prefix "$dst/linux-touchbar-control-center" run build
+	run_as_target npm --prefix "$dst/config-gui" run build
+
+	info "installing react-drm config editor"
+	app_dir="$target_home/.local/share/applications"
+	launcher_file="$app_dir/react-drm-config-gui.desktop"
+	launcher_tmp=$(mktemp --suffix=.desktop /tmp/react-drm-config-gui.XXXXXX)
+	awk -v electron="$dst/node_modules/.bin/electron" -v gui="$dst/config-gui" '
+		/^Exec=/ { printf "Exec=\"%s\" \"%s\"\n", electron, gui; next }
+		{ print }
+	' "$dst/system/react-drm-config-gui.desktop" >"$launcher_tmp"
+	desktop-file-validate "$launcher_tmp"
+	install -d -o "$target_user" -g "$target_group" -m 0755 "$app_dir"
+	install -o "$target_user" -g "$target_group" -m 0644 \
+		"$launcher_tmp" "$launcher_file"
+	rm -f "$launcher_tmp"
+	run_as_target update-desktop-database "$app_dir"
 
 	service_dir="$target_home/.config/systemd/user"
 	service_file="$service_dir/react-drm.service"
