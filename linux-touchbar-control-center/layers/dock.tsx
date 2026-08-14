@@ -3,7 +3,7 @@ import { Box, Button, Svg, animated, useSprings, useSpringValue } from 'react-dr
 import { BackButton } from '@/components/BackButton';
 import { useActiveWindow } from '@/lib/hooks/useActiveWindow';
 import { launchApp } from '@/lib/services/launch';
-import { appIconSource } from '@/lib/services/appIcon';
+import { appIconSource } from 'react-drm';
 import { DOCK, type DockApp } from '@/lib/utils/configLoader';
 
 // Resolve every app's theme icon once at module load (app boot) — not on the

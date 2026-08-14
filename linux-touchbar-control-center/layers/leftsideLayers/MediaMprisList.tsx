@@ -6,7 +6,7 @@ import {
 } from 'react-icons/md';
 import { useMediaPlayers } from '@/lib/hooks/useMediaPlayers';
 import { useAlbumArt } from '@/lib/hooks/useAlbumArt';
-import { appIconSource } from '@/lib/services/appIcon';
+import { appIconSource } from 'react-drm';
 
 const ACCENT: Record<string, string> = {
   firefox: '#f9731666',

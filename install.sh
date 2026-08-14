@@ -615,6 +615,15 @@ build_project() {
   seed_user_config
   info "Building react-drm and the control center"
   (cd "$REPO_ROOT/linux-touchbar-control-center" && npm run build)
+  info "Building the config editor"
+  (cd "$REPO_ROOT/config-gui" && npm run build)
+}
+
+install_config_gui_launcher() {
+  info "Installing config editor launcher"
+  local apps_dir="$HOME/.local/share/applications"
+  install -d -m 0755 "$apps_dir"
+  install -m 0644 "$REPO_ROOT/system/react-drm-config-gui.desktop" "$apps_dir/react-drm-config-gui.desktop"
 }
 
 configure_user_groups() {
@@ -692,6 +701,7 @@ phase_deploy() {
   configure_user_groups
   install_udev_rules
   install_user_service
+  install_config_gui_launcher
   info "Deployment completed successfully"
   if [[ $NEEDS_RELOGIN -eq 1 ]]; then
     warn "Log out of the desktop session and log back in to activate the video and input group memberships"

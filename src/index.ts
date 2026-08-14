@@ -41,6 +41,7 @@ export { SAFE_INSET, SAFE_INSET_X, SAFE_INSET_Y } from './scene/safe-area';
 export type { SafeAreaInsets } from './scene/safe-area';
 export { invalidate } from './renderer/invalidate';
 export { renderHot } from './dev/hot-reload';
+export { appIconSource } from './appIcon';
 export { createLogger } from './logger';
 export type { Logger } from './logger';
 export { startPreviewServer } from './dev/preview-server';
