@@ -17,7 +17,8 @@
   },
   "workspaces": [
     "linux-touchbar-control-center",
-    "config-gui"
+    "config-gui",
+    "install-gui"
   ],
   "scripts": {
     "build:native": "node-gyp configure build",

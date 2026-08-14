@@ -56,23 +56,103 @@ NEEDED_BACKEND_PACKAGES=()
 NEEDED_PACKAGES=()
 LOG_PHASE="install"
 
-info(){ printf '[%s] %s\n' "$LOG_PHASE" "$*"; }
-warn(){ printf '[%s] warning: %s\n' "$LOG_PHASE" "$*" >&2; }
-fail(){ printf '[%s] error: %s\n' "$LOG_PHASE" "$1" >&2; exit 1; }
-trap 'printf "[%s] fatal: line %s: %s\n" "$LOG_PHASE" "$LINENO" "$BASH_COMMAND" >&2; exit 1' ERR
+# GUI_MODE=1 switches info/warn/fail/analysis_*/privileged from plain
+# terminal output + sudo to a line-delimited JSON event protocol on stdout
+# (consumed by install-gui) + pkexec, without changing any detection,
+# packaging, purge or deploy logic itself. Set only via `install --gui`,
+# which is only ever invoked by install-gui's own child process spawn.
+GUI_MODE=0
+
+json_escape() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\t'/\\t}
+  printf '%s' "$s"
+}
+
+gui_phase() {
+  [[ $GUI_MODE -eq 1 ]] || return 0
+  printf '{"type":"phase","name":"%s","status":"%s"}\n' "$1" "$2"
+}
+
+# Emits a question event and blocks for a one-line JSON answer on stdin,
+# e.g. {"answer":"PURGE"}. install-gui always sends exactly that shape.
+# Sets GUI_ANSWER rather than echoing it: callers must NOT wrap this in
+# $(...) — that would run it in a subshell and swallow the question JSON
+# into the captured output instead of writing it to the real stdout the
+# GUI is reading, hanging the GUI forever waiting for a question it never saw.
+gui_ask() {
+  printf '{"type":"question","kind":"%s"}\n' "$1"
+  local line
+  IFS= read -r line || fail "no answer received from the GUI"
+  GUI_ANSWER=$(printf '%s' "$line" | sed -n 's/.*"answer" *: *"\([^"]*\)".*/\1/p')
+}
+
+privileged() {
+  if [[ $GUI_MODE -eq 1 ]]; then pkexec "$@"; else sudo "$@"; fi
+}
+
+info(){
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"log","phase":"%s","level":"info","text":"%s"}\n' "$LOG_PHASE" "$(json_escape "$*")"
+  else
+    printf '[%s] %s\n' "$LOG_PHASE" "$*"
+  fi
+}
+warn(){
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"log","phase":"%s","level":"warn","text":"%s"}\n' "$LOG_PHASE" "$(json_escape "$*")"
+  else
+    printf '[%s] warning: %s\n' "$LOG_PHASE" "$*" >&2
+  fi
+}
+fail(){
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"error","phase":"%s","message":"%s"}\n' "$LOG_PHASE" "$(json_escape "$1")"
+  else
+    printf '[%s] error: %s\n' "$LOG_PHASE" "$1" >&2
+  fi
+  exit 1
+}
+on_error_trap() {
+  local line=$1 cmd=$2
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"error","phase":"%s","message":"%s"}\n' "$LOG_PHASE" "$(json_escape "line $line: $cmd")"
+  else
+    printf '[%s] fatal: line %s: %s\n' "$LOG_PHASE" "$line" "$cmd" >&2
+  fi
+  exit 1
+}
+trap 'on_error_trap "$LINENO" "$BASH_COMMAND"' ERR
 
 analysis_section() {
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"log","phase":"%s","level":"info","text":"%s"}\n' "$LOG_PHASE" "$(json_escape "$1")"
+    return
+  fi
   printf '\n[%s] %s\n' "$LOG_PHASE" "$1"
   printf '[%s] %s\n' "$LOG_PHASE" '------------------------------------------------------------'
 }
 
 analysis_value() {
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"log","phase":"%s","level":"info","text":"%s"}\n' "$LOG_PHASE" "$(json_escape "  $1: $2")"
+    return
+  fi
   printf '[%s]   %-24s %s\n' "$LOG_PHASE" "$1:" "$2"
 }
 
 confirm_installation() {
   local answer
   [[ $EUID -ne 0 ]] || fail "run this installer as your regular user, not as root"
+  if [[ $GUI_MODE -eq 1 ]]; then
+    # install-gui's Welcome screen already shows this disclosure and got
+    # consent before spawning this process; nothing more to ask here.
+    command -v pkexec >/dev/null 2>&1 || fail "pkexec is required for the graphical installer"
+    return
+  fi
   cat <<'EOF'
 react-drm replaces the existing Touch Bar interface.
 
@@ -136,9 +216,15 @@ EOF
 confirm_purge() {
   local answer
   LOG_PHASE=purge
+  gui_phase purge start
   if [[ ${#ANALYSIS_CONFLICTING_UNITS[@]} -eq 0 &&
         ${#ANALYSIS_CONFLICTING_PACKAGES[@]} -eq 0 &&
         ${#ANALYSIS_CONFLICTING_PROCESSES[@]} -eq 0 ]]; then
+    if [[ $GUI_MODE -eq 1 ]]; then
+      gui_ask continue
+      [[ "$GUI_ANSWER" == CONTINUE ]] || fail "installation cancelled before deployment"
+      return
+    fi
     cat <<'EOF'
 
 Analysis and package resolution completed successfully.
@@ -155,6 +241,12 @@ EOF
         *) warn "please type CONTINUE or no" ;;
       esac
     done
+  fi
+
+  if [[ $GUI_MODE -eq 1 ]]; then
+    gui_ask purge
+    [[ "$GUI_ANSWER" == PURGE ]] || fail "installation cancelled before purge"
+    return
   fi
 
   cat <<'EOF'
@@ -248,7 +340,9 @@ detect_touchbar_hardware() {
 
 detect_required_commands() {
   local cmd
-  for cmd in sudo systemctl systemd-analyze udevadm modinfo getent; do command -v "$cmd" >/dev/null 2>&1 || ANALYSIS_MISSING_COMMANDS+=("$cmd"); done
+  local privilege_cmd=sudo
+  [[ $GUI_MODE -eq 1 ]] && privilege_cmd=pkexec
+  for cmd in "$privilege_cmd" systemctl systemd-analyze udevadm modinfo getent; do command -v "$cmd" >/dev/null 2>&1 || ANALYSIS_MISSING_COMMANDS+=("$cmd"); done
   case "$PKG_MANAGER" in
     dnf) command -v dnf >/dev/null 2>&1 || ANALYSIS_MISSING_COMMANDS+=("dnf") ;;
     apt)
@@ -487,6 +581,7 @@ print_analysis() {
 
 analyze() {
   LOG_PHASE=analysis
+  gui_phase analysis start
   [[ $EUID -ne 0 ]] || fail "run this installer as your regular user, not as root"
   source_os_release
   detect_pkg_manager
@@ -519,6 +614,7 @@ analyze() {
   analysis_section "Result"
   analysis_value "Analysis" "successful"
   analysis_value "Package transaction" "resolved successfully"
+  gui_phase analysis done
 }
 
 phase_purge() {
@@ -529,6 +625,7 @@ phase_purge() {
         ${#ANALYSIS_CONFLICTING_PACKAGES[@]} -eq 0 &&
         ${#ANALYSIS_CONFLICTING_PROCESSES[@]} -eq 0 ]]; then
     info "No conflicting Touch Bar daemon found"
+    gui_phase purge done
     return
   fi
 
@@ -537,7 +634,7 @@ phase_purge() {
     unit=${entry#*:}
     info "Disabling $scope unit $unit"
     if [[ "$scope" == system ]]; then
-      sudo systemctl disable --now "$unit"
+      privileged systemctl disable --now "$unit"
     else
       systemctl --user disable --now "$unit"
     fi
@@ -546,11 +643,11 @@ phase_purge() {
   if [[ ${#ANALYSIS_CONFLICTING_PACKAGES[@]} -gt 0 ]]; then
     info "Removing packages: ${ANALYSIS_CONFLICTING_PACKAGES[*]}"
     case "$PKG_MANAGER" in
-      dnf) sudo dnf remove -y "${ANALYSIS_CONFLICTING_PACKAGES[@]}" ;;
-      apt) sudo apt-get purge -y "${ANALYSIS_CONFLICTING_PACKAGES[@]}" ;;
-      pacman) sudo pacman -Rns --noconfirm "${ANALYSIS_CONFLICTING_PACKAGES[@]}" ;;
+      dnf) privileged dnf remove -y "${ANALYSIS_CONFLICTING_PACKAGES[@]}" ;;
+      apt) privileged apt-get purge -y "${ANALYSIS_CONFLICTING_PACKAGES[@]}" ;;
+      pacman) privileged pacman -Rns --noconfirm "${ANALYSIS_CONFLICTING_PACKAGES[@]}" ;;
     esac
-    sudo systemctl daemon-reload
+    privileged systemctl daemon-reload
     systemctl --user daemon-reload
   fi
 
@@ -563,6 +660,7 @@ phase_purge() {
     fail "a conflicting daemon is still running; stop the manual installation and retry"
 
   info "Conflicting Touch Bar daemons removed"
+  gui_phase purge done
 }
 
 systemd_escape_path() {
@@ -583,18 +681,18 @@ install_dependencies() {
   case "$PKG_MANAGER" in
     dnf)
       if [[ ${#ANALYSIS_FEDORA_REPLACED_PACKAGES[@]} -gt 0 ]]; then
-        sudo dnf -y do \
+        privileged dnf -y do \
           --action=remove "${ANALYSIS_FEDORA_REPLACED_PACKAGES[@]}" \
           --action=install "${NEEDED_PACKAGES[@]}"
       else
-        sudo dnf install -y "${NEEDED_PACKAGES[@]}"
+        privileged dnf install -y "${NEEDED_PACKAGES[@]}"
       fi
       ;;
     apt)
-      sudo apt-get update
-      sudo apt-get install -y "${NEEDED_PACKAGES[@]}"
+      privileged apt-get update
+      privileged apt-get install -y "${NEEDED_PACKAGES[@]}"
       ;;
-    pacman) sudo pacman -Syu --needed --noconfirm "${NEEDED_PACKAGES[@]}" ;;
+    pacman) privileged pacman -Syu --needed --noconfirm "${NEEDED_PACKAGES[@]}" ;;
   esac
   command -v node >/dev/null 2>&1 || fail "Node.js is unavailable after package installation"
   command -v npm >/dev/null 2>&1 || fail "npm is unavailable after package installation"
@@ -626,22 +724,63 @@ install_config_gui_launcher() {
   install -m 0644 "$REPO_ROOT/system/react-drm-config-gui.desktop" "$apps_dir/react-drm-config-gui.desktop"
 }
 
+phase_gui_bootstrap() {
+  LOG_PHASE=gui
+  [[ $EUID -ne 0 ]] || fail "run this installer as your regular user, not as root"
+  source_os_release
+  detect_pkg_manager
+  [[ "$DISTRO_FAMILY" != nix ]] || fail "NixOS is not handled by this installer. Follow the manual setup instructions."
+  [[ -n "$PKG_MANAGER" ]] || fail "unsupported distribution: ${OS_PRETTY_NAME:-unknown}"
+  detect_required_commands
+  [[ ${#ANALYSIS_MISSING_COMMANDS[@]} -eq 0 ]] || fail "missing required commands: ${ANALYSIS_MISSING_COMMANDS[*]}"
+  detect_fedora_node_replacements
+  check_node_version
+  detect_package_sets
+
+  cat <<'EOF'
+This installs Node.js and the native build toolchain needed to open the
+graphical installer window. Nothing else changes yet: the same disclosure,
+analysis and confirmation prompts you'd see on the command line run next,
+inside that window, before anything is purged or deployed.
+EOF
+  local answer
+  while true; do
+    printf '\nType yes to continue, or no to cancel: '
+    IFS= read -r answer || fail "cancelled"
+    case "$answer" in
+      yes) break ;;
+      no) fail "cancelled" ;;
+      *) warn "please type yes or no" ;;
+    esac
+  done
+  command -v sudo >/dev/null 2>&1 || fail "sudo is required"
+  sudo -v || fail "unable to acquire administrative privileges"
+
+  install_dependencies
+  info "Installing npm dependencies"
+  (cd "$REPO_ROOT" && npm ci)
+  info "Building the graphical installer"
+  (cd "$REPO_ROOT/install-gui" && npm run build)
+  info "Launching the graphical installer"
+  REACT_DRM_REPO_DIR="$REPO_ROOT" exec "$REPO_ROOT/node_modules/.bin/electron" "$REPO_ROOT/install-gui" --mode=install
+}
+
 configure_user_groups() {
   local groups
   if [[ ${#ANALYSIS_MISSING_USER_GROUPS[@]} -gt 0 ]]; then
     info "Adding $USER to groups: ${ANALYSIS_MISSING_USER_GROUPS[*]}"
     groups=$(IFS=,; printf '%s' "${ANALYSIS_MISSING_USER_GROUPS[*]}")
-    sudo usermod -aG "$groups" "$USER"
+    privileged usermod -aG "$groups" "$USER"
     NEEDS_RELOGIN=1
   fi
 }
 
 install_udev_rules() {
   info "Installing udev rules"
-  sudo install -m 0644 "$REPO_ROOT/system/99-react-drm.rules" /etc/udev/rules.d/99-react-drm.rules
-  sudo udevadm control --reload
-  sudo udevadm trigger --action=add --subsystem-match=usb --subsystem-match=backlight
-  sudo udevadm trigger --action=add --subsystem-match=misc --sysname-match=uinput
+  privileged install -m 0644 "$REPO_ROOT/system/99-react-drm.rules" /etc/udev/rules.d/99-react-drm.rules
+  privileged udevadm control --reload
+  privileged udevadm trigger --action=add --subsystem-match=usb --subsystem-match=backlight
+  privileged udevadm trigger --action=add --subsystem-match=misc --sysname-match=uinput
 }
 
 install_user_service() {
@@ -694,6 +833,7 @@ install_user_service() {
 
 phase_deploy() {
   LOG_PHASE=deploy
+  gui_phase deploy start
   info "Deployment mode: $DEPLOYMENT_MODE"
   info "Building and deploying current repository: $REPO_ROOT"
   install_dependencies
@@ -709,14 +849,21 @@ phase_deploy() {
   else
     info "react-drm is active; no logout is required"
   fi
+  gui_phase deploy done
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"done","needsRelogin":%s}\n' "$([[ $NEEDS_RELOGIN -eq 1 ]] && printf true || printf false)"
+  fi
 }
 
 main() {
   case "${1:-install}" in
-    install) confirm_installation; analyze; confirm_purge; phase_purge; phase_deploy ;;
+    install)
+      [[ "${2:-}" == --gui ]] && GUI_MODE=1
+      confirm_installation; analyze; confirm_purge; phase_purge; phase_deploy ;;
     analyze) analyze ;;
     purge) confirm_installation; analyze; confirm_purge; phase_purge ;;
-    *) printf 'usage: %s [install|analyze|purge]\n' "${0##*/}" >&2; return 2 ;;
+    wizard) phase_gui_bootstrap ;;
+    *) printf 'usage: %s [install|analyze|purge|wizard]\n' "${0##*/}" >&2; return 2 ;;
   esac
 }
 
