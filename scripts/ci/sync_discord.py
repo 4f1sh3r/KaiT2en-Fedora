@@ -7,7 +7,7 @@ of posting a new one.
 
 Usage:
     DISCORD_UPSTREAM_WEBHOOK=https://discord.com/api/webhooks/... \\
-        python3 scripts/upstream/sync_discord.py [--dry-run]
+        python3 scripts/ci/sync_discord.py [--dry-run]
 """
 
 from __future__ import annotations

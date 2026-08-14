@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - data/features.yml
-      - scripts/upstream/**
+      - scripts/ci/**
       - .github/workflows/upstream-discord.yml
 
   pull_request:
     paths:
       - data/features.yml
-      - scripts/upstream/**
+      - scripts/ci/**
       - .github/workflows/upstream-discord.yml
 
   workflow_dispatch:
@@ -46,7 +46,7 @@ jobs:
         run: pip install -r website/requirements.txt
 
       - name: Validate the feature board data
-        run: python scripts/upstream/schema.py
+        run: python scripts/ci/schema.py
 
       - name: Build the site
         run: python website/build.py
@@ -92,7 +92,7 @@ jobs:
         env:
           DISCORD_UPSTREAM_WEBHOOK: ${{ secrets.DISCORD_UPSTREAM_WEBHOOK }}
         run: |
-          python scripts/upstream/sync_discord.py \
+          python scripts/ci/sync_discord.py \
             ${{ inputs.dry_run && '--dry-run' || '' }}
 
       - name: Commit message-id state
