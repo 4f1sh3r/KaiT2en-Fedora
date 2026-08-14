@@ -35,6 +35,11 @@ without pretending to know more than the kernel tells us.
 For the first time it became possible to click through the machine and
 understand why a device exists before deciding that it must be the problem.
 
+<figure>
+  <img src="../img/blog/t2-power-explorer.jpg" alt="T2 Power Explorer showing the PCI, Thunderbolt and T2 device hierarchy">
+  <figcaption>Power Explorer keeps bridges and their children together, while the detail pane shows what the kernel actually exposes.</figcaption>
+</figure>
+
 One typical before-and-after measurement on the 15,1 was:
 
 ```text
@@ -63,6 +68,11 @@ power limits and those external events. It can show the active limits and tune
 them against a real kernel build. The goal is not the largest number on a
 slider. It is useful short-term speed without turning sustained work into a
 frequency roller coaster.
+
+<figure>
+  <img src="../img/blog/t2-cpu-control.jpg" alt="T2 CPU Control showing power limits, logical CPU state and package temperature">
+  <figcaption>CPU Control puts package power, temperature, per-CPU throttling and the active limits in one view.</figcaption>
+</figure>
 
 Both tools came from the same lesson: power management becomes much easier
 when the relationships are visible. A list of red values is not an

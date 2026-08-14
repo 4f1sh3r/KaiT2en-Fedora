@@ -57,6 +57,14 @@ it, right?
 
 Nope.
 
+<figure>
+  <div class="image-pair">
+    <img src="../img/blog/t2-hybrid-gpu-control.jpg" alt="T2 Hybrid GPU Control showing the discrete GPU awake in DynPwr">
+    <img src="../img/blog/hybrid-dyn-off.jpg" alt="T2 Hybrid GPU Control showing the discrete GPU asleep in DynOff">
+  </div>
+  <figcaption>On the working 15,1 these are two sides of the same cycle: DynPwr while the AMD GPU is awake, DynOff after runtime suspend. The Navi machines reached DynOff too, but did not reliably make it back.</figcaption>
+</figure>
+
 ## DynOff was actually not Dyn - just off
 
 `DynOff` proves that the GPU was off. Hybrid graphics also requires it to
@@ -133,6 +141,30 @@ race condition might be hiding somewhere in the pile.
 The MacBookPro16,4 joined the party later and reproduced the important part:
 we could power its Navi GPU off, but waking it ended in the same long PCIe wait,
 ATOM BIOS loop and ASIC-init failure. Different Navi GPU, same rabbit hole.
+
+## The fallback is less clever, but it works
+
+Until Navi can survive that complete power cycle, KAIT2EN installs the regular
+**T2 GPU Control** app on the affected models. It selects Intel, AMD or the
+power-saving mode and writes the required Apple NVRAM preference. The user has
+to reboot, but that is still considerably nicer than writing NVRAM variables
+by hand or juggling GMUX kernel parameters.
+
+<figure>
+  <img src="../img/blog/t2-gpu-control.jpg" alt="T2 GPU Control offering integrated, discrete and power-saving GPU modes">
+  <figcaption>The temporary solution trades live switching for a predictable reboot and still makes the useful power-saving configuration a button click away.</figcaption>
+</figure>
+
+Hybrid graphics is not automatically the best mode for every job either. If a
+game is already struggling to reach 60 FPS, rendering on the dGPU and copying
+its framebuffer through the iGPU is not where you want to spend the remaining
+headroom. Competitive gaming is one perfectly valid reason to boot with the
+dGPU as primary and avoid that copy completely.
+
+So this is not a useless consolation prize. It covers both the battery-friendly
+desktop setup and the direct dGPU path without asking users to become experts
+in Apple's boot variables. It is simply not the seamless runtime switching we
+still want for the 16,1 and 16,4.
 
 ## This seems to be our Waterloo
 

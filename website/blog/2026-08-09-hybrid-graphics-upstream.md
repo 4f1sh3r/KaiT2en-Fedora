@@ -56,6 +56,14 @@ KAIT2EN therefore installs **T2 Hybrid GPU Control** on the 15,1. It selects
 the integrated boot GPU, shows whether the discrete GPU is in DynOff or DynPwr
 and leaves ordinary PRIME offload to the desktop and applications.
 
+<figure>
+  <div class="image-pair">
+    <img src="../img/blog/t2-hybrid-gpu-control.jpg" alt="T2 Hybrid GPU Control showing the discrete GPU awake in DynPwr">
+    <img src="../img/blog/hybrid-dyn-off.jpg" alt="T2 Hybrid GPU Control showing the discrete GPU asleep in DynOff">
+  </div>
+  <figcaption>The display stays on Intel in both cases. DynPwr means the AMD GPU is awake; DynOff means runtime PM has put it back to sleep.</figcaption>
+</figure>
+
 The feature has been tested with repeated wakeups, suspend and resume, and a
 collection of Thunderbolt and USB-C displays. It is now our default path for
 this model.

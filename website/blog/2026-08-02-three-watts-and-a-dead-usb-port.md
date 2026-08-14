@@ -29,6 +29,11 @@ The first half of the result looked exactly like what we wanted:
 
 The missing Samsung T7 was the part no power statistic could show us.
 
+<figure>
+  <img src="../img/blog/pc3.jpg" alt="PowerTOP showing the MacBookPro15,1 limited to package C3">
+  <figcaption>Before the PCIe path was fixed, the package stopped at C3 while the CPU cores were already sleeping deeply.</figcaption>
+</figure>
+
 ## The tempting wrong answer
 
 The first patch kept the Titan Ridge USB controllers in D0. That restored
@@ -56,6 +61,11 @@ otherwise rediscover the same attractive workaround.
 Letting Linux manage the PCIe port services with `pcie_ports=native` restored
 USB 3 hotplug without forcing the controllers to stay in D0. It also made the
 PCIe tree behave much more consistently during runtime power management.
+
+<figure>
+  <img src="../img/blog/pc7.jpg" alt="PowerTOP showing package C7 residency on the MacBookPro15,1">
+  <figcaption>Afterwards the same machine spent more than half of the sample in package C7, with working USB 3 hotplug.</figcaption>
+</figure>
 
 That does not mean the whole Thunderbolt story is finished. The RTD3 path can
 still interact badly with full system suspend, and we are not going to call a
