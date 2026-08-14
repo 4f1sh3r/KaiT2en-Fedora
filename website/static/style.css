@@ -27,6 +27,17 @@
     padding: 0;
 }
 
+ul,
+ol {
+    margin: 0 0 16px;
+    padding-left: 24px;
+}
+
+li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
 html {
     scroll-behavior: smooth;
 }
@@ -1309,22 +1320,8 @@ hero-brand h1 {
     line-height: 1.7;
 }
 
-.page-content ul,
-.page-content ol {
-    margin-bottom: 16px;
-    padding-left: 0;
-    list-style-position: inside;
-}
-
 .page-content li {
-    margin-bottom: 8px;
     color: var(--text-secondary);
-    line-height: 1.6;
-}
-
-.page-content ul + p,
-.page-content ol + p {
-    margin-top: 24px;
 }
 
 .page-content strong {
@@ -1993,6 +1990,7 @@ hero-brand h1 {
 .privacy-content ul {
     list-style: none;
     margin: 16px 0;
+    padding: 0;
 }
 
 .privacy-content ul li {
@@ -2397,6 +2395,7 @@ h4:hover > .headerlink,
 /* Copy button on documentation code blocks. */
 .code-wrap {
     position: relative;
+    margin-bottom: 16px;
 }
 
 .code-wrap .copy-btn {
