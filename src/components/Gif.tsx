@@ -4,6 +4,9 @@ import { parseGIF, decompressFrames } from 'gifuct-js';
 import { invalidate } from '../renderer/invalidate';
 import type { GifNode } from '../scene/types';
 import type { Style } from '../scene/style';
+import { createLogger } from '../logger';
+
+const log = createLogger('Gif');
 
 export interface GifProps {
   /** Absolute path to a `.gif` file. */
@@ -157,7 +160,7 @@ export function Gif(props: GifProps): React.ReactElement {
         if (playing) play(dec, 0);
         else draw(dec, 0); // paused: show the first frame
       })
-      .catch(e => console.warn('[react-drm] <Gif> failed to load', src, (e as Error).message));
+      .catch(e => log.warn('failed to load', src, (e as Error).message));
 
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [src, playing, loop]);

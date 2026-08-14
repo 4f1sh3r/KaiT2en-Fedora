@@ -1,6 +1,9 @@
 import fs from 'fs';
 import { loadAddon } from './load-addon';
 import type { DrawCommand, BinaryFrame } from '../scene/serialize';
+import { createLogger } from '../logger';
+
+const log = createLogger('display');
 
 function resolveCardPath(devicePath?: string): string {
   if (devicePath) return devicePath;
@@ -93,7 +96,7 @@ export class DrmDisplay implements Display {
     const info = this.handle.setup();
     this.width = info.width;
     this.height = info.height;
-    console.log(`[react-drm] DRM display ready: ${this.width}×${this.height} on ${resolvedPath}`);
+    log.info(`DRM display ready: ${this.width}×${this.height} on ${resolvedPath}`);
   }
 
   // clips: damage rects (logical coords) for partial flush. Omit → whole-FB.
@@ -137,9 +140,9 @@ export class DrmDisplay implements Display {
     const info = this.handle.setup();
     this.closed = false;
     if (info.width !== this.width || info.height !== this.height) {
-      console.warn(`[react-drm] display size changed on reopen: ${info.width}×${info.height} (was ${this.width}×${this.height})`);
+      log.warn(`size changed on reopen: ${info.width}×${info.height} (was ${this.width}×${this.height})`);
     }
-    console.log(`[react-drm] DRM display reopened on ${resolvedPath}`);
+    log.info(`DRM display reopened on ${resolvedPath}`);
   }
 }
 
@@ -159,7 +162,7 @@ export function createDisplay(devicePath?: string): Display {
     return new PreviewDisplay();
   }
   if (backend !== 'drm') {
-    console.warn(`[react-drm] unknown REACT_DRM_BACKEND=${backend}, falling back to 'drm'`);
+    log.warn(`unknown REACT_DRM_BACKEND=${backend}, falling back to 'drm'`);
   }
   return new DrmDisplay(devicePath);
 }

@@ -16,6 +16,11 @@ import { KeyboardReader, findKeyboardDevices, findPointerDevices, findLidDevice 
 import type { SceneNode, RootContainer } from '../scene/types';
 import type { LayoutBox } from '../scene/layout';
 import type { Display } from '../native/binding';
+import { createLogger } from '../logger';
+
+const log = createLogger('renderer');
+const backlightLog = createLogger('backlight');
+const profileLog = createLogger('profile');
 
 export interface RenderOptions {
   /**
@@ -208,6 +213,7 @@ function watchEvdev(
   enumerate: () => string[],
   onEvent: (type: number, code: number, value: number) => void,
 ): () => void {
+  const log = createLogger(label);
   let stopped = false;
   let enumRetries = 0;
   let enumTimer: ReturnType<typeof setTimeout> | null = null;
@@ -229,13 +235,13 @@ function watchEvdev(
         chunk => parseEvdev(carry, chunk, onEvent),
         err => {
           if (stopped) return;
-          console.warn(`[react-drm] ${label}: ${dev}: ${err.message}`);
+          log.warn(`${dev}: ${err.message}`);
           if (streamStop) { streamStop(); streamStop = null; }
           if (attempts < INPUT_RETRY_MAX) {
             attempts++;
             retryTimer = setTimeout(() => { retryTimer = null; start(); }, INPUT_RETRY_MS);
           } else {
-            console.warn(`[react-drm] ${label}: ${dev}: giving up after ${attempts} reopen attempts`);
+            log.warn(`${dev}: giving up after ${attempts} reopen attempts`);
           }
         },
         () => { attempts = 0; }, // clean open — reset the reopen budget
@@ -265,7 +271,7 @@ function watchEvdev(
         enumRetries++;
         enumTimer = setTimeout(() => { enumTimer = null; reconcile(true); }, INPUT_RETRY_MS);
       } else if (initial) {
-        console.warn(`[react-drm] ${label}: no devices found, giving up after ${enumRetries} retries`);
+        log.warn(`no devices found, giving up after ${enumRetries} retries`);
       }
       return;
     }
@@ -280,7 +286,7 @@ function watchEvdev(
       if (!want.has(dev)) { deviceStops.get(dev)!(); deviceStops.delete(dev); changed = true; }
     }
     if (changed) {
-      console.log(`[react-drm] ${label}: monitoring ${[...deviceStops.keys()].join(', ') || '(none)'}`);
+      log.info(`monitoring ${[...deviceStops.keys()].join(', ') || '(none)'}`);
     }
   }
 
@@ -294,7 +300,7 @@ function watchEvdev(
       hotplugTimer = setTimeout(() => { hotplugTimer = null; reconcile(false); }, 300);
     });
   } catch (e) {
-    console.warn(`[react-drm] ${label}: hotplug watch unavailable: ${(e as NodeJS.ErrnoException).message}`);
+    log.warn(`hotplug watch unavailable: ${(e as NodeJS.ErrnoException).message}`);
   }
 
   reconcile(true);
@@ -401,7 +407,7 @@ class Backlight {
     if (!this.tbFile) return;
     try { fs.writeFileSync(this.tbFile, String(Math.round(value))); } catch (e) {
       this.tbFile = null; // drop the stale path so the next write re-resolves
-      console.warn('[react-drm] backlight write failed (need root?):', (e as NodeJS.ErrnoException).code);
+      backlightLog.warn('write failed (need root?):', (e as NodeJS.ErrnoException).code);
     }
   }
 
@@ -637,7 +643,7 @@ export function render(
 
     const c = prof.commits || 1, b = prof.blits || 1;
     const skipPct = ((prof.skippedLayout / c) * 100).toFixed(0);
-    console.log(`[profile] commits/s=${prof.commits} blits/s=${prof.blits} | `
+    profileLog.info(`commits/s=${prof.commits} blits/s=${prof.blits} | `
       + `layout(full=${prof.fullLayout}, skip=${prof.skippedLayout}, skip%=${skipPct}) | `
       + `layout=${(prof.layoutMs/c).toFixed(2)}ms ser=${(prof.serMs/c).toFixed(2)}ms blit=${(prof.blitMs/b).toFixed(2)}ms | `
       + `draw_svg/frame=${(prof.svg/c).toFixed(1)} cmds/frame=${(prof.cmds/c).toFixed(0)} | `
@@ -800,7 +806,7 @@ export function render(
 
   const root = reconciler.createContainer(
     container, 0, null, false, null, 'react-drm',
-    (err: Error) => console.error('[react-drm] recoverable error:', err),
+    (err: Error) => log.error('recoverable error:', err),
     null,
   );
 
@@ -824,7 +830,7 @@ export function render(
   if (!yogaReady()) {
     loadYogaEngine()
       .then(() => doUpdate(latestEl))
-      .catch(err => console.error('[react-drm] layout engine failed to load:', err));
+      .catch(err => log.error('layout engine failed to load:', err));
   }
 
   // The evdev watchers' worker fds die silently when the devices disappear
@@ -862,9 +868,9 @@ export function render(
         onTouchEnd:   (x, y) => { registry.touchEnd(x, y); },
       });
       stopTouch = () => { touchDevice.stop(); stopTouch = () => {}; };
-      console.log('[react-drm] touch device ready');
+      log.info('touch device ready');
     } catch (e) {
-      console.warn('[react-drm] no touch device:', (e as Error).message ?? e);
+      log.warn('no touch device:', (e as Error).message ?? e);
       if (!suspended) {
         touchRetryTimer = setTimeout(() => {
           touchRetryTimer = null;
@@ -889,7 +895,7 @@ export function render(
     backlight.stop(); // cancel any in-flight resume settle loop
     backlight.off();
     display.close(); // device disappears during suspend — drop the fd cleanly
-    console.log('[react-drm] suspended (display closed)');
+    log.info('suspended (display closed)');
   }
 
   function resume(): void {
@@ -906,7 +912,7 @@ export function render(
     backlight.onVerified(adaptive, activeLevel); // retry until the panel confirms — HID backlight re-binds late
     startIdleTimers();
     renderCurrent(true); // display was closed during suspend — force a repaint past the dedup cache
-    console.log('[react-drm] resumed');
+    log.info('resumed');
   }
 
   return {

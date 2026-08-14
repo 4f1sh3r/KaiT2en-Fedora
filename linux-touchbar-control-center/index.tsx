@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { KeyboardReader, PreviewDisplay, createDisplay, renderHot, resolveKeyCode, startPreviewServer } from 'react-drm';
 import { DISPLAY, SCREENSHOT, SLEEP } from './lib/utils/configLoader';
-import { attachTouchBar, ensureTouchBarAttached, watchSleep } from './services/suspend';
-import { createLogger } from './lib/utils/logger';
+import { attachTouchBar, ensureTouchBarAttached, watchSleep } from '@/lib/services/suspend';
+import { createLogger } from 'react-drm';
 
 const log = createLogger('react-drm');
 

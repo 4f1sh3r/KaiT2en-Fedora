@@ -2,6 +2,9 @@ import { loadAddon } from './load-addon';
 import { DEFAULT_DISPLAY_W, DEFAULT_DISPLAY_H } from './input';
 import type { Display, DamageRect, BarsOpts } from './binding';
 import type { DrawCommand, BinaryFrame } from '../scene/serialize';
+import { createLogger } from '../logger';
+
+const log = createLogger('display');
 
 interface NativePreviewHandle {
   setup(): { width: number; height: number };
@@ -48,7 +51,7 @@ export class PreviewDisplay implements Display {
     const info = this.handle.setup();
     this.width = info.width;
     this.height = info.height;
-    console.log(`[react-drm] preview display ready: ${this.width}×${this.height} (no hardware)`);
+    log.info(`preview display ready: ${this.width}×${this.height} (no hardware)`);
   }
 
   private emitFrame(): void {

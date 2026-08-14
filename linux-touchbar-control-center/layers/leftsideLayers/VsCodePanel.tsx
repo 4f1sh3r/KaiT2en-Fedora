@@ -4,8 +4,8 @@ import { MdUndo, MdRedo, MdSearch, MdKeyboardCommandKey } from 'react-icons/md';
 import {
   VscDebugStart, VscDebugStop, VscDebugStepOver, VscDebugStepInto, VscDebugStepOut, VscGear,
 } from 'react-icons/vsc';
-import { useActiveWindow } from '../../hooks/useActiveWindow';
-import { useVsCodeKeys } from '../../hooks/useVsCodeKeys';
+import { useActiveWindow } from '@/lib/hooks/useActiveWindow';
+import { useVsCodeKeys } from '@/lib/hooks/useVsCodeKeys';
 
 const DIM = '#cccccc';
 const GROUP_GAP = 12;

@@ -4,6 +4,9 @@ import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { PreviewDisplay } from '../native/preview-display';
 import type { RenderResult } from '../renderer/renderer';
+import { createLogger } from '../logger';
+
+const log = createLogger('preview-server');
 
 // Wire protocol: every WS message is binary — a 16-byte header (width,
 // height, stride, format as uint32 LE) followed by raw pixel bytes. Format 1
@@ -103,8 +106,7 @@ export function startPreviewServer(
   });
 
   httpServer.listen(port, host, () => {
-    console.log('[react-drm] preview server running');
-    console.log(`  http://${host}:${port}`);
+    log.info(`running at http://${host}:${port}`);
   });
 
   return {

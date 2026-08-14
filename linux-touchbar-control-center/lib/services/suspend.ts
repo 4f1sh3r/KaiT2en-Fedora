@@ -3,8 +3,8 @@ import path from 'path';
 import { spawn } from 'child_process';
 import dbus from 'dbus-next';
 import { usbReset } from 'react-drm';
-import { SLEEP } from '../lib/utils/configLoader';
-import { createLogger } from '../lib/utils/logger';
+import { SLEEP } from '@/lib/utils/configLoader';
+import { createLogger } from 'react-drm';
 
 const log = createLogger('suspend');
 

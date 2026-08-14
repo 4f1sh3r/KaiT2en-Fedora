@@ -9,7 +9,7 @@
  * is rethrown rather than silently falling back, so broken edits fail loudly.
  */
 
-import { createLogger } from './logger';
+import { createLogger } from 'react-drm';
 
 const log = createLogger('config');
 
@@ -42,4 +42,4 @@ export const vscodeKeysFor = mod.vscodeKeysFor;
 export const DOCK = mod.DOCK;
 export const FN_LAYER = mod.FN_LAYER;
 
-export type { BrowserKeymap, VsCodeKeymap, DockApp } from '../../config.blueprint';
+export type { BrowserKeymap, VsCodeKeymap, DockApp } from '@/config.blueprint';

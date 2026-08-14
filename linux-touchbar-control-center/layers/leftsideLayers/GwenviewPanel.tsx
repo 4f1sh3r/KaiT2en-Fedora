@@ -4,7 +4,7 @@ import {
   MdChevronLeft, MdChevronRight, MdZoomIn, MdZoomOut,
   MdRotateLeft, MdRotateRight, MdSlideshow, MdDelete, MdCheck,
 } from 'react-icons/md';
-import { useGwenview } from '../../hooks/useGwenview';
+import { useGwenview } from '@/lib/hooks/useGwenview';
 
 const DIM = '#cccccc';
 const TRASH_CLR = '#f87171'; // matches BrowserPanel's close-button danger color

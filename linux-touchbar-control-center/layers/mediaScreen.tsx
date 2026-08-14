@@ -10,8 +10,8 @@ import {
   MdVolumeOff, MdVolumeDown, MdVolumeUp,
   MdApps,
 } from 'react-icons/md';
-import { BackButton } from '../components/BackButton';
-import { keys } from '../services/keyInjector';
+import { BackButton } from '@/components/BackButton';
+import { keys } from '@/lib/services/keyInjector';
 
 const KBD_ILLUM_DOWN_ICON = path.join(__dirname, '..', 'assets', 'kbd_illum_down.svg');
 const KBD_ILLUM_UP_ICON = path.join(__dirname, '..', 'assets', 'kbd_illum_up.svg');

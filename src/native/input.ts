@@ -1,5 +1,8 @@
 import fs from 'fs';
 import { loadAddon } from './load-addon';
+import { createLogger } from '../logger';
+
+const log = createLogger('touch');
 
 interface InputAddon {
   TouchReader: new (devicePath: string) => NativeTouchReader;
@@ -180,7 +183,7 @@ export class TouchReader {
       try {
         callback(type, rawX, rawY);
       } catch (e) {
-        console.error('[react-drm] touch handler threw:', e);
+        log.error('handler threw:', e);
       }
     });
   }

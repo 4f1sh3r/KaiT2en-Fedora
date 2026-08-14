@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { execFile, execFileSync, spawn } from 'child_process';
 import { Box, Text, Button } from 'react-drm';
 import { MdVolumeOff, MdVolumeDown, MdVolumeUp } from 'react-icons/md';
-import { BackButton } from '../components/BackButton';
+import { BackButton } from '@/components/BackButton';
 import { useLayers } from './index';
-import { createLogger } from '../lib/utils/logger';
+import { createLogger } from 'react-drm';
 
 const log = createLogger('audioSlider');
 

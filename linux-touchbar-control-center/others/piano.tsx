@@ -3,8 +3,8 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import { Box, Button, Text, LayoutContext } from 'react-drm';
 import type { BoxNode } from 'react-drm';
-import { registerSuspendHooks } from '../services/suspend';
-import { createLogger } from '../lib/utils/logger';
+import { registerSuspendHooks } from '@/lib/services/suspend';
+import { createLogger } from 'react-drm';
 
 const log = createLogger('piano');
 

@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { readdirSync } from 'fs';
-import type { DockApp } from '../lib/utils/configLoader';
-import { createLogger } from '../lib/utils/logger';
+import type { DockApp } from '@/lib/utils/configLoader';
+import { createLogger } from 'react-drm';
 
 const log = createLogger('dock');
 

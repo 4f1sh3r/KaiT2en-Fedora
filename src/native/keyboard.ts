@@ -1,4 +1,7 @@
 import { loadAddon } from './load-addon';
+import { createLogger } from '../logger';
+
+const log = createLogger('keyboard');
 
 interface KeyboardAddon {
   KeyboardReader: new (devicePath: string) => NativeKeyboardReader;
@@ -101,7 +104,7 @@ export class KeyboardReader {
       // uncaught exception and aborts the whole process. Contain + log instead.
       this.listeners.forEach(l => {
         try { l(code, value); }
-        catch (e) { console.error('[react-drm] keyboard listener threw:', e); }
+        catch (e) { log.error('listener threw:', e); }
       });
     });
   }
@@ -142,7 +145,7 @@ export class KeyboardReader {
     this.suspended = true;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     try { this.handle.stop(); } catch (_) { /* already gone */ }
-    console.log(`[react-drm] keyboard: released ${this.currentPath} for sleep`);
+    log.info(`released ${this.currentPath} for sleep`);
   }
 
   /**
@@ -155,9 +158,9 @@ export class KeyboardReader {
     try {
       this.handle = this.openHandle();
       this.startHandle();
-      console.log(`[react-drm] keyboard: reopened ${this.currentPath} after resume`);
+      log.info(`reopened ${this.currentPath} after resume`);
     } catch (_) {
-      console.warn(`[react-drm] keyboard: not back yet after resume, retrying in ${RECONNECT_DELAY_MS}ms`);
+      log.warn(`not back yet after resume, retrying in ${RECONNECT_DELAY_MS}ms`);
       this.scheduleReconnect(RECONNECT_DELAY_MS);
     }
   }
