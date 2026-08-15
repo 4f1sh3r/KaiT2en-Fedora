@@ -5,7 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
 require_root
 require_repo_root
 require_fedora
-require_command dkms dracut find grep install lsinitrd modinfo modprobe depmod rm sed
+require_command dkms dracut find grep install lsinitrd modinfo modprobe depmod rm sed sort
 
 PACKAGE=brcmfmac_kait2en
 KERNEL_HOOK=/etc/kernel/install.d/39-kait2en-dkms-cleanup.install
@@ -43,7 +43,8 @@ esac
 
 dkms_versions() {
 	dkms status -m "$PACKAGE" 2>/dev/null |
-		sed -n "s|^$PACKAGE/\\([^,:]*\\)[,:].*|\\1|p"
+		sed -n "s|^$PACKAGE/\\([^,:]*\\)[,:].*|\\1|p" |
+		sort -u
 }
 
 restore_dkms_post_transaction() {

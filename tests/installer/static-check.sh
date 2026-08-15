@@ -66,7 +66,8 @@ grep -Fq 'module_param_named(max_pm, brcmf_max_pm, bool, 0400);' \
 	modules/brcmfmac_kait2en/common.c
 grep -Fq 'settings->default_pm = brcmf_max_pm ? PM_MAX : PM_FAST;' \
 	modules/brcmfmac_kait2en/common.c
-grep -Fq 'kait2en-brcmfmac-pm-max.conf' \
+! grep -Fq 'brcmfmac_kait2en' scripts/fedora/install-dkms-modules.sh
+! grep -Fq 'kait2en-brcmfmac-pm-max.conf' \
 	scripts/fedora/install-dkms-modules.sh
 grep -Fq 'rm -f "$BRCMFMAC_PM_CONFIG"' \
 	scripts/fedora/restore-stock-brcmfmac.sh

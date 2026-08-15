@@ -4,6 +4,13 @@
 
 # KAIT2EN Fedora
 
+> [!WARNING]
+> The brcmfmac PM_MAX experiment on this branch has been withdrawn. Extended
+> BCM4364 testing found intermittent, reproducible 50-250 ms latency spikes.
+> The installer no longer installs the experimental Wi-Fi module. Existing
+> testers should run `sudo bash scripts/fedora/restore-stock-brcmfmac.sh` and
+> reboot to restore Fedora's stock driver.
+
 KAIT2EN brings cutting edge T2 Mac support to stock Fedora using DKMS modules.
 You will receive kernel updates directly from Fedora and the latest T2 modules from us.
 
