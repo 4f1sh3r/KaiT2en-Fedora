@@ -9,5 +9,6 @@ replace the in-tree `thunderbolt` driver. Titan Ridge controllers are matched
 through their PCIe switch topology. Ice Lake controllers use Apple's `TRP*`
 ACPI root-port names and are limited to the two Ice Lake NHI PCI IDs.
 
-The module does not alter PCI D-state policy. Titan Ridge USB 3 hotplug relies
-on native PCIe port services, enabled by Kait2en with `pcie_ports=native`.
+On Titan Ridge systems the module keeps the xHCI controllers and their PCIe
+ports out of D3. This preserves fast system resume. PM ordering links remain
+active for the other Thunderbolt hotplug ports and NHIs.
