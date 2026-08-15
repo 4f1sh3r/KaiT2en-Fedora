@@ -143,6 +143,7 @@ audio behavior and diagnostics.
 | `/etc/systemd/system/kait2en-suspend.service` | Calls the suspend helper before `sleep.target` and again after resume |
 | `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Handles the BCM4377 suspend workaround described below |
 | `/etc/udev/rules.d/90-kait2en-t2-network.rules` | Renames the internal T2 debug interface to `t2_ncm` and excludes it from NetworkManager |
+| `/etc/modprobe.d/kait2en-silent-blacklist.conf` | Silently ignores attempts to load drivers replaced by KAIT2EN modules |
 | `/etc/systemd/system/kait2en-t2-ncm-down.service` | Starts when `t2_ncm` appears |
 | `/usr/local/libexec/kait2en/kait2en-t2-ncm-down.sh` | Keeps the internal debug interface down |
 | `/usr/share/plymouth/themes/kait2en/` | Fedora's spinner theme with the KAIT2EN watermark |

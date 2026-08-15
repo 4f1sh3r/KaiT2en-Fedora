@@ -21,6 +21,7 @@ shell_files=(
 	packaging/installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
 	scripts/fedora/install-dkms-modules.sh
+	scripts/fedora/install-kernel-args.sh
 	scripts/fedora/lib.sh
 	scripts/macos/download-fedora-iso.sh
 	scripts/macos/prepare-fedora-installer.sh
@@ -82,6 +83,9 @@ grep -Fq 'dracut --force --force-drivers' \
 # without headers has to be refused before anything is removed.
 grep -Fq 'require_kernel_headers' scripts/fedora/install-dkms-modules.sh
 grep -Fq 'require_kernel_headers()' scripts/fedora/lib.sh
+grep -Fq '/etc/modprobe.d/kait2en-silent-blacklist.conf' \
+	scripts/fedora/install-kernel-args.sh
+grep -Fq "printf 'install %s /bin/true" scripts/fedora/install-kernel-args.sh
 grep -Fq '"etc", "xdg", "autostart"' \
 	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
 ! grep -InE 'find_regular_user|home\.lstrip|os\.chown' \
