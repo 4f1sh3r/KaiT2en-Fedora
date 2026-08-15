@@ -11,7 +11,7 @@
     },
     "thunderbolt-device-links": {
       "message_id": "1533951135214469344",
-      "hash": "547f96d0783dfdb47e2b1453e301182d9757438c609fdf3c63c7d47da531246c"
+      "hash": "bb00e0fd24c4528a73197ce8fe53e3176b23beac69e0fa3e71dd8579f9c7a688"
     },
     "apple-t2-early-cpu-offlining": {
       "message_id": "1537074756724199444",
@@ -27,7 +27,7 @@
     },
     "thunderbolt-controller-power-15-1": {
       "message_id": "1533951141778423979",
-      "hash": "cd921c3dac59ed56233111fe0f6687bc38546faa43e0d867b33432de17267497"
+      "hash": "912969bf2eb97ae31c6cce45ef7e6215cb7767b19144b1bdf80cef27260f416a"
     },
     "volume-slider-crackling": {
       "message_id": "1533951145570209955",
