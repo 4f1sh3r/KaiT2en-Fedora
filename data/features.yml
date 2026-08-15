@@ -83,14 +83,18 @@ items:
   - id: thunderbolt-device-links
     title: "Thunderbolt device links"
     state: in-progress
-    upstream: submitted
-    version: v7
+    upstream: preparing
+    version: v8
     project: Linux kernel
     subsystem: Thunderbolt
     authors:
       - ruiCON
-    link: "https://patchwork.kernel.org/project/linux-usb/patch/20260731161842.12636-1-atharvatiwarilinuxdev@gmail.com/"
-    updated: "2026-07-31"
+      - deqrocks
+    updated: "2026-08-15"
+    notes: >-
+      Maintainers did not accept v7. A new three-patch series is being
+      prepared to move Apple device-link discovery into the Thunderbolt PCI
+      code and add Titan Ridge and Ice Lake support separately.
 
   # --- Available -------------------------------------------------------------
 
@@ -148,8 +152,14 @@ items:
     authors:
       - deqrocks
     link: "https://patchwork.kernel.org/project/linux-usb/patch/20260730210655.15514-1-dev@deq.rocks/"
-    updated: "2026-07-30"
-    notes: Withdrawn upstream, still investigating.
+    updated: "2026-08-15"
+    notes: >-
+      The original xHCI patch was withdrawn after native PCIe port services
+      restored USB 3 hotplug from runtime D3. Further testing found a separate
+      system-resume regression: allowing the Titan Ridge xHCI controllers and
+      their ports into D3 delays EC interrupt unblock by about 20 seconds.
+      Kait2en therefore retains the D3 restriction downstream while the proper
+      upstream fix is investigated.
 
   - id: volume-slider-crackling
     title: "Volume slider without DSP crackling"
