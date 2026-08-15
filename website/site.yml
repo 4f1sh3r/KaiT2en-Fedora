@@ -55,7 +55,7 @@ index:
       type: markdown
       file: pages/concept.md
     - id: installation
-      title: Get started
+      title: Install KAIT2EN
       group: Get started
       type: install
       subtitle: The installation starts in macOS and continues in Fedora.
