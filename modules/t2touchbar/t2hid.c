@@ -886,6 +886,7 @@ static int apple_backlight_init(struct hid_device *hdev)
 	asc->backlight->cdev.name = ":white:" LED_FUNCTION_KBD_BACKLIGHT;
 	asc->backlight->cdev.max_brightness = le16_to_cpu(rep->backlight_on_max);
 	asc->backlight->cdev.brightness_set_blocking = apple_backlight_led_set;
+	asc->backlight->cdev.flags = LED_HW_PLUGGABLE;
 	/* VHCI re-enumeration restores the cached brightness in the next probe. */
 
 	brightness = READ_ONCE(apple_backlight_resume_brightness);
