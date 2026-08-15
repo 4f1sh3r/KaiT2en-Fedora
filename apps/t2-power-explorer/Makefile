@@ -26,7 +26,8 @@ build:
 
 install:
 	$(INSTALL) -d -o root -g root -m 0755 $(BIN_DIR) $(APPS_DIR) $(ICONS_DIR) $(LIBEXEC_DIR) $(POLICY_DIR)
-	$(INSTALL) -o root -g root -m 0755 $(BIN_SRC) $(BIN_DIR)/$(BIN_NAME)
+	$(INSTALL) -o root -g root -m 0755 $(BIN_SRC) $(BIN_DIR)/.$(BIN_NAME).new
+	mv -f $(BIN_DIR)/.$(BIN_NAME).new $(BIN_DIR)/$(BIN_NAME)
 	$(INSTALL) -o root -g root -m 0755 $(HELPER_SRC) $(LIBEXEC_DIR)/$(HELPER_SRC)
 	$(INSTALL) -o root -g root -m 0644 $(POLICY_SRC) $(POLICY_DIR)/$(POLICY_SRC)
 	$(INSTALL) -o root -g root -m 0644 $(DESKTOP_SRC) $(APPS_DIR)/$(APP_ID).desktop

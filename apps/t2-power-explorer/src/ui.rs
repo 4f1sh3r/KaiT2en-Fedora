@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 #[allow(unused_imports)]
@@ -8,7 +8,7 @@ use gtk4 as gtk;
 
 use crate::collector;
 use crate::diagnostics;
-use crate::model::{DeviceKind, DeviceTree, Severity};
+use crate::model::{Assessment, DeviceKind, DeviceTree, Property, Severity};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Filter {
@@ -20,11 +20,46 @@ enum Filter {
 
 struct State {
     tree: DeviceTree,
+    snapshot: Snapshot,
     expanded: BTreeSet<String>,
     visible: Vec<String>,
     selected: Option<String>,
     diagnostics: diagnostics::Diagnostics,
     filter: Filter,
+}
+
+#[derive(Default)]
+struct Snapshot {
+    properties: BTreeMap<String, Vec<Property>>,
+    assessments: BTreeMap<String, Assessment>,
+    runtime_status: BTreeMap<String, Option<String>>,
+    pci_power_state: BTreeMap<String, Option<String>>,
+    runtime_summary: BTreeMap<String, String>,
+}
+
+fn take_snapshot(tree: &DeviceTree, diagnostics: &diagnostics::Diagnostics) -> Snapshot {
+    let mut snapshot = Snapshot::default();
+    for node in tree.nodes.values() {
+        let display_lanes = diagnostics.display_lanes.get(&node.id);
+        let pci_pm = diagnostics.pci_pm.get(&node.id);
+        snapshot.properties.insert(
+            node.id.clone(),
+            collector::properties(node, display_lanes.map(String::as_str), pci_pm),
+        );
+        snapshot
+            .assessments
+            .insert(node.id.clone(), collector::assessment(node));
+        snapshot
+            .runtime_status
+            .insert(node.id.clone(), collector::runtime_status(node));
+        snapshot
+            .pci_power_state
+            .insert(node.id.clone(), collector::pci_power_state(node));
+        snapshot
+            .runtime_summary
+            .insert(node.id.clone(), collector::runtime_summary(node));
+    }
+    snapshot
 }
 
 #[derive(Clone)]
@@ -65,22 +100,21 @@ fn install_css() {
     );
 }
 
-fn aggregate_severity(tree: &DeviceTree, id: &str) -> Severity {
-    let node = &tree.nodes[id];
+fn aggregate_severity(state: &State, id: &str) -> Severity {
+    let node = &state.tree.nodes[id];
     node.children
         .iter()
-        .fold(collector::assessment(node).severity, |severity, child| {
-            severity.max(aggregate_severity(tree, child))
+        .fold(state.snapshot.assessments[id].severity, |severity, child| {
+            severity.max(aggregate_severity(state, child))
         })
 }
 
 fn direct_match(state: &State, id: &str) -> bool {
-    let node = &state.tree.nodes[id];
     match state.filter {
         Filter::All => true,
-        Filter::Issues => collector::assessment(node).severity >= Severity::Notice,
-        Filter::Active => collector::runtime_status(node).as_deref() == Some("active"),
-        Filter::D0 => collector::pci_power_state(node).as_deref() == Some("D0"),
+        Filter::Issues => state.snapshot.assessments[id].severity >= Severity::Notice,
+        Filter::Active => state.snapshot.runtime_status[id].as_deref() == Some("active"),
+        Filter::D0 => state.snapshot.pci_power_state[id].as_deref() == Some("D0"),
     }
 }
 
@@ -218,11 +252,7 @@ fn show_properties(grid: &gtk::Box, state: &Rc<RefCell<State>>) {
     heading.append(&subtitle);
     grid.append(&heading);
 
-    let state_ref = state.borrow();
-    let display_lanes = state_ref.diagnostics.display_lanes.get(&node.id);
-    let pci_pm = state_ref.diagnostics.pci_pm.get(&node.id);
-    let properties = collector::properties(&node, display_lanes.map(String::as_str), pci_pm);
-    drop(state_ref);
+    let properties = state.borrow().snapshot.properties[&node.id].clone();
     let mut section = "";
     for property in properties {
         if section != property.section {
@@ -271,13 +301,13 @@ fn update_counts(label: &gtk::Label, state: &State) {
         .values()
         .filter(|node| node.kind != DeviceKind::Group)
     {
-        if collector::assessment(node).severity >= Severity::Notice {
+        if state.snapshot.assessments[&node.id].severity >= Severity::Notice {
             issues += 1;
         }
-        if collector::runtime_status(node).as_deref() == Some("active") {
+        if state.snapshot.runtime_status[&node.id].as_deref() == Some("active") {
             active += 1;
         }
-        if collector::pci_power_state(node).as_deref() == Some("D0") {
+        if state.snapshot.pci_power_state[&node.id].as_deref() == Some("D0") {
             d0 += 1;
         }
     }
@@ -373,15 +403,15 @@ fn rebuild_tree(
             .build();
         name.add_css_class("device-name");
         let summary = gtk::Label::builder()
-            .label(collector::runtime_summary(&node))
+            .label(&state.borrow().snapshot.runtime_summary[&id])
             .xalign(1.0)
             .width_chars(17)
             .max_width_chars(17)
             .ellipsize(gtk::pango::EllipsizeMode::End)
             .build();
         summary.add_css_class("state-text");
-        let own_assessment = collector::assessment(&node);
-        let inherited = aggregate_severity(&state.borrow().tree, &id);
+        let own_assessment = state.borrow().snapshot.assessments[&id].clone();
+        let inherited = aggregate_severity(&state.borrow(), &id);
         let indicator = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         indicator.add_css_class("severity-dot");
         indicator.add_css_class(match inherited {
@@ -407,14 +437,17 @@ fn rebuild_tree(
 pub fn build(app: &adw::Application) {
     install_css();
     let tree = collector::collect();
+    let diagnostics = diagnostics::read();
+    let snapshot = take_snapshot(&tree, &diagnostics);
     let mut expanded = BTreeSet::new();
     expanded.extend(tree.roots.iter().cloned());
     let state = Rc::new(RefCell::new(State {
         tree,
+        snapshot,
         expanded,
         visible: Vec::new(),
         selected: None,
-        diagnostics: diagnostics::read(),
+        diagnostics,
         filter: Filter::All,
     }));
 
@@ -498,6 +531,7 @@ pub fn build(app: &adw::Application) {
         let mut current = state_refresh.borrow_mut();
         current.tree = collector::collect();
         current.diagnostics = diagnostics::read();
+        current.snapshot = take_snapshot(&current.tree, &current.diagnostics);
         if current
             .selected
             .as_ref()
@@ -533,15 +567,6 @@ pub fn build(app: &adw::Application) {
             rebuild_tree(&list_filter, &details_filter, &counts_filter, &state_filter);
         });
     }
-
-    let details_tick = details.clone();
-    let state_tick = state.clone();
-    gtk::glib::timeout_add_seconds_local(1, move || {
-        if state_tick.borrow().selected.is_some() {
-            show_properties(&details_tick, &state_tick);
-        }
-        gtk::glib::ControlFlow::Continue
-    });
 
     window.present();
 }
