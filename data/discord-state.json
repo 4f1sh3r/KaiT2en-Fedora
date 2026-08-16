@@ -3,7 +3,7 @@
   "messages": {
     "brcmfmac-pm-max-power-management": {
       "message_id": "1536401557581602927",
-      "hash": "0a6439967759c61aecd694a0f07e18f54f26ebdd5cd959bbdfa42621d62e9dc2"
+      "hash": "b097d8f910b260e44b3ff6f83666ddebc22e316c98610d8f121af1efa1c5fead"
     },
     "keyboard-backlight-reenumeration": {
       "message_id": "1533951131821146283",
@@ -19,7 +19,7 @@
     },
     "touchbar-runtime-pm-deadlock": {
       "message_id": "1536401561570246706",
-      "hash": "b288d5ba107bc95f80ee0e234ae1ad98d2712da18f1875e154348de8e955414c"
+      "hash": "05f6af62073452e445307eeac797174bd3ed853a127651dac24b16ff25fb880a"
     },
     "display-brightness-after-reboot": {
       "message_id": "1533951138557198509",
@@ -27,7 +27,7 @@
     },
     "thunderbolt-controller-power-15-1": {
       "message_id": "1533951141778423979",
-      "hash": "912969bf2eb97ae31c6cce45ef7e6215cb7767b19144b1bdf80cef27260f416a"
+      "hash": "eb3c614aef7febe8861faa138805d37cf61a129e1bd86d7827e02d0b503d2e36"
     },
     "volume-slider-crackling": {
       "message_id": "1533951145570209955",
@@ -35,7 +35,7 @@
     },
     "fn-double-press-layer-switch": {
       "message_id": "1533951148980047994",
-      "hash": "ce53764a853dafb1bc9ca935574afe678717fe154f8d8f12dfcebc1517f6340f"
+      "hash": "b2f71c22002e9cdbde460d55ff76474de3732283f37aa5540dac8181b29e5a13"
     },
     "dgpu-wakeup-15-1": {
       "message_id": "1533951152339554465",
@@ -43,11 +43,11 @@
     },
     "keyboard-backlight-brightness": {
       "message_id": "1533951156437520404",
-      "hash": "43cdf30b0eed18b4e3daec8728e86ab47b5d35e24a341fd710fc0c9adbe63d16"
+      "hash": "b05360dea560c0de84d4c015affb11cde450ba9eb88cc0756f1f617c356baa5b"
     },
     "keyboard-backlight-after-resume": {
       "message_id": "1533951161063968828",
-      "hash": "c29b3eb759ce6355acf94c30ccef5412f042e4517095520dd2e6f556d4b65bb0"
+      "hash": "7850a9680bbb9d9622a4ab8f07b778cab6f62b05d7921d42a30f262720a1318b"
     },
     "hybrid-graphics": {
       "message_id": "1537074764714082334",
