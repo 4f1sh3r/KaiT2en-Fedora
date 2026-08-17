@@ -70,6 +70,24 @@ cleanup() {
 }
 trap cleanup EXIT
 
+boot_entry_index() {
+	local kernel=$1
+
+	grubby --info=ALL | awk -v want="/vmlinuz-$kernel" '
+		/^index=/ { entry = substr($0, 7); next }
+		/^kernel=/ {
+			if (found) next
+			path = substr($0, 9, length($0) - 9)
+			if (length(path) >= length(want) &&
+			    substr(path, length(path) - length(want) + 1) == want) {
+				result = entry
+				found = 1
+			}
+		}
+		END { if (found) print result }
+	'
+}
+
 wait_for_dnf() {
 	until dnf -q makecache --refresh; do
 		printf '\nConnect to a Wi-Fi network and press any key to retry. '
@@ -197,6 +215,9 @@ mapfile -t eligible_kernels < <(
 target_kernel=${eligible_kernels[${#eligible_kernels[@]} - 1]}
 [[ -d "$modules_root/$target_kernel" ]] || die "module directory is missing for $target_kernel"
 [[ -f "$boot_root/vmlinuz-$target_kernel" ]] || die "kernel image is missing for $target_kernel"
+target_entry=$(boot_entry_index "$target_kernel")
+[[ -n "$target_entry" ]] ||
+	die "no boot loader entry for $target_kernel; run 'sudo kernel-install add $target_kernel $boot_root/vmlinuz-$target_kernel' and start the installer again"
 
 printf '[kait2en] installing the regular Fedora build dependencies for %s\n' "$target_kernel"
 (
@@ -248,7 +269,9 @@ if rpm -q "$transition_package" >/dev/null 2>&1; then
 	rpm -e "$transition_package"
 fi
 
-grubby --set-default "$boot_root/vmlinuz-$target_kernel"
+target_entry=$(boot_entry_index "$target_kernel")
+[[ -n "$target_entry" ]] || die "no boot loader entry for $target_kernel"
+grubby --set-default-index="$target_entry"
 restore_default=0
 write_state reboot_pending "$target_kernel"
 

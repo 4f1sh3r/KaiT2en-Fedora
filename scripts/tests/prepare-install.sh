@@ -58,6 +58,11 @@ cat >"$fake_bin/grubby" <<'EOF'
 #!/usr/bin/env bash
 if [[ ${1:-} == --default-kernel ]]; then
 	printf '%s\n' "$KAIT2EN_TEST_OLD_KERNEL"
+elif [[ ${1:-} == --info=ALL ]]; then
+	prefix=$KAIT2EN_TEST_BLS_PREFIX
+	printf 'index=0\nkernel="%s/vmlinuz-%s"\n' "$prefix" "$KAIT2EN_TEST_TARGET"
+	printf 'index=1\nkernel="%s/vmlinuz-%s"\n' "$prefix" "$KAIT2EN_TEST_OLD_RELEASE"
+	printf 'index=2\nkernel="%s/vmlinuz-0-rescue-test"\n' "$prefix"
 else
 	printf 'grubby %s\n' "$*" >>"$KAIT2EN_TEST_LOG"
 fi
@@ -116,6 +121,8 @@ run_prepare() {
 		KAIT2EN_TEST_TARGET="$target" \
 		KAIT2EN_TEST_RUNNING_RELEASE="$running_release" \
 		KAIT2EN_TEST_OLD_KERNEL="$fake_boot/vmlinuz-$old" \
+		KAIT2EN_TEST_OLD_RELEASE="$old" \
+		KAIT2EN_TEST_BLS_PREFIX="${bls_prefix:-/boot}" \
 		KAIT2EN_TEST_LOG="$log" \
 		KAIT2EN_TEST_DRACUT_FAIL="$dracut_fail" \
 		KAIT2EN_SKIP_BOOTSTRAP=1 \
@@ -124,19 +131,23 @@ run_prepare() {
 		bash "$prepare" "$@"
 }
 
-run_prepare 0 "$old" >/dev/null
-grep -Fq 'dnf upgrade --refresh -y --setopt=installonly_limit=0' "$log"
-grep -Fq "install-dependencies $target" "$log"
-grep -Fq "build-input-kmod kernel=$target arguments=3" "$log"
-# Forced, not merely added: the modules are deleted from the disk below.
-grep -Fq \
-	'dracut --force --force-drivers t2bce_dma t2hid hid_t2magicmouse t2bce_core t2bce_vhci' \
-	"$log"
-grep -Fq 'rpm -e kmod-kait2en-input' "$log"
-[[ ! -d "$fake_modules/$target/updates/kait2en-transition" ]]
-[[ $(tail -n 1 "$log") == "grubby --set-default $fake_boot/vmlinuz-$target" ]]
-grep -Fxq 'phase=reboot_pending' "$fake_state/state"
-grep -Fxq "target_kernel=$target" "$fake_state/state"
+for bls_prefix in /boot /root/boot /@/boot; do
+	: >"$log"
+	rm -f "$fake_state/state"
+	run_prepare 0 "$old" >/dev/null
+	grep -Fq 'dnf upgrade --refresh -y --setopt=installonly_limit=0' "$log"
+	grep -Fq "install-dependencies $target" "$log"
+	grep -Fq "build-input-kmod kernel=$target arguments=3" "$log"
+	# Forced, not merely added: the modules are deleted from the disk below.
+	grep -Fq \
+		'dracut --force --force-drivers t2bce_dma t2hid hid_t2magicmouse t2bce_core t2bce_vhci' \
+		"$log"
+	grep -Fq 'rpm -e kmod-kait2en-input' "$log"
+	[[ ! -d "$fake_modules/$target/updates/kait2en-transition" ]]
+	[[ $(tail -n 1 "$log") == 'grubby --set-default-index=0' ]]
+	grep -Fxq 'phase=reboot_pending' "$fake_state/state"
+	grep -Fxq "target_kernel=$target" "$fake_state/state"
+done
 
 : >"$log"
 rm -f "$fake_state/state"
