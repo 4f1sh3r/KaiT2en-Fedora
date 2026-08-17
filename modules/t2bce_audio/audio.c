@@ -442,8 +442,8 @@ static void t2audio_init_dev(struct t2audio_device *a, t2audio_device_id_t dev_i
     INIT_LIST_HEAD(&sdev->list);
     sdev->dev_id = dev_id;
     sdev->buf_id = T2AUDIO_BUFFER_ID_NONE;
-    strncpy(sdev->uid, uid, uid_len);
-    sdev->uid[uid_len + 1] = '\0';
+    memcpy(sdev->uid, uid, uid_len);
+    sdev->uid[uid_len] = '\0';
 
     if (t2audio_cmd_get_primitive_property(a, dev_id, dev_id,
             T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_INPUT, T2AUDIO_PROP_LATENCY, 0), NULL, 0, &sdev->in_latency, sizeof(u32)))

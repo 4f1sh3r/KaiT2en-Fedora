@@ -17,6 +17,7 @@
 #include <linux/types.h>
 #include <linux/unaligned.h>
 #include <linux/usb.h>
+#include <linux/version.h>
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -33,6 +34,10 @@
 #include <drm/drm_plane.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 2, 0)
+#define drm_atomic_commit drm_atomic_state
+#endif
 
 #define APPLETBDRM_PIXEL_FORMAT		cpu_to_le32(0x52474241) /* RGBA, the actual format is BGR888 */
 #define APPLETBDRM_BITS_PER_PIXEL	24
@@ -316,7 +321,7 @@ static const u32 appletbdrm_primary_plane_formats[] = {
 };
 
 static int appletbdrm_primary_plane_helper_atomic_check(struct drm_plane *plane,
-						   struct drm_atomic_state *state)
+						   struct drm_atomic_commit *state)
 {
 	struct drm_plane_state *new_plane_state = drm_atomic_get_new_plane_state(state, plane);
 	struct drm_plane_state *old_plane_state = drm_atomic_get_old_plane_state(state, plane);
@@ -468,7 +473,7 @@ end_fb_cpu_access:
 }
 
 static void appletbdrm_primary_plane_helper_atomic_update(struct drm_plane *plane,
-						     struct drm_atomic_state *old_state)
+						     struct drm_atomic_commit *old_state)
 {
 	struct appletbdrm_device *adev = drm_to_adev(plane->dev);
 	struct drm_device *drm = plane->dev;
@@ -485,7 +490,7 @@ static void appletbdrm_primary_plane_helper_atomic_update(struct drm_plane *plan
 }
 
 static void appletbdrm_primary_plane_helper_atomic_disable(struct drm_plane *plane,
-							   struct drm_atomic_state *state)
+							   struct drm_atomic_commit *state)
 {
 	struct drm_device *dev = plane->dev;
 	struct appletbdrm_device *adev = drm_to_adev(dev);
