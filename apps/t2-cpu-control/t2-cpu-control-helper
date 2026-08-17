@@ -6,6 +6,7 @@ STATE_DIR=/run/t2-cpu-control
 DEFAULTS=$STATE_DIR/firmware-defaults
 PERSISTENT_STATE_DIR=/var/lib/t2-cpu-control
 THERMALD_STATE=$PERSISTENT_STATE_DIR/thermald-state
+NO_TURBO=/sys/devices/system/cpu/intel_pstate/no_turbo
 
 fail() { printf 't2-cpu-control: %s\n' "$*" >&2; exit 1; }
 zone() {
@@ -24,12 +25,13 @@ constraint() {
     fail "RAPL constraint '$name' is unavailable"
 }
 capture_defaults() {
-    local z long short
+    local z long short no_turbo=0
     mkdir -p "$STATE_DIR"
     [[ -e "$DEFAULTS" ]] && return
     z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
-    printf 'pl1_uw=%s\npl2_uw=%s\n' \
-        "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" >"$DEFAULTS"
+    [[ -r $NO_TURBO ]] && no_turbo=$(<"$NO_TURBO")
+    printf 'pl1_uw=%s\npl2_uw=%s\nno_turbo=%s\n' \
+        "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" "$no_turbo" >"$DEFAULTS"
 }
 write_limits() {
     local pl1=$1 pl2=$2 z long short
@@ -39,9 +41,17 @@ write_limits() {
     printf '%s\n' "$pl2" >"${short}_power_limit_uw"
     printf '%s\n' "$pl1" >"${long}_power_limit_uw"
 }
+write_no_turbo() {
+    local disabled=$1
+    [[ $disabled == 0 || $disabled == 1 ]] || fail "no_turbo must be 0 or 1"
+    [[ -w $NO_TURBO ]] || fail "intel_pstate turbo control is unavailable"
+    printf '%s\n' "$disabled" >"$NO_TURBO"
+    [[ $(<"$NO_TURBO") == "$disabled" ]] || fail "intel_pstate turbo state verification failed"
+}
 save_config() {
-    local pl1=$1 pl2=$2 enabled=$3
-    printf 'pl1_uw=%s\npl2_uw=%s\nenabled=%s\n' "$pl1" "$pl2" "$enabled" >"$CONFIG"
+    local pl1=$1 pl2=$2 enabled=$3 no_turbo=$4
+    printf 'pl1_uw=%s\npl2_uw=%s\nenabled=%s\nno_turbo=%s\n' \
+        "$pl1" "$pl2" "$enabled" "$no_turbo" >"$CONFIG"
     chmod 0644 "$CONFIG"
 }
 capture_thermald_state() {
@@ -90,18 +100,19 @@ restore_thermald_state() {
     rm -f "$THERMALD_STATE"
 }
 apply_saved() {
-    local pl1_uw= pl2_uw= enabled=0 z long short active_pl1 active_pl2
+    local pl1_uw= pl2_uw= enabled=0 no_turbo=0 z long short active_pl1 active_pl2
     capture_defaults
     [[ -r "$CONFIG" ]] || return 0
     # shellcheck disable=SC1090
     source "$CONFIG"
     [[ $enabled == 1 ]] || return 0
     write_limits "$pl1_uw" "$pl2_uw"
+    write_no_turbo "$no_turbo"
     z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
     active_pl1=$(<"${long}_power_limit_uw")
     active_pl2=$(<"${short}_power_limit_uw")
-    printf 't2-cpu-control: requested PL1=%s PL2=%s; read back PL1=%s PL2=%s\n' \
-        "$pl1_uw" "$pl2_uw" "$active_pl1" "$active_pl2"
+    printf 't2-cpu-control: requested PL1=%s PL2=%s no_turbo=%s; read back PL1=%s PL2=%s no_turbo=%s\n' \
+        "$pl1_uw" "$pl2_uw" "$no_turbo" "$active_pl1" "$active_pl2" "$(<"$NO_TURBO")"
 }
 fans_max() {
     local d f
@@ -132,15 +143,39 @@ fans_restore() {
     fi
 }
 
+set_prochot_override() {
+    local override=$1 cpu core value new_value readback expected
+    [[ $override == 0 || $override == 1 ]] || fail "PROCHOT override state must be 0 or 1"
+    modprobe msr
+    expected=$((override == 0))
+    for cpu in /dev/cpu/[0-9]*; do
+        [[ -d $cpu ]] || continue
+        core=${cpu##*/}
+        value=$(rdmsr -p "$core" 0x1fc) || fail "cannot read MSR_POWER_CTL on CPU $core"
+        value=$((16#$value))
+        if [[ $override == 1 ]]; then
+            new_value=$((value & ~1))
+        else
+            new_value=$((value | 1))
+        fi
+        printf -v new_value '%x' "$new_value"
+        wrmsr -p "$core" 0x1fc "$new_value" || fail "cannot write MSR_POWER_CTL on CPU $core"
+        readback=$(rdmsr -p "$core" 0x1fc) || fail "cannot verify MSR_POWER_CTL on CPU $core"
+        readback=$((16#$readback))
+        (( (readback & 1) == expected )) || fail "PROCHOT override verification failed on CPU $core"
+    done
+}
+
 ((EUID == 0)) || fail "root privileges are required"
 case ${1:-} in
     apply)
-        [[ $# == 4 ]] || fail "usage: $0 apply <pl1_uw> <pl2_uw> <persist:0|1>"
+        [[ $# == 5 ]] || fail "usage: $0 apply <pl1_uw> <pl2_uw> <persist:0|1> <no_turbo:0|1>"
         [[ $4 == 0 || $4 == 1 ]] || fail "persistence must be 0 or 1"
         capture_defaults
         take_rapl_ownership "$4"
         write_limits "$2" "$3"
-        save_config "$2" "$3" "$4"
+        write_no_turbo "$5"
+        save_config "$2" "$3" "$4" "$5"
         ;;
     apply-saved) apply_saved ;;
     restore)
@@ -148,14 +183,19 @@ case ${1:-} in
         # shellcheck disable=SC1090
         source "$DEFAULTS"
         write_limits "$pl1_uw" "$pl2_uw"
-        save_config "$pl1_uw" "$pl2_uw" 0
+        write_no_turbo "${no_turbo:-0}"
+        save_config "$pl1_uw" "$pl2_uw" 0 "${no_turbo:-0}"
         restore_thermald_state
         ;;
     disable-persistence)
-        save_config 0 0 0
+        save_config 0 0 0 "$(<"$NO_TURBO")"
         restore_thermald_state
         ;;
     fans-max) fans_max ;;
     fans-restore) fans_restore ;;
+    prochot-override)
+        [[ $# == 2 ]] || fail "usage: $0 prochot-override <enabled:0|1>"
+        set_prochot_override "$2"
+        ;;
     *) fail "unknown command" ;;
 esac

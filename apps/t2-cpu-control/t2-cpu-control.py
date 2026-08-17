@@ -119,6 +119,8 @@ class CpuControl(Adw.Application):
         self.manual_apply_source = None
         self.cpu_rows = []
         self.controls_initialized = False
+        self.prochot_control_update = False
+        self.prochot_change_pending = False
         self.cancel_event = threading.Event()
         self.status_monitor = None
         self.thermald_state = "unknown"
@@ -197,13 +199,15 @@ class CpuControl(Adw.Application):
 
         manual_title = Gtk.Label(label="Manual power limits", xalign=0)
         manual_title.add_css_class("title-4")
-        manual_hint = Gtk.Label(
-            label="Slider changes apply immediately. Without persistence, current limits remain until reboot.",
-            xalign=0,
-        )
-        manual_hint.set_wrap(True)
-        manual_hint.add_css_class("dim-label")
-        manual_content.append(manual_title); manual_content.append(manual_hint)
+        turbo_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        turbo_label = Gtk.Label(label="Disable Turbo Boost", xalign=0)
+        turbo_label.set_hexpand(True)
+        self.no_turbo = Gtk.Switch()
+        self.no_turbo.set_valign(Gtk.Align.CENTER)
+        turbo_row.append(turbo_label)
+        turbo_row.append(self.no_turbo)
+        manual_content.append(manual_title); manual_content.append(turbo_row)
+        self.no_turbo.connect("notify::active", self.turbo_changed)
 
         grid = Gtk.Grid(column_spacing=18, row_spacing=10)
         manual_content.append(grid)
@@ -225,7 +229,7 @@ class CpuControl(Adw.Application):
         manual_content.append(self.restore_btn)
         self.restore_btn.connect("clicked", self.restore_defaults)
 
-        self.persist = Gtk.CheckButton(label="Reapply current limits after boot and resume")
+        self.persist = Gtk.CheckButton(label="Make power limits persistent")
         self.persist.set_margin_top(4)
         body.append(self.persist)
         self.persist.connect("toggled", self.persistence_changed)
@@ -252,7 +256,18 @@ class CpuControl(Adw.Application):
         self.power_graph = HistoryGraph("Package power", " W", [(0.94, .55, .24), (.35, .68, .90), (.45, .75, .45)])
         self.temp_graph = HistoryGraph("CPU package temperature", " °C", [(.92, .30, .25)], 105)
         graph_box.append(self.power_graph); graph_box.append(self.temp_graph)
-        self.throttle = Gtk.Label(xalign=0); self.throttle.set_wrap(True); body.append(self.throttle)
+        throttle_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        override_label = Gtk.Label(label="PROCHOT override", xalign=0)
+        self.throttle = Gtk.Label(xalign=0)
+        self.throttle.set_wrap(True)
+        self.prochot_override = Gtk.Switch()
+        self.prochot_override.set_valign(Gtk.Align.CENTER)
+        self.prochot_override.set_tooltip_text("Temporary diagnostic override; disabled automatically before auto-tuning")
+        throttle_row.append(override_label)
+        throttle_row.append(self.prochot_override)
+        throttle_row.append(self.throttle)
+        body.append(throttle_row)
+        self.prochot_override.connect("notify::active", self.prochot_override_changed)
         win.connect("close-request", self.close_requested)
         win.present()
         GLib.timeout_add_seconds(1, self.poll)
@@ -297,7 +312,8 @@ class CpuControl(Adw.Application):
         if self.calibrating:
             return GLib.SOURCE_REMOVE
         try:
-            self.run_helper("apply", int(self.pl1.get_value()*1e6), int(self.pl2.get_value()*1e6), int(self.persist.get_active()))
+            self.run_helper("apply", int(self.pl1.get_value()*1e6), int(self.pl2.get_value()*1e6),
+                            int(self.persist.get_active()), int(self.no_turbo.get_active()))
             persistence = "enabled" if self.persist.get_active() else "disabled"
             self.show_notice(
                 f"Manual limits applied: {self.pl1.get_value():.0f}/{self.pl2.get_value():.0f} W · "
@@ -310,11 +326,90 @@ class CpuControl(Adw.Application):
         if not self.controls_initialized or self.control_update or self.calibrating:
             return
         try:
-            self.run_helper("apply", int(self.pl1.get_value()*1e6), int(self.pl2.get_value()*1e6), int(self.persist.get_active()))
+            self.run_helper("apply", int(self.pl1.get_value()*1e6), int(self.pl2.get_value()*1e6),
+                            int(self.persist.get_active()), int(self.no_turbo.get_active()))
             state = "enabled" if self.persist.get_active() else "disabled"
             self.show_notice(f"Persistence {state}; current limits remain active")
         except Exception as e:
             self.status.set_text(f"Persistence change failed: {e}")
+
+    def set_no_turbo(self, disabled):
+        self.control_update = True
+        self.no_turbo.set_active(disabled)
+        self.no_turbo.set_state(disabled)
+        self.control_update = False
+
+    def turbo_changed(self, switch, _property):
+        if not self.controls_initialized or self.control_update or self.calibrating:
+            return
+        previous = self.data.get("no_turbo") == "1"
+        disabled = switch.get_active()
+        try:
+            self.run_helper("apply", int(self.pl1.get_value()*1e6), int(self.pl2.get_value()*1e6),
+                            int(self.persist.get_active()), int(disabled))
+            self.data["no_turbo"] = "1" if disabled else "0"
+            self.set_no_turbo(disabled)
+            state = "disabled" if disabled else "enabled"
+            self.show_notice(f"Turbo Boost {state}")
+        except Exception as error:
+            self.set_no_turbo(previous)
+            self.status.set_text(f"Could not change Turbo Boost: {error}")
+
+    def set_prochot_override(self, enabled):
+        self.prochot_control_update = True
+        self.prochot_override.set_active(enabled)
+        self.prochot_override.set_state(enabled)
+        self.prochot_control_update = False
+
+    def apply_prochot_override(self, enabled):
+        try:
+            self.run_helper("prochot-override", int(enabled))
+            self.data["prochot_override"] = "1" if enabled else "0"
+            self.set_prochot_override(enabled)
+            state = "enabled" if enabled else "disabled"
+            self.show_notice(f"PROCHOT override {state}")
+            return True
+        except Exception as error:
+            current = self.data.get("prochot_override") == "1"
+            self.set_prochot_override(current)
+            self.status.set_text(f"Could not change PROCHOT override: {error}")
+            return False
+
+    def prochot_override_changed(self, switch, _property):
+        if self.prochot_control_update:
+            return
+        enabled = switch.get_active()
+        current = self.data.get("prochot_override") == "1"
+        if enabled == current:
+            return
+        self.prochot_change_pending = True
+        if not enabled:
+            self.apply_prochot_override(False)
+            self.prochot_change_pending = False
+            return
+        dialog = Adw.MessageDialog.new(
+            self.get_active_window(),
+            "Enable PROCHOT override?",
+            "PROCHOT is a hardware protection path for charger, battery, voltage-regulator and other platform faults. "
+            "Overriding it can allow the CPU to continue operating during an unsafe electrical condition. "
+            "Use this only for a controlled test and disable the override immediately afterward. "
+            "The override is temporary, resets on reboot and cannot remain active during auto-tuning.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("enable", "Enable for testing")
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.set_response_appearance("enable", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.connect("response", self.prochot_override_warning_response)
+        dialog.present()
+
+    def prochot_override_warning_response(self, _dialog, response):
+        if response == "enable":
+            self.apply_prochot_override(True)
+        else:
+            current = self.data.get("prochot_override") == "1"
+            self.set_prochot_override(current)
+        self.prochot_change_pending = False
 
     def set_sliders(self, pl1, pl2):
         self.control_update = True
@@ -363,11 +458,13 @@ class CpuControl(Adw.Application):
             data = read_status()
             self.data = data
             self.set_sliders(int(data["pl1_uw"]) / 1e6, int(data["pl2_uw"]) / 1e6)
+            self.set_no_turbo(data.get("no_turbo") == "1")
             self.set_persistence(False)
+            turbo = "disabled" if data.get("no_turbo") == "1" else "enabled"
             result = (
                 f"System defaults restored: "
                 f"PL1 {int(data['pl1_uw']) / 1e6:.0f} W, "
-                f"PL2 {int(data['pl2_uw']) / 1e6:.0f} W; thermal management restored"
+                f"PL2 {int(data['pl2_uw']) / 1e6:.0f} W, Turbo Boost {turbo}; thermal management restored"
             )
             self.auto_result.set_text(result)
             self.show_notice("System power limits and thermal management restored.")
@@ -399,10 +496,12 @@ class CpuControl(Adw.Application):
                 self.set_sliders(int(data["pl1_uw"])/1e6, int(data["pl2_uw"])/1e6)
                 self.control_update = True
                 self.persist.set_active(data.get("persistent") == "1")
+                self.set_no_turbo(data.get("no_turbo") == "1")
                 self.control_update = False
                 self.controls_initialized = True
             elif self.manual_apply_source is None and not self.calibrating:
                 self.set_sliders(active_pl1, active_pl2)
+                self.set_no_turbo(data.get("no_turbo") == "1")
             self.summary.set_text(data.get("model", "Intel CPU"))
             avg_freq = statistics.mean([c[1] for c in cores]) if cores else 0
             max_temp = max([c[2] for c in cores], default=0)
@@ -422,6 +521,8 @@ class CpuControl(Adw.Application):
                 f"PL2 is tested in 5 W steps."
             )
             self.update_cpu_table(cores, int(data.get("tjmax", 100)))
+            if not self.prochot_change_pending:
+                self.set_prochot_override(data.get("prochot_override") == "1")
             if not self.calibrating and time.monotonic() >= self.notice_until:
                 pending = ""
                 if self.controls_initialized:
@@ -442,7 +543,7 @@ class CpuControl(Adw.Application):
             reasons=[]; perf=int(data.get("perf_active",0))
             thermal_cores=[str(c[0]) for c in cores if c[3]]
             prochot_cores=[str(c[0]) for c in cores if c[4]]
-            if data.get("bd_inferred")=="1": reasons.append("BD_PROCHOT inferred")
+            if data.get("bd_inferred")=="1": reasons.append("Platform PROCHOT inferred")
             elif prochot_cores: reasons.append("PROCHOT CPU " + ",".join(prochot_cores))
             if thermal_cores: reasons.append("thermal CPU " + ",".join(thermal_cores))
             if perf & (1<<10): reasons.append("PL1")
@@ -453,13 +554,16 @@ class CpuControl(Adw.Application):
 
     def set_calibration_ui(self, active):
         self.calibrating=active
-        for w in (self.cal_btn,self.pl1,self.pl2,self.persist): w.set_sensitive(not active)
+        for w in (self.cal_btn,self.pl1,self.pl2,self.no_turbo,self.persist,self.prochot_override): w.set_sensitive(not active)
         self.restore_btn.set_sensitive(
             not active and bool(self.data.get("defaults_pl1_uw")) and bool(self.data.get("defaults_pl2_uw"))
         )
         self.cancel_btn.set_sensitive(active)
 
     def confirm_calibration(self, *_):
+        if self.prochot_override.get_active() and not self.apply_prochot_override(False):
+            self.status.set_text("Auto-tuning cancelled: PROCHOT override could not be disabled")
+            return
         dialog = Adw.MessageDialog.new(
             self.get_active_window(),
             "Auto-tune CPU power limits?",
@@ -468,7 +572,7 @@ class CpuControl(Adw.Application):
             "Each PL2 value runs the same kernel compilation workload for 30 seconds. The matching Fedora "
             "kernel source is downloaded and cached before the first run. When a value triggers PROCHOT, the previous successful "
             "PL2 value is applied immediately. The result remains active until reboot. "
-            "After auto-tuning completes, enable 'Reapply current limits after boot and resume' "
+            "After auto-tuning completes, enable 'Make power limits persistent' "
             "to keep the result. "
             "Administrator authentication is required to control the fans and power limits.",
         )
@@ -487,6 +591,9 @@ class CpuControl(Adw.Application):
 
     def start_calibration(self):
         if self.calibrating or not self.data: return
+        if self.prochot_override.get_active() and not self.apply_prochot_override(False):
+            self.status.set_text("Auto-tuning cancelled: PROCHOT override could not be disabled")
+            return
         if self.manual_apply_source is not None:
             GLib.source_remove(self.manual_apply_source)
             self.manual_apply_source = None
@@ -558,7 +665,8 @@ class CpuControl(Adw.Application):
             raise RuntimeError(last_message or "kernel source preparation failed")
 
     def calibrate(self):
-        original=(int(self.data["pl1_uw"]),int(self.data["pl2_uw"]),int(self.data.get("persistent") == "1"))
+        original=(int(self.data["pl1_uw"]),int(self.data["pl2_uw"]),
+                  int(self.data.get("persistent") == "1"),int(self.data.get("no_turbo") == "1"))
         down=max(5,round(int(self.data.get("base_uw",35000000))/1e6))
         ceiling=max(down+10,round(int(self.data.get("ceiling_uw",(down+10)*1000000))/1e6))
         try:
@@ -571,7 +679,8 @@ class CpuControl(Adw.Application):
             last_passing_pl2=None
             for pl2 in candidates:
                 if self.cancel_event.is_set(): break
-                self.run_helper("apply",down*1000000,pl2*1000000,0)
+                self.run_helper("apply",down*1000000,pl2*1000000,0,0)
+                GLib.idle_add(self.set_no_turbo,False)
                 prochot=self.run_until_prochot(30,f"Testing {down}/{pl2} W")
                 if self.cancel_event.is_set(): break
                 if prochot:
@@ -581,8 +690,9 @@ class CpuControl(Adw.Application):
                 selected_pl2=pl2
             if not self.cancel_event.is_set():
                 pl1=down; pl2=selected_pl2
-                self.run_helper("apply",pl1*1000000,pl2*1000000,self.calibration_persist)
+                self.run_helper("apply",pl1*1000000,pl2*1000000,self.calibration_persist,original[3])
                 GLib.idle_add(self.set_sliders,pl1,pl2)
+                GLib.idle_add(self.set_no_turbo,bool(original[3]))
                 persistence="enabled" if self.calibration_persist else "disabled"
                 GLib.idle_add(self.auto_result.set_text,f"Applied result: PL1 {pl1} W, PL2 {pl2} W; persistence {persistence}")
                 GLib.idle_add(self.show_notice,f"Auto-tuning complete and applied: {pl1}/{pl2} W · persistence {persistence}",15)

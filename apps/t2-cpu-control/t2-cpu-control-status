@@ -72,6 +72,10 @@ if [[ -r /etc/t2-cpu-control.conf ]]; then
     [[ $saved_enabled == 1 ]] && enabled=1
 fi
 printf 'persistent=%s\n' "$enabled"
+no_turbo=0
+[[ -r /sys/devices/system/cpu/intel_pstate/no_turbo ]] && \
+    no_turbo=$(</sys/devices/system/cpu/intel_pstate/no_turbo)
+printf 'no_turbo=%s\n' "$no_turbo"
 if [[ -r /run/t2-cpu-control/firmware-defaults ]]; then
     defaults_pl1_uw=$(sed -n 's/^pl1_uw=//p' /run/t2-cpu-control/firmware-defaults)
     defaults_pl2_uw=$(sed -n 's/^pl2_uw=//p' /run/t2-cpu-control/firmware-defaults)
@@ -83,6 +87,8 @@ printf 'max_energy_uj=%s\n' "$(<"$zone/max_energy_range_uj")"
 target=$((16#$(rdmsr -p 0 0x1a2)))
 tjmax=$(((target >> 16) & 255)); offset=$(((target >> 24) & 15))
 printf 'tjmax=%s\ntcc_offset=%s\n' "$tjmax" "$offset"
+power_ctl=$((16#$(rdmsr -p 0 0x1fc)))
+printf 'prochot_override=%s\n' "$(((power_ctl & 1) == 0))"
 package_therm_hex=$(rdmsr -p 0 0x1b1 2>/dev/null || echo 0)
 package_therm=$((16#$package_therm_hex))
 package_dtj=$(((package_therm >> 16) & 127))

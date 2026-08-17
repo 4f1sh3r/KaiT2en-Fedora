@@ -4,8 +4,8 @@
   <vendor>KaiT2en</vendor>
   <vendor_url>https://kait2en.github.io/</vendor_url>
   <action id="org.t2cpucontrol.configure">
-    <description>Configure CPU package power limits</description>
-    <message>Authentication is required to change CPU power limits</message>
+    <description>Configure CPU power limits and hardware protection</description>
+    <message>Authentication is required to change CPU power limits or hardware protection</message>
     <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/local/libexec/t2-cpu-control-helper</annotate>
   </action>
