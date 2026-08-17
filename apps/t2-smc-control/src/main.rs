@@ -56,9 +56,9 @@ fn memory_label(key: &str) -> Option<String> {
 
 fn heatpipe_label(key: &str) -> Option<String> {
     match key {
-        "Th0H" | "TH1a" => Some("Heatpipe 1".into()),
-        "Th1H" | "TH1b" => Some("Heatpipe 2".into()),
-        "Th2H" => Some("Heatpipe 3".into()),
+        "Th0H" => Some("CPU Heatpipe".into()),
+        "Th1H" => Some("Right Fin Stack".into()),
+        "Th2H" => Some("Left Fin Stack".into()),
         _ => None,
     }
 }
@@ -94,7 +94,10 @@ fn sensor_label(key: &str) -> String {
         "TH0X" => "SSD Controller".into(),
         "TH0a" => "SSD NAND".into(),
         "TH0b" => "SSD NAND 2".into(),
+        "TH1a" => "Drive 1 Raw A".into(),
+        "TH1b" => "Drive 1 Raw B".into(),
         "Tm0P" => "Mainboard Proximity".into(),
+        "Tm1P" => "Mainboard Bottom".into(),
         "TPCD" => "PCH Die".into(),
         "TTLD" => "Thunderbolt L".into(),
         "TTRD" => "Thunderbolt R".into(),
@@ -108,10 +111,6 @@ fn sensor_label(key: &str) -> String {
         "Ts2S" => "Touchpad".into(),
         _ => format!("unknown ({key})"),
     }
-}
-
-fn read_u32(path: &Path) -> Option<u32> {
-    fs::read_to_string(path).ok()?.trim().parse().ok()
 }
 
 fn parse_charge_percent(value: &str) -> Result<u8, String> {
@@ -247,7 +246,7 @@ fn read_rtc_datetime(rtc: &Path) -> Option<String> {
     Some(format!("{} {}", date.trim(), time.trim()))
 }
 
-fn read_sensors(hwmon: &Path) -> Vec<(String, String, Option<u32>)> {
+fn read_sensors(hwmon: &Path) -> Vec<(String, String, Option<i64>)> {
     let pattern = format!("{}/temp*_label", hwmon.display());
     let Ok(entries) = glob::glob(&pattern) else {
         return vec![];
@@ -268,9 +267,9 @@ fn read_sensors(hwmon: &Path) -> Vec<(String, String, Option<u32>)> {
                 .to_string_lossy()
                 .replace("_label", "_input"),
         );
-        sensors.push((sensor_label(&key), key, read_u32(&input)));
+        sensors.push((sensor_label(&key), key, read_i64(&input)));
     }
-    sensors.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    sensors.sort_by(|a, b| a.1.cmp(&b.1));
     sensors.dedup_by(|a, b| a.1 == b.1);
     sensors
 }
@@ -285,11 +284,16 @@ fn read_i64(path: &Path) -> Option<i64> {
 }
 
 fn scaled_value(value: i64, unit: &str) -> String {
-    format!("{:.2} {unit}", value as f64 / 1_000_000.0)
+    if value == 0 {
+        format!("0 {unit}")
+    } else {
+        format!("{:.2} {unit}", value as f64 / 1_000_000.0)
+    }
 }
 
 fn power_label(key: &str) -> String {
     match key {
+        "PAPC" => "WiFi".into(),
         "PCPT" => "CPU package total (PECI)".into(),
         "PCTR" => "CPU total".into(),
         "PC0C" => "CPU cores".into(),
@@ -315,13 +319,56 @@ fn power_label(key: &str) -> String {
         "PDMR" => "DC-In MLB total".into(),
         "PDTR" => "DC-In total".into(),
         "PG0R" => "GPU 0 rail".into(),
+        "PG0C" => "GPU".into(),
+        "PG1C" => "External GPU 1.8 V".into(),
+        "PG2C" => "External GPU 1.05 V".into(),
+        "PG3C" => "External GPU 1.35 V".into(),
+        "PH0R" => "Drive 0".into(),
+        "PH1R" => "Drive 1".into(),
+        "PHPC" => "Heatpipe".into(),
+        "PLDC" => "LCD panel".into(),
+        "PM0C" => "Memory average".into(),
+        "PM1C" => "DDR".into(),
+        "PO5R" => "Other 5 V high-side".into(),
+        "PP0R" => "PBus".into(),
+        "PPBR" => "PBus battery discharge".into(),
         "PSTR" => "System total (1 s delayed)".into(),
         "PZ0E" => "Zone 0 average target".into(),
+        "PZ0F" => "Zone 0 filtered".into(),
         "PZ0G" => "Zone 0 average".into(),
+        "PZ0T" => "Zone 0 throttle".into(),
+        "PZ1E" => "Zone 1 target".into(),
+        "PZ1F" => "Zone 1 filtered".into(),
+        "PZ1G" => "Zone 1 average".into(),
+        "PZ1T" => "Zone 1 throttle".into(),
+        "PZ2E" => "Zone 2 target".into(),
+        "PZ2F" => "Zone 2 filtered".into(),
+        "PZ2G" => "Zone 2 average".into(),
+        "PZ2T" => "Zone 2 throttle".into(),
+        "PZ3E" => "Zone 3 target".into(),
+        "PZ3F" => "Zone 3 filtered".into(),
+        "PZ3G" => "Zone 3 average".into(),
+        "PZ3T" => "Zone 3 throttle".into(),
+        "PZ4E" => "Zone 4 target".into(),
+        "PZ4F" => "Zone 4 filtered".into(),
+        "PZ4G" => "Zone 4 average".into(),
+        "PZ4T" => "Zone 4 throttle".into(),
         "PZAP" => "Power zone AP".into(),
         "PZBL" => "Power zone backlight".into(),
         "PZHD" => "Power zone storage".into(),
         _ => format!("unknown ({key})"),
+    }
+}
+
+fn power_value_text(key: &str, value: i64) -> String {
+    if matches!(key, "PZ0T" | "PZ1T" | "PZ2T" | "PZ3T" | "PZ4T") {
+        if value == 0 {
+            "0".into()
+        } else {
+            format!("{:.2}", value as f64 / 1_000_000.0)
+        }
+    } else {
+        scaled_value(value, "W")
     }
 }
 
@@ -348,19 +395,15 @@ fn read_smc_power_stats(hwmon: &Path) -> Vec<(String, String, String)> {
                 .replace("_label", "_input"),
         );
         if let Some(value) = read_i64(&input_path) {
-            stats.push((power_label(&key), key, scaled_value(value, "W")));
+            stats.push((
+                power_label(&key),
+                key.clone(),
+                power_value_text(&key, value),
+            ));
         }
     }
 
-    stats.sort_by(|a, b| {
-        let rank = |(label, _, value): &(String, String, String)| {
-            (label.starts_with("unknown"), value == "0.00 W")
-        };
-        rank(a)
-            .cmp(&rank(b))
-            .then_with(|| a.0.cmp(&b.0))
-            .then_with(|| a.1.cmp(&b.1))
-    });
+    stats.sort_by(|a, b| a.1.cmp(&b.1));
     stats
 }
 
@@ -397,7 +440,11 @@ fn read_power_telemetry(hwmon: &Path) -> Vec<(String, String, String)> {
         scaled_value(v, "V")
     });
     add("Battery current", "B0AC", "smc_battery_current_ua", |v| {
-        format!("{:.3} A", v as f64 / 1_000_000.0)
+        if v == 0 {
+            "0 A".into()
+        } else {
+            format!("{:.3} A", v as f64 / 1_000_000.0)
+        }
     });
     add("Battery power", "B0AP", "smc_battery_power_uw", |v| {
         scaled_value(v, "W")
@@ -431,6 +478,7 @@ fn read_power_telemetry(hwmon: &Path) -> Vec<(String, String, String)> {
     );
 
     values.extend(read_smc_power_stats(hwmon));
+    values.sort_by(|a, b| a.1.cmp(&b.1));
 
     values
 }
@@ -588,9 +636,12 @@ fn clear_listbox(list: &gtk4::ListBox) {
     }
 }
 
-fn sensor_value_text(val: Option<u32>) -> String {
-    val.map(|v| format!("{:.1} C", v as f64 / 1000.0))
-        .unwrap_or_else(|| "n/a".into())
+fn sensor_value_text(val: Option<i64>) -> String {
+    match val {
+        Some(0) => "0 C".into(),
+        Some(value) => format!("{:.1} C", value as f64 / 1000.0),
+        None => "n/a".into(),
+    }
 }
 
 fn append_placeholder_row(list: &gtk4::ListBox, text: &str) {
@@ -702,7 +753,7 @@ fn refresh_value_rows(
 fn refresh_sensor_rows(
     list: &gtk4::ListBox,
     rows: &Rc<RefCell<BTreeMap<String, gtk4::Label>>>,
-    sensors: &[(String, String, Option<u32>)],
+    sensors: &[(String, String, Option<i64>)],
 ) {
     let has_placeholder = rows.borrow().is_empty() && list.first_child().is_some();
 
@@ -745,7 +796,7 @@ fn refresh_sensor_rows(
 fn rebuild_sensor_rows(
     list: &gtk4::ListBox,
     rows: &Rc<RefCell<BTreeMap<String, gtk4::Label>>>,
-    sensors: &[(String, String, Option<u32>)],
+    sensors: &[(String, String, Option<i64>)],
 ) {
     rows.borrow_mut().clear();
     clear_listbox(list);
@@ -1197,6 +1248,10 @@ mod tests {
     #[test]
     fn labels_known_power_keys() {
         assert_eq!(power_label("PCPT"), "CPU package total (PECI)");
+        assert_eq!(power_label("PAPC"), "WiFi");
+        assert_eq!(power_label("PG0C"), "GPU");
+        assert_eq!(power_label("PLDC"), "LCD panel");
+        assert_eq!(power_label("PZ4G"), "Zone 4 average");
         assert_eq!(power_label("PD0R"), "DC-In MLB S0 rail");
         assert_eq!(power_label("PG0R"), "GPU 0 rail");
         assert_eq!(power_label("PZ0G"), "Zone 0 average");
@@ -1206,7 +1261,32 @@ mod tests {
     }
 
     #[test]
-    fn sorts_unknown_zero_power_values_last() {
+    fn labels_documented_mainboard_bottom_sensor() {
+        assert_eq!(sensor_label("Tm1P"), "Mainboard Bottom");
+        assert_eq!(sensor_label("TH1a"), "Drive 1 Raw A");
+        assert_eq!(sensor_label("TH1b"), "Drive 1 Raw B");
+        assert_eq!(sensor_label("Th1H"), "Right Fin Stack");
+        assert_eq!(sensor_label("Th2H"), "Left Fin Stack");
+        assert_eq!(sensor_label("TF0S"), "unknown (TF0S)");
+    }
+
+    #[test]
+    fn formats_signed_and_zero_temperature_values_as_delivered() {
+        assert_eq!(sensor_value_text(Some(-127_000)), "-127.0 C");
+        assert_eq!(sensor_value_text(Some(0)), "0 C");
+        assert_eq!(sensor_value_text(None), "n/a");
+    }
+
+    #[test]
+    fn formats_throttle_values_without_watt_unit() {
+        assert_eq!(power_value_text("PZ0T", 12_500_000), "12.50");
+        assert_eq!(power_value_text("PZ4T", 0), "0");
+        assert_eq!(power_value_text("PSTR", 12_500_000), "12.50 W");
+        assert_eq!(power_value_text("PSTR", 0), "0 W");
+    }
+
+    #[test]
+    fn sorts_power_values_by_key() {
         let hwmon = temp_path("power-order");
         fs::create_dir_all(&hwmon).unwrap();
         for (index, key, value) in [
@@ -1221,7 +1301,7 @@ mod tests {
 
         let stats = read_smc_power_stats(&hwmon);
         let keys: Vec<_> = stats.iter().map(|(_, key, _)| key.as_str()).collect();
-        assert_eq!(keys, vec!["PDTR", "PC0C", "PYYY", "PZZZ"]);
+        assert_eq!(keys, vec!["PC0C", "PDTR", "PYYY", "PZZZ"]);
 
         let _ = fs::remove_dir_all(hwmon);
     }

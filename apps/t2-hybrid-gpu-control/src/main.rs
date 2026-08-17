@@ -1,6 +1,9 @@
+use std::cell::Cell;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
+use std::time::Duration;
 
 #[allow(unused_imports)]
 use adw::prelude::*;
@@ -33,6 +36,56 @@ struct GpuStatus {
     active: Gpu,
     discrete_state: String,
     runtime_pm: bool,
+}
+
+#[derive(Clone, Copy)]
+struct PowerCap {
+    current_w: f64,
+    default_w: f64,
+}
+
+fn amdgpu_device() -> Option<PathBuf> {
+    for entry in fs::read_dir("/sys/class/drm").ok()? {
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name
+            .strip_prefix("card")
+            .is_some_and(|suffix| suffix.chars().all(|c| c.is_ascii_digit()))
+        {
+            continue;
+        }
+        let Ok(driver) = fs::canonicalize(path.join("device/driver")) else {
+            continue;
+        };
+        if driver.file_name().and_then(|name| name.to_str()) == Some("amdgpu") {
+            return Some(path.join("device"));
+        }
+    }
+    None
+}
+
+fn read_power_cap() -> Option<PowerCap> {
+    let hwmon = fs::read_dir(amdgpu_device()?.join("hwmon"))
+        .ok()?
+        .next()?
+        .ok()?
+        .path();
+    let read = |name: &str| {
+        fs::read_to_string(hwmon.join(name))
+            .ok()?
+            .trim()
+            .parse::<u64>()
+            .ok()
+    };
+    let current = read("power1_cap")?;
+    let default = read("power1_cap_default")?;
+    (default >= 10_000_000).then_some(PowerCap {
+        current_w: current as f64 / 1_000_000.0,
+        default_w: default as f64 / 1_000_000.0,
+    })
 }
 
 fn switcheroo_status() -> GpuStatus {
@@ -208,6 +261,35 @@ fn build_ui(app: &adw::Application) {
     config_group.add(&discrete_row);
     page.add(&config_group);
 
+    let power_group = adw::PreferencesGroup::builder()
+        .title("AMDGPU power cap")
+        .build();
+    let power_cap = read_power_cap();
+    let power_row = adw::ActionRow::builder()
+        .title("Maximum GPU power")
+        .subtitle(if let Some(cap) = power_cap {
+            format!("{:.0} W / {:.0} W default", cap.current_w, cap.default_w)
+        } else {
+            "Unavailable while the dGPU is off".into()
+        })
+        .build();
+    let power_scale = gtk::Scale::with_range(
+        gtk::Orientation::Horizontal,
+        10.0,
+        power_cap.map_or(10.0, |cap| cap.default_w),
+        1.0,
+    );
+    power_scale.set_draw_value(false);
+    power_scale.set_size_request(220, -1);
+    power_scale.set_valign(gtk::Align::Center);
+    power_scale.set_sensitive(power_cap.is_some());
+    if let Some(cap) = power_cap {
+        power_scale.set_value(cap.current_w);
+    }
+    power_row.add_suffix(&power_scale);
+    power_group.add(&power_row);
+    page.add(&power_group);
+
     let actions_group = adw::PreferencesGroup::new();
     let actions = gtk::Box::new(gtk::Orientation::Vertical, 12);
     let message = gtk::Label::new(None);
@@ -222,6 +304,38 @@ fn build_ui(app: &adw::Application) {
     actions.append(&reboot);
     actions_group.add(&actions);
     page.add(&actions_group);
+
+    {
+        let generation = Rc::new(Cell::new(0_u64));
+        let power_row = power_row.clone();
+        let message = message.clone();
+        power_scale.connect_value_changed(move |scale| {
+            let value = scale.value().round();
+            power_row.set_subtitle(&format!("{value:.0} W selected"));
+            let next = generation.get() + 1;
+            generation.set(next);
+            let generation = generation.clone();
+            let power_row = power_row.clone();
+            let message = message.clone();
+            gtk::glib::timeout_add_local_once(Duration::from_millis(700), move || {
+                if generation.get() != next {
+                    return;
+                }
+                let microwatts = format!("{:.0}", value * 1_000_000.0);
+                match run_helper(&["set-power-cap", &microwatts]) {
+                    Ok(()) => {
+                        power_row.set_subtitle(&format!("{value:.0} W applied"));
+                        set_status(
+                            &message,
+                            &format!("AMDGPU power cap set to {value:.0} W."),
+                            false,
+                        );
+                    }
+                    Err(error) => set_status(&message, &error, true),
+                }
+            });
+        });
+    }
 
     {
         let message = message.clone();
