@@ -83,18 +83,19 @@ items:
   - id: thunderbolt-device-links
     title: "Thunderbolt device links"
     state: in-progress
-    upstream: preparing
+    upstream: submitted
     version: v8
     project: Linux kernel
     subsystem: Thunderbolt
     authors:
       - ruiCON
       - deqrocks
-    updated: "2026-08-15"
+    link: "https://lore.kernel.org/all/20260817101329.1517-1-atharvatiwarilinuxdev@gmail.com/"
+    updated: "2026-08-17"
     notes: >-
-      Maintainers did not accept v7. A new three-patch series is being
-      prepared to move Apple device-link discovery into the Thunderbolt PCI
-      code and add Titan Ridge and Ice Lake support separately.
+      Maintainers did not accept v7. The three-patch v8 series moves Apple
+      device-link discovery into the Thunderbolt PCI code and adds Titan Ridge
+      and Ice Lake support separately.
 
   # --- Available -------------------------------------------------------------
 
