@@ -112,6 +112,9 @@ struct UiRefs {
     status: Label,
     cpu_label: Label,
     gpu_label: Label,
+    skin_label: Label,
+    battery_label: Label,
+    bias_label: Label,
     effective_label: Label,
     target_label: Label,
     fan_label: Label,
@@ -180,7 +183,12 @@ impl AppModel {
             temperatures: TemperatureSnapshot {
                 cpu_temp_c: state.cpu_temp_c,
                 gpu_temp_c: state.gpu_temp_c,
+                ..TemperatureSnapshot::default()
             },
+            base_temp_c: state.base_temp_c,
+            skin_temp_c: state.skin_temp_c,
+            battery_temp_c: state.battery_temp_c,
+            platform_bias_c: state.platform_bias_c,
             effective_temp_c: state.effective_temp_c,
             target_percent: state.target_percent,
             target_rpm_per_fan: Vec::new(),
@@ -352,7 +360,8 @@ impl DaemonRuntime {
         for fan in &mut fans {
             let _ = fan.refresh_state();
         }
-        let mut temperatures = discover_temperature_sources();
+        let mut temperatures =
+            discover_temperature_sources(&config.platform_bias.sensors_of_interest());
         let snapshot = ControlSnapshot {
             temperatures: TemperatureSnapshot::read_from(&mut temperatures),
             ..ControlSnapshot::default()
@@ -394,6 +403,8 @@ impl DaemonRuntime {
         let next_active = next_config.automatic_control_enabled;
         self.config = next_config;
         self.config.autostart_enabled = service::autostart_enabled();
+        self.temperatures =
+            discover_temperature_sources(&self.config.platform_bias.sensors_of_interest());
 
         if was_active && !next_active {
             self.controller.release_to_system(&mut self.fans)?;
@@ -460,17 +471,7 @@ impl DaemonRuntime {
     }
 
     fn state(&self) -> DaemonState {
-        ipc::state_from(
-            &self.config,
-            self.status.clone(),
-            (
-                self.snapshot.temperatures.cpu_temp_c,
-                self.snapshot.temperatures.gpu_temp_c,
-                self.snapshot.effective_temp_c,
-            ),
-            self.snapshot.target_percent,
-            &self.fans,
-        )
+        ipc::state_from(&self.config, self.status.clone(), &self.snapshot, &self.fans)
     }
 }
 
@@ -485,7 +486,7 @@ fn build_ui(app: &Application) {
         .application(app)
         .title("T2 Fan Control")
         .default_width(348)
-        .default_height(640)
+        .default_height(690)
         .build();
     window.set_resizable(true);
 
@@ -529,9 +530,12 @@ fn build_ui(app: &Application) {
         .build();
     attach_pair_at(&summary, 0, 0, "CPU", &ui.cpu_label);
     attach_pair_at(&summary, 2, 0, "GPU", &ui.gpu_label);
-    attach_pair_at(&summary, 0, 1, "Effective", &ui.effective_label);
-    attach_pair_at(&summary, 2, 1, "Target", &ui.target_label);
-    attach_pair_at(&summary, 0, 2, "Fans", &ui.fan_label);
+    attach_pair_at(&summary, 0, 1, "Skin", &ui.skin_label);
+    attach_pair_at(&summary, 2, 1, "Battery", &ui.battery_label);
+    attach_pair_at(&summary, 0, 2, "Bias", &ui.bias_label);
+    attach_pair_at(&summary, 2, 2, "Effective", &ui.effective_label);
+    attach_pair_at(&summary, 0, 3, "Target", &ui.target_label);
+    attach_pair_at(&summary, 2, 3, "Fans", &ui.fan_label);
     root.append(&summary);
 
     root.append(&panel(
@@ -646,6 +650,9 @@ fn build_widgets() -> UiRefs {
         status: make_value(),
         cpu_label: make_value(),
         gpu_label: make_value(),
+        skin_label: make_value(),
+        battery_label: make_value(),
+        bias_label: make_value(),
         effective_label: make_value(),
         target_label: make_value(),
         fan_label: make_value(),
@@ -804,6 +811,17 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
     ui.status.set_label(&model.status);
     ui.cpu_label.set_label(&format_temp(model.snapshot.temperatures.cpu_temp_c));
     ui.gpu_label.set_label(&format_temp(model.snapshot.temperatures.gpu_temp_c));
+    ui.skin_label
+        .set_label(&format_temp_f32(model.snapshot.skin_temp_c));
+    ui.battery_label
+        .set_label(&format_temp_f32(model.snapshot.battery_temp_c));
+    ui.bias_label.set_label(
+        &model
+            .snapshot
+            .platform_bias_c
+            .map(|bias| format!("+{bias:.1} C"))
+            .unwrap_or_else(|| String::from("n/a")),
+    );
     ui.effective_label
         .set_label(&format_temp(model.snapshot.effective_temp_c));
     ui.target_label.set_label(
@@ -1267,6 +1285,12 @@ fn connect_preset_button(
         }
         sync_ui(&model, &ui);
     });
+}
+
+fn format_temp_f32(value: Option<f32>) -> String {
+    value
+        .map(|temp| format!("{temp:.1} C"))
+        .unwrap_or_else(|| String::from("n/a"))
 }
 
 fn format_temp(value: Option<u8>) -> String {

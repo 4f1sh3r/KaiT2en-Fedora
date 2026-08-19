@@ -7,6 +7,7 @@ use std::{
 
 use crate::{
     config::{normalize_curve, AppConfig, CurvePoint, PresetKind},
+    control::ControlSnapshot,
     error::{FanControlError, Result},
     sysfs::FanEndpoint,
 };
@@ -32,6 +33,10 @@ pub struct DaemonState {
     pub custom_curve: Vec<CurvePoint>,
     pub cpu_temp_c: Option<u8>,
     pub gpu_temp_c: Option<u8>,
+    pub base_temp_c: Option<u8>,
+    pub skin_temp_c: Option<f32>,
+    pub battery_temp_c: Option<f32>,
+    pub platform_bias_c: Option<f32>,
     pub effective_temp_c: Option<u8>,
     pub target_percent: Option<u8>,
     pub fans: Vec<FanStatus>,
@@ -146,6 +151,10 @@ pub fn write_response(mut stream: &UnixStream, state: &DaemonState) -> Result<()
     );
     push_option_u8(&mut body, "cpu_temp_c", state.cpu_temp_c);
     push_option_u8(&mut body, "gpu_temp_c", state.gpu_temp_c);
+    push_option_u8(&mut body, "base_temp_c", state.base_temp_c);
+    push_option_f32(&mut body, "skin_temp_c", state.skin_temp_c);
+    push_option_f32(&mut body, "battery_temp_c", state.battery_temp_c);
+    push_option_f32(&mut body, "platform_bias_c", state.platform_bias_c);
     push_option_u8(&mut body, "effective_temp_c", state.effective_temp_c);
     push_option_u8(&mut body, "target_percent", state.target_percent);
     push_field(&mut body, "fan_count", &state.fans.len().to_string());
@@ -189,17 +198,21 @@ pub fn write_error(mut stream: &UnixStream, message: &str) -> Result<()> {
     stream.flush().map_err(FanControlError::ProcessSpawn)
 }
 
-pub fn state_from(config: &AppConfig, status: String, temps: (Option<u8>, Option<u8>, Option<u8>), target_percent: Option<u8>, fans: &[FanEndpoint]) -> DaemonState {
+pub fn state_from(config: &AppConfig, status: String, snapshot: &ControlSnapshot, fans: &[FanEndpoint]) -> DaemonState {
     DaemonState {
         status,
         control_active: config.automatic_control_enabled,
         autostart_enabled: config.autostart_enabled,
         active_preset: config.active_preset,
         custom_curve: config.custom_curve.clone(),
-        cpu_temp_c: temps.0,
-        gpu_temp_c: temps.1,
-        effective_temp_c: temps.2,
-        target_percent,
+        cpu_temp_c: snapshot.temperatures.cpu_temp_c,
+        gpu_temp_c: snapshot.temperatures.gpu_temp_c,
+        base_temp_c: snapshot.base_temp_c,
+        skin_temp_c: snapshot.skin_temp_c,
+        battery_temp_c: snapshot.battery_temp_c,
+        platform_bias_c: snapshot.platform_bias_c,
+        effective_temp_c: snapshot.effective_temp_c,
+        target_percent: snapshot.target_percent,
         fans: fans
             .iter()
             .map(|fan| FanStatus {
@@ -245,6 +258,10 @@ fn decode_response<R: BufRead>(mut reader: R) -> Result<DaemonState> {
             "custom_curve" => state.custom_curve = parse_curve(value)?,
             "cpu_temp_c" => state.cpu_temp_c = parse_option_u8(value)?,
             "gpu_temp_c" => state.gpu_temp_c = parse_option_u8(value)?,
+            "base_temp_c" => state.base_temp_c = parse_option_u8(value)?,
+            "skin_temp_c" => state.skin_temp_c = parse_option_f32(value)?,
+            "battery_temp_c" => state.battery_temp_c = parse_option_f32(value)?,
+            "platform_bias_c" => state.platform_bias_c = parse_option_f32(value)?,
             "effective_temp_c" => state.effective_temp_c = parse_option_u8(value)?,
             "target_percent" => state.target_percent = parse_option_u8(value)?,
             "fan_count" => {
@@ -366,6 +383,17 @@ fn parse_option_u8(value: &str) -> Result<Option<u8>> {
     }
 }
 
+fn parse_option_f32(value: &str) -> Result<Option<f32>> {
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        value
+            .parse::<f32>()
+            .map(Some)
+            .map_err(|_| protocol_error(format!("invalid f32 value: {value}")))
+    }
+}
+
 fn parse_option_u32(value: &str) -> Result<Option<u32>> {
     if value.is_empty() {
         Ok(None)
@@ -386,6 +414,10 @@ fn push_field(buffer: &mut String, key: &str, value: &str) {
 
 fn push_option_u8(buffer: &mut String, key: &str, value: Option<u8>) {
     push_field(buffer, key, &value.map(|value| value.to_string()).unwrap_or_default());
+}
+
+fn push_option_f32(buffer: &mut String, key: &str, value: Option<f32>) {
+    push_field(buffer, key, &value.map(|value| format!("{value:.2}")).unwrap_or_default());
 }
 
 fn push_option_u32(buffer: &mut String, key: &str, value: Option<u32>) {
