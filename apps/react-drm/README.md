@@ -322,3 +322,30 @@ continues running while any window remains open.
 Command suggestions use read-only D-Bus methods and work without this setting.
 Enabling the security-sensitive API allows any process on the session bus to
 send text and commands to open Konsole sessions.
+
+## Updating from upstream
+
+This directory is a `git subtree` of
+<https://github.com/dev-muhammad-adel/react-drm-for-touchbar>. Updates are
+merged, not copied by hand. Requires the `git-subtree` package
+(`sudo dnf install git-subtree`) and the remote:
+
+```sh
+git remote add react-drm-upstream https://github.com/dev-muhammad-adel/react-drm-for-touchbar.git
+git subtree pull --prefix=apps/react-drm react-drm-upstream master
+```
+
+Do not pass `--squash`; the join was recorded without it and mixing the two
+breaks the merge base. The resulting merge commit must be preserved — a
+squash merge of the update PR drops the join and the next pull loses its
+base.
+
+KaiT2en carries deliberate changes against upstream: the installer
+(`install.sh` is a wrapper around `scripts/fedora/install-apps.sh`, upstream's
+`install.sh`/`uninstall.sh` and `install-gui/` are not used), this README, the
+KaiT2en boot animation, `src/native/hardware.ts` and the Touch Bar hardware
+fixes in `src/renderer`, `src/native` and `native/src`, plus
+`gnome-extension/`. When a pull conflicts in those, our side wins unless the
+upstream change is a genuine fix. `install-gui/` reappears as a
+modify/delete conflict on every pull that touches it — resolve with
+`git rm -r --cached apps/react-drm/install-gui` and delete the directory.
