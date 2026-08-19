@@ -285,8 +285,24 @@ export const DOCK = {
 
 export const FN_LAYER = {
   // How the Fn key reaches the F-keys layer:
-  //   'hold'   — momentary: the layer shows only while Fn is held (original).
-  //   'toggle' — long-press Fn to switch to it, long-press again to return.
-  mode:   'toggle' as 'hold' | 'toggle',
-  longMs: 350,   // long-press duration when mode === 'toggle'
+  //   'hold'       — momentary: the layer shows only while Fn is held (original).
+  //   'toggle'     — long-press Fn to switch to it, long-press again to return.
+  //   'double-tap' — double-tap Fn to switch to it, double-tap again to return.
+  mode:     'double-tap' as 'hold' | 'toggle' | 'double-tap',
+  longMs:   350,   // long-press duration when mode === 'toggle'
+  doubleMs: 350,   // max gap between taps when mode === 'double-tap'
+};
+
+export interface FnKeyExtra {
+  label: string;
+  key:   number; // raw evdev keycode — see KEY in react-drm
+}
+
+export const FN_KEYS = {
+  // Extra keys shown after F1–F12 in the Fn-key layer. Add/remove/reorder here;
+  // each fires keys.pressKey(key) — see linux-touchbar-control-center/layers/fnKeys.tsx.
+  extra: [
+    { label: 'prt', key: KEY.PRINT },
+    { label: 'del',    key: KEY.DELETE },
+  ] as FnKeyExtra[],
 };
