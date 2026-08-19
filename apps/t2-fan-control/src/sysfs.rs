@@ -21,36 +21,61 @@ pub struct FanEndpoint {
 pub struct TemperatureSource {
     pub name: String,
     pub path: PathBuf,
-    pub last_temp_c: Option<u8>,
+    pub last_temp_mc: Option<i32>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct TemperatureSnapshot {
     pub cpu_temp_c: Option<u8>,
     pub gpu_temp_c: Option<u8>,
+    /// SMC platform sensors by label, in discovery order.
+    pub sensors: Vec<(String, f32)>,
 }
 
 impl TemperatureSnapshot {
     pub fn read_from(sources: &mut [TemperatureSource]) -> Self {
         let mut snapshot = Self::default();
         for source in sources {
-            source.last_temp_c = read_temperature(&source.path).ok();
+            source.last_temp_mc = read_temperature_mc(&source.path).ok();
+            let Some(millis) = source.last_temp_mc else {
+                continue;
+            };
             match source.name.as_str() {
-                "CPU" => snapshot.cpu_temp_c = source.last_temp_c,
-                "GPU" => snapshot.gpu_temp_c = source.last_temp_c,
-                _ => {}
+                "CPU" => snapshot.cpu_temp_c = Some(mc_to_c(millis)),
+                "GPU" => snapshot.gpu_temp_c = Some(mc_to_c(millis)),
+                label => snapshot
+                    .sensors
+                    .push((label.to_owned(), millis as f32 / 1000.0)),
             }
         }
         snapshot
     }
 
-    pub fn effective_temp_c(&self) -> Option<u8> {
+    /// Highest of CPU/GPU, the untouched pre-bias input of the fan curve.
+    pub fn base_temp_c(&self) -> Option<u8> {
         match (self.cpu_temp_c, self.gpu_temp_c) {
             (Some(cpu), Some(gpu)) => Some(cpu.max(gpu)),
             (Some(cpu), None) => Some(cpu),
             (None, Some(gpu)) => Some(gpu),
             (None, None) => None,
         }
+    }
+
+    pub fn sensor(&self, label: &str) -> Option<f32> {
+        self.sensors
+            .iter()
+            .find(|(name, _)| name == label)
+            .map(|(_, value)| *value)
+    }
+
+    /// Hottest of the given labels, None when none of them is present.
+    pub fn max_sensor(&self, labels: &[String]) -> Option<f32> {
+        labels
+            .iter()
+            .filter_map(|label| self.sensor(label))
+            .fold(None, |acc: Option<f32>, value| {
+                Some(acc.map_or(value, |best| best.max(value)))
+            })
     }
 }
 
@@ -243,7 +268,9 @@ pub fn discover_fans() -> Result<Vec<FanEndpoint>> {
         .unwrap_or(Err(FanControlError::NoFans))
 }
 
-pub fn discover_temperature_sources() -> Vec<TemperatureSource> {
+/// `platform_labels` are extra SMC labels to sample (heat-soak proxies, log-only sensors).
+/// Labels the SMC does not expose are silently skipped.
+pub fn discover_temperature_sources(platform_labels: &[String]) -> Vec<TemperatureSource> {
     let mut sources = Vec::new();
 
     // CPU from coretemp (Intel built-in)
@@ -253,44 +280,60 @@ pub fn discover_temperature_sources() -> Vec<TemperatureSource> {
         sources.push(TemperatureSource {
             name: String::from("CPU"),
             path,
-            last_temp_c: None,
+            last_temp_mc: None,
         });
     }
 
-    // GPU from SMC temperature sensor (t2smc, macsmc, or applesmc hwmon)
+    // GPU and platform sensors from SMC (t2smc, macsmc, or applesmc hwmon)
     let smc_hwmon = find_hwmon_by_name("t2smc")
         .or_else(|| find_hwmon_by_name("macsmc"))
         .or_else(|| find_hwmon_by_name("applesmc"));
     if let Some(hwmon_dir) = smc_hwmon {
-        let pattern = format!("{}/temp*_label", hwmon_dir.display());
-        if let Ok(entries) = glob::glob(&pattern) {
-            for entry in entries.flatten() {
-                let Ok(label) = fs::read_to_string(&entry) else {
-                    continue;
-                };
-                let label = label.trim();
-                if label == "TG0P" || label == "TGDD" {
-                    let temp_path = entry.with_file_name(
-                        entry
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .replace("_label", "_input"),
-                    );
-                    if temp_path.exists() && read_temperature(&temp_path).is_ok() {
-                        sources.push(TemperatureSource {
-                            name: String::from("GPU"),
-                            path: temp_path,
-                            last_temp_c: None,
-                        });
-                        break;
-                    }
-                }
+        let mut gpu_found = false;
+        for (label, path) in smc_labeled_sensors(&hwmon_dir) {
+            if !gpu_found && (label == "TG0P" || label == "TGDD") {
+                gpu_found = true;
+                sources.push(TemperatureSource {
+                    name: String::from("GPU"),
+                    path,
+                    last_temp_mc: None,
+                });
+            } else if platform_labels.contains(&label) {
+                sources.push(TemperatureSource {
+                    name: label,
+                    path,
+                    last_temp_mc: None,
+                });
             }
         }
     }
 
     sources
+}
+
+fn smc_labeled_sensors(hwmon_dir: &Path) -> Vec<(String, PathBuf)> {
+    let pattern = format!("{}/temp*_label", hwmon_dir.display());
+    let Ok(entries) = glob::glob(&pattern) else {
+        return Vec::new();
+    };
+
+    let mut sensors = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(label) = fs::read_to_string(&entry) else {
+            continue;
+        };
+        let input_path = entry.with_file_name(
+            entry
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .replace("_label", "_input"),
+        );
+        if read_temperature_mc(&input_path).is_ok() {
+            sensors.push((label.trim().to_owned(), input_path));
+        }
+    }
+    sensors
 }
 
 fn first_existing_path(pattern: &str) -> Option<PathBuf> {
@@ -299,7 +342,7 @@ fn first_existing_path(pattern: &str) -> Option<PathBuf> {
         let Ok(path) = entry else {
             continue;
         };
-        if path.exists() && read_temperature(&path).is_ok() {
+        if path.exists() && read_temperature_mc(&path).is_ok() {
             return Some(path);
         }
     }
@@ -326,6 +369,21 @@ fn join_suffix(path: &Path, suffix: &str) -> PathBuf {
     path.with_file_name(format!("{file_name}{suffix}"))
 }
 
+fn read_i32(path: &Path) -> Result<i32> {
+    let contents = fs::read_to_string(path).map_err(|source| FanControlError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+
+    contents
+        .trim()
+        .parse::<i32>()
+        .map_err(|source| FanControlError::ParseInt {
+            path: path.to_path_buf(),
+            source,
+        })
+}
+
 fn read_u32(path: &Path) -> Result<u32> {
     let contents = fs::read_to_string(path).map_err(|source| FanControlError::Io {
         path: path.to_path_buf(),
@@ -341,9 +399,12 @@ fn read_u32(path: &Path) -> Result<u32> {
         })
 }
 
-fn read_temperature(path: &Path) -> Result<u8> {
-    let raw = read_u32(path)?;
-    Ok((raw / 1000) as u8)
+fn read_temperature_mc(path: &Path) -> Result<i32> {
+    read_i32(path)
+}
+
+fn mc_to_c(millis: i32) -> u8 {
+    (millis / 1000).clamp(0, u8::MAX as i32) as u8
 }
 
 fn write_string(path: &Path, value: &str) -> Result<()> {
