@@ -11,13 +11,18 @@
 #include <linux/bug.h>
 #include <linux/container_of.h>
 #include <linux/err.h>
+#include <linux/jiffies.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/overflow.h>
+#include <linux/scatterlist.h>
 #include <linux/slab.h>
+#include <linux/timer.h>
 #include <linux/types.h>
 #include <linux/unaligned.h>
 #include <linux/usb.h>
 #include <linux/version.h>
+#include <linux/vmalloc.h>
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -130,6 +135,7 @@ struct appletbdrm_fb_request_response {
 struct appletbdrm_device {
 	unsigned int in_ep;
 	unsigned int out_ep;
+	struct mutex io_lock;
 
 	unsigned int width;
 	unsigned int height;
@@ -145,6 +151,7 @@ struct appletbdrm_device {
 struct appletbdrm_plane_state {
 	struct drm_shadow_plane_state base;
 	struct appletbdrm_fb_request *request;
+	struct sg_table request_sgt;
 	struct appletbdrm_fb_request_response *response;
 	size_t request_size;
 	size_t frames_size;
@@ -176,6 +183,122 @@ static int appletbdrm_send_request(struct appletbdrm_device *adev,
 	}
 
 	return 0;
+}
+
+struct appletbdrm_sg_timeout {
+	struct timer_list timer;
+	struct usb_sg_request *io;
+};
+
+static void appletbdrm_sg_timeout(struct timer_list *timer)
+{
+	struct appletbdrm_sg_timeout *timeout =
+		timer_container_of(timeout, timer, timer);
+
+	usb_sg_cancel(timeout->io);
+}
+
+static int appletbdrm_send_sg_request(struct appletbdrm_device *adev,
+				      struct sg_table *sgt, size_t size)
+{
+	struct usb_device *udev = adev_to_udev(adev);
+	struct drm_device *drm = &adev->drm;
+	unsigned int pipe = usb_sndbulkpipe(udev, adev->out_ep);
+	unsigned int max_packet = usb_maxpacket(udev, pipe);
+	struct appletbdrm_sg_timeout timeout;
+	struct usb_sg_request io;
+	int ret;
+
+	if (!sgt->sgl || !sgt->orig_nents || !size || !max_packet)
+		return -EINVAL;
+
+	ret = usb_sg_init(&io, udev, pipe, 0, sgt->sgl,
+			  sgt->orig_nents, size, GFP_KERNEL);
+	if (ret)
+		goto error;
+
+	timeout.io = &io;
+	timer_setup_on_stack(&timeout.timer, appletbdrm_sg_timeout, 0);
+	mod_timer(&timeout.timer, jiffies +
+		  msecs_to_jiffies(APPLETBDRM_BULK_MSG_TIMEOUT));
+
+	usb_sg_wait(&io);
+
+	timer_delete_sync(&timeout.timer);
+	timer_destroy_on_stack(&timeout.timer);
+
+	ret = io.status;
+	if (ret == -ECONNRESET)
+		ret = -ETIMEDOUT;
+	if (ret)
+		goto error;
+	if (io.bytes != size) {
+		ret = -EIO;
+		goto error;
+	}
+
+	/* A max-packet-sized request needs an explicit terminating ZLP. */
+	if (size % max_packet == 0) {
+		int actual_size;
+
+		ret = usb_bulk_msg(udev, pipe, NULL, 0, &actual_size,
+				   APPLETBDRM_BULK_MSG_TIMEOUT);
+		if (ret)
+			goto error;
+	}
+
+	return 0;
+
+error:
+	drm_err(drm, "Failed to send SG framebuffer request (%d)\n", ret);
+	return ret;
+}
+
+static void appletbdrm_free_sg_request(struct appletbdrm_plane_state *state)
+{
+	if (state->request_sgt.sgl)
+		sg_free_table(&state->request_sgt);
+	memset(&state->request_sgt, 0, sizeof(state->request_sgt));
+
+	vfree(state->request);
+	state->request = NULL;
+}
+
+static int appletbdrm_alloc_sg_request(struct appletbdrm_plane_state *state,
+				       size_t size)
+{
+	struct scatterlist *sg;
+	unsigned int nents;
+	unsigned int i;
+	int ret;
+
+	if (!size || size > UINT_MAX)
+		return -EINVAL;
+
+	state->request = vzalloc(size);
+	if (!state->request)
+		return -ENOMEM;
+
+	nents = DIV_ROUND_UP(size, PAGE_SIZE);
+	ret = sg_alloc_table(&state->request_sgt, nents, GFP_KERNEL);
+	if (ret)
+		goto free_request;
+
+	for_each_sg(state->request_sgt.sgl, sg,
+		    state->request_sgt.orig_nents, i) {
+		size_t offset = (size_t)i * PAGE_SIZE;
+		size_t length = min_t(size_t, PAGE_SIZE,
+					  size - offset);
+
+		sg_set_page(sg, vmalloc_to_page((u8 *)state->request + offset),
+			    length, 0);
+	}
+
+	return 0;
+
+free_request:
+	appletbdrm_free_sg_request(state);
+	return ret;
 }
 
 static int appletbdrm_read_response(struct appletbdrm_device *adev,
@@ -225,7 +348,39 @@ retry:
 	return 0;
 }
 
-static int appletbdrm_send_msg(struct appletbdrm_device *adev, __le32 msg)
+static int appletbdrm_read_update_response(struct appletbdrm_device *adev,
+		struct appletbdrm_fb_request_response *response,
+		u64 expected_timestamp)
+{
+	struct drm_device *drm = &adev->drm;
+	u64 response_timestamp = 0;
+	int attempt;
+	int ret;
+
+	/* One retry consumes a response left by the immediately prior update. */
+	for (attempt = 0; attempt < 2; attempt++) {
+		ret = appletbdrm_read_response(adev, &response->header,
+					       sizeof(*response),
+					       APPLETBDRM_MSG_UPDATE_COMPLETE);
+		if (ret)
+			return ret;
+
+		response_timestamp = get_unaligned_le64(&response->timestamp);
+		if (response_timestamp == expected_timestamp)
+			return 0;
+
+		if (!attempt)
+			drm_warn(drm, "Discarding stale update response (%llu, expected %llu)\n",
+				 response_timestamp, expected_timestamp);
+	}
+
+	drm_err(drm, "Response timestamp (%llu) doesn't match request timestamp (%llu)\n",
+		response_timestamp, expected_timestamp);
+	return -EBADMSG;
+}
+
+static int appletbdrm_send_msg_unlocked(struct appletbdrm_device *adev,
+					__le32 msg)
 {
 	struct appletbdrm_msg_simple_request *request;
 	int ret;
@@ -243,6 +398,17 @@ static int appletbdrm_send_msg(struct appletbdrm_device *adev, __le32 msg)
 	ret = appletbdrm_send_request(adev, &request->header, sizeof(*request));
 
 	kfree(request);
+
+	return ret;
+}
+
+static int appletbdrm_send_msg(struct appletbdrm_device *adev, __le32 msg)
+{
+	int ret;
+
+	mutex_lock(&adev->io_lock);
+	ret = appletbdrm_send_msg_unlocked(adev, msg);
+	mutex_unlock(&adev->io_lock);
 
 	return ret;
 }
@@ -269,12 +435,13 @@ static int appletbdrm_get_information(struct appletbdrm_device *adev)
 	if (!info)
 		return -ENOMEM;
 
-	ret = appletbdrm_send_msg(adev, APPLETBDRM_MSG_GET_INFORMATION);
-	if (ret)
-		return ret;
-
-	ret = appletbdrm_read_response(adev, &info->header, sizeof(*info),
-				       APPLETBDRM_MSG_GET_INFORMATION);
+	mutex_lock(&adev->io_lock);
+	ret = appletbdrm_send_msg_unlocked(adev,
+					   APPLETBDRM_MSG_GET_INFORMATION);
+	if (!ret)
+		ret = appletbdrm_read_response(adev, &info->header, sizeof(*info),
+					       APPLETBDRM_MSG_GET_INFORMATION);
+	mutex_unlock(&adev->io_lock);
 	if (ret)
 		goto free_info;
 
@@ -331,6 +498,7 @@ static int appletbdrm_primary_plane_helper_atomic_check(struct drm_plane *plane,
 	struct drm_atomic_helper_damage_iter iter;
 	struct drm_rect damage;
 	size_t frames_size = 0;
+	size_t aligned_request_size;
 	size_t request_size;
 	int ret;
 
@@ -348,25 +516,36 @@ static int appletbdrm_primary_plane_helper_atomic_check(struct drm_plane *plane,
 
 	drm_atomic_helper_damage_iter_init(&iter, old_plane_state, new_plane_state);
 	drm_atomic_for_each_plane_damage(&iter, &damage) {
-		frames_size += struct_size((struct appletbdrm_frame *)0, buf, rect_size(&damage));
+		size_t frame_size = struct_size((struct appletbdrm_frame *)0,
+						buf, rect_size(&damage));
+
+		if (check_add_overflow(frames_size, frame_size, &frames_size))
+			return -EOVERFLOW;
 	}
 
 	if (!frames_size)
 		return 0;
 
-	request_size = ALIGN(sizeof(struct appletbdrm_fb_request) +
-		       frames_size +
-		       sizeof(struct appletbdrm_fb_request_footer), 16);
+	if (check_add_overflow(sizeof(struct appletbdrm_fb_request),
+			       frames_size, &request_size) ||
+	    check_add_overflow(request_size,
+			       sizeof(struct appletbdrm_fb_request_footer),
+			       &request_size) ||
+	    check_add_overflow(request_size, (size_t)15,
+			       &aligned_request_size))
+		return -EOVERFLOW;
+	request_size = ALIGN_DOWN(aligned_request_size, 16);
 
-	appletbdrm_state->request = kzalloc(request_size, GFP_KERNEL);
-
-	if (!appletbdrm_state->request)
-		return -ENOMEM;
+	ret = appletbdrm_alloc_sg_request(appletbdrm_state, request_size);
+	if (ret)
+		return ret;
 
 	appletbdrm_state->response = kzalloc_obj(*appletbdrm_state->response);
 
-	if (!appletbdrm_state->response)
+	if (!appletbdrm_state->response) {
+		appletbdrm_free_sg_request(appletbdrm_state);
 		return -ENOMEM;
+	}
 
 	appletbdrm_state->request_size = request_size;
 	appletbdrm_state->frames_size = frames_size;
@@ -399,7 +578,7 @@ static int appletbdrm_flush_damage(struct appletbdrm_device *adev,
 	ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
 	if (ret) {
 		drm_err(drm, "Failed to start CPU framebuffer access (%d)\n", ret);
-		goto end_fb_cpu_access;
+		return ret;
 	}
 
 	request->header.unk_00 = cpu_to_le16(2);
@@ -451,22 +630,14 @@ static int appletbdrm_flush_damage(struct appletbdrm_device *adev,
 	footer->unk_4c = cpu_to_le32(0xffff);
 	footer->timestamp = cpu_to_le64(timestamp);
 
-	ret = appletbdrm_send_request(adev, &request->header, request_size);
-	if (ret)
-		goto end_fb_cpu_access;
+	mutex_lock(&adev->io_lock);
+	ret = appletbdrm_send_sg_request(adev,
+					&appletbdrm_state->request_sgt,
+					request_size);
+	if (!ret)
+		ret = appletbdrm_read_update_response(adev, response, timestamp);
+	mutex_unlock(&adev->io_lock);
 
-	ret = appletbdrm_read_response(adev, &response->header, sizeof(*response),
-				       APPLETBDRM_MSG_UPDATE_COMPLETE);
-	if (ret)
-		goto end_fb_cpu_access;
-
-	if (response->timestamp != footer->timestamp) {
-		drm_err(drm, "Response timestamp (%llu) doesn't match request timestamp (%llu)\n",
-			le64_to_cpu(response->timestamp), timestamp);
-		goto end_fb_cpu_access;
-	}
-
-end_fb_cpu_access:
 	drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
 
 	return ret;
@@ -531,6 +702,8 @@ static struct drm_plane_state *appletbdrm_primary_plane_duplicate_state(struct d
 
 	/* Request and response are not duplicated and are allocated in .atomic_check */
 	appletbdrm_state->request = NULL;
+	memset(&appletbdrm_state->request_sgt, 0,
+	       sizeof(appletbdrm_state->request_sgt));
 	appletbdrm_state->response = NULL;
 
 	appletbdrm_state->request_size = 0;
@@ -548,7 +721,7 @@ static void appletbdrm_primary_plane_destroy_state(struct drm_plane *plane,
 {
 	struct appletbdrm_plane_state *appletbdrm_state = to_appletbdrm_plane_state(state);
 
-	kfree(appletbdrm_state->request);
+	appletbdrm_free_sg_request(appletbdrm_state);
 	kfree(appletbdrm_state->response);
 
 	__drm_gem_destroy_shadow_plane_state(&appletbdrm_state->base);
@@ -735,6 +908,7 @@ static int appletbdrm_probe(struct usb_interface *intf,
 			    const struct usb_device_id *id)
 {
 	struct usb_endpoint_descriptor *bulk_in, *bulk_out;
+	struct usb_device *udev = interface_to_usbdev(intf);
 	struct device *dev = &intf->dev;
 	struct appletbdrm_device *adev;
 	struct drm_device *drm = NULL;
@@ -746,6 +920,9 @@ static int appletbdrm_probe(struct usb_interface *intf,
 		drm_err(drm, "appletbdrm: Failed to find bulk endpoints\n");
 		return ret;
 	}
+	if (!udev->bus->sg_tablesize)
+		return dev_err_probe(dev, -EOPNOTSUPP,
+				     "host controller does not support scatter-gather\n");
 
 	adev = devm_drm_dev_alloc(dev, &appletbdrm_drm_driver, struct appletbdrm_device, drm);
 	if (IS_ERR(adev))
@@ -753,6 +930,7 @@ static int appletbdrm_probe(struct usb_interface *intf,
 
 	adev->in_ep = bulk_in->bEndpointAddress;
 	adev->out_ep = bulk_out->bEndpointAddress;
+	mutex_init(&adev->io_lock);
 
 	drm = &adev->drm;
 
