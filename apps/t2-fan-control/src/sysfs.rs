@@ -22,36 +22,70 @@ pub struct TemperatureSource {
     pub name: String,
     pub path: PathBuf,
     pub last_temp_c: Option<u8>,
+    pub role: TemperatureRole,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TemperatureRole { Cpu, Gpu, System }
 
 #[derive(Clone, Debug, Default)]
 pub struct TemperatureSnapshot {
     pub cpu_temp_c: Option<u8>,
     pub gpu_temp_c: Option<u8>,
+    pub hottest_temp_c: Option<u8>,
+    pub hottest_sensor_name: Option<String>,
+    pub overall_hottest_temp_c: Option<u8>,
+    pub overall_hottest_sensor_name: Option<String>,
+    pub system_temp_c: Option<u8>,
+    pub system_sensor_count: usize,
+    pub monitored_sensor_count: usize,
 }
 
 impl TemperatureSnapshot {
     pub fn read_from(sources: &mut [TemperatureSource]) -> Self {
         let mut snapshot = Self::default();
+        let mut system_sum = 0_u32;
+        let mut system_count = 0_usize;
         for source in sources {
             source.last_temp_c = read_temperature(&source.path).ok();
-            match source.name.as_str() {
-                "CPU" => snapshot.cpu_temp_c = source.last_temp_c,
-                "GPU" => snapshot.gpu_temp_c = source.last_temp_c,
-                _ => {}
+            let Some(temp) = source.last_temp_c.filter(|temp| *temp > 0) else { continue; };
+            snapshot.monitored_sensor_count += 1;
+            if snapshot.overall_hottest_temp_c.map_or(true, |hottest| temp > hottest) {
+                snapshot.overall_hottest_temp_c = Some(temp);
+                snapshot.overall_hottest_sensor_name = Some(source.name.clone());
             }
+            if source.role != TemperatureRole::System
+                && snapshot.hottest_temp_c.map_or(true, |hottest| temp > hottest)
+            {
+                snapshot.hottest_temp_c = Some(temp);
+                snapshot.hottest_sensor_name = Some(source.name.clone());
+            }
+            record_temperature(&mut snapshot, source.role, temp, &mut system_sum, &mut system_count);
         }
+        snapshot.system_sensor_count = system_count;
+        snapshot.system_temp_c = (system_count > 0)
+            .then(|| ((system_sum + system_count as u32 / 2) / system_count as u32) as u8);
         snapshot
     }
 
     pub fn effective_temp_c(&self) -> Option<u8> {
-        match (self.cpu_temp_c, self.gpu_temp_c) {
-            (Some(cpu), Some(gpu)) => Some(cpu.max(gpu)),
-            (Some(cpu), None) => Some(cpu),
-            (None, Some(gpu)) => Some(gpu),
-            (None, None) => None,
-        }
+        self.hottest_temp_c
     }
+}
+
+fn record_temperature(snapshot: &mut TemperatureSnapshot, role: TemperatureRole, temp: u8, system_sum: &mut u32, system_count: &mut usize) {
+    if temp == 0 { return; }
+    snapshot.overall_hottest_temp_c = Some(snapshot.overall_hottest_temp_c.map_or(temp, |old| old.max(temp)));
+    if role != TemperatureRole::System {
+        snapshot.hottest_temp_c = Some(snapshot.hottest_temp_c.map_or(temp, |old| old.max(temp)));
+    }
+    match role {
+        TemperatureRole::Cpu => snapshot.cpu_temp_c = Some(temp),
+        TemperatureRole::Gpu => snapshot.gpu_temp_c = Some(snapshot.gpu_temp_c.map_or(temp, |old| old.max(temp))),
+        TemperatureRole::System => {}
+    }
+    *system_sum += temp as u32;
+    *system_count += 1;
 }
 
 impl FanEndpoint {
@@ -251,9 +285,10 @@ pub fn discover_temperature_sources() -> Vec<TemperatureSource> {
         "/sys/devices/platform/coretemp.0/hwmon/hwmon*/temp1_input",
     ) {
         sources.push(TemperatureSource {
-            name: String::from("CPU"),
+            name: String::from("CPU package"),
             path,
             last_temp_c: None,
+            role: TemperatureRole::Cpu,
         });
     }
 
@@ -269,28 +304,77 @@ pub fn discover_temperature_sources() -> Vec<TemperatureSource> {
                     continue;
                 };
                 let label = label.trim();
-                if label == "TG0P" || label == "TGDD" {
-                    let temp_path = entry.with_file_name(
-                        entry
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .replace("_label", "_input"),
-                    );
-                    if temp_path.exists() && read_temperature(&temp_path).is_ok() {
-                        sources.push(TemperatureSource {
-                            name: String::from("GPU"),
-                            path: temp_path,
-                            last_temp_c: None,
-                        });
-                        break;
-                    }
+                let temp_path = entry.with_file_name(entry.file_name().unwrap_or_default().to_string_lossy().replace("_label", "_input"));
+                if temp_path.exists() && read_temperature(&temp_path).is_ok() {
+                    sources.push(TemperatureSource {
+                        name: sensor_label(label),
+                        path: temp_path,
+                        last_temp_c: None,
+                        role: if matches!(label, "TG0P" | "TGDD" | "TGDF" | "TGVP") {
+                            TemperatureRole::Gpu
+                        } else { TemperatureRole::System },
+                    });
                 }
             }
         }
     }
 
     sources
+}
+
+fn sensor_label(key: &str) -> String {
+    let bytes = key.as_bytes();
+    if bytes.len() == 4 && bytes[0] == b'T' && bytes[1] == b'C' && bytes[3] == b'C' {
+        if let Some(index) = (bytes[2] as char).to_digit(16).filter(|index| *index > 0) {
+            return format!("CPU Core {}", index - 1);
+        }
+    }
+    match key {
+        "TA0V" => String::from("Ambient"),
+        "TB0T" => String::from("Battery 1"),
+        "TB1T" => String::from("Battery 2"),
+        "TB2T" => String::from("Battery 3"),
+        "TC0P" => String::from("CPU Proximity"),
+        "TC0E" => String::from("CPU Sensor 0E"),
+        "TC0F" => String::from("CPU Sensor 0F"),
+        "TCGC" => String::from("CPU Graphics Core"),
+        "TCMX" => String::from("CPU Memory"),
+        "TCSA" => String::from("CPU System Agent"),
+        "TCXC" => String::from("CPU Package"),
+        "TG0P" => String::from("GPU Proximity"),
+        "TGDD" => String::from("GPU Die digital"),
+        "TGDF" => String::from("GPU Die analog"),
+        "TGVP" => String::from("GPU Voltage Regulator"),
+        "TH0F" => String::from("SSD Heatsink"),
+        "TH0X" => String::from("SSD Controller"),
+        "TH0a" => String::from("SSD NAND"),
+        "TH0b" => String::from("SSD NAND 2"),
+        "TH1a" => String::from("Drive 1 Raw A"),
+        "TH1b" => String::from("Drive 1 Raw B"),
+        "TM0P" => String::from("Memory Bank A1"),
+        "TM1P" => String::from("Memory Bank A2"),
+        "TM2P" => String::from("Memory Bank A3"),
+        "TM3P" => String::from("Memory Bank A4"),
+        "TM8P" => String::from("Memory Bank B1"),
+        "TM9P" => String::from("Memory Bank B2"),
+        "Tm0P" => String::from("Mainboard Proximity"),
+        "Tm1P" => String::from("Mainboard Bottom"),
+        "Th0H" => String::from("CPU Heatpipe"),
+        "Th1H" => String::from("Right Fin Stack"),
+        "Th2H" => String::from("Left Fin Stack"),
+        "TPCD" => String::from("PCH Die"),
+        "TTLD" => String::from("Thunderbolt Left"),
+        "TTRD" => String::from("Thunderbolt Right"),
+        "TW0P" => String::from("WiFi"),
+        "TaLC" => String::from("Audio Left"),
+        "TaRC" => String::from("Audio Right"),
+        "Ts0P" => String::from("Palmrest Left"),
+        "Ts0S" => String::from("Palmrest Left skin"),
+        "Ts1P" => String::from("Palmrest Right"),
+        "Ts1S" => String::from("Palmrest Right skin"),
+        "Ts2S" => String::from("Touchpad"),
+        _ => format!("Unknown sensor ({key})"),
+    }
 }
 
 fn first_existing_path(pattern: &str) -> Option<PathBuf> {
@@ -342,8 +426,10 @@ fn read_u32(path: &Path) -> Result<u32> {
 }
 
 fn read_temperature(path: &Path) -> Result<u8> {
-    let raw = read_u32(path)?;
-    Ok((raw / 1000) as u8)
+    let contents = fs::read_to_string(path).map_err(|source| FanControlError::Io { path: path.to_path_buf(), source })?;
+    let raw = contents.trim().parse::<i32>().map_err(|source| FanControlError::ParseInt { path: path.to_path_buf(), source })?;
+    if raw <= 0 { return Ok(0); }
+    Ok((raw / 1000).clamp(0, u8::MAX as i32) as u8)
 }
 
 fn write_string(path: &Path, value: &str) -> Result<()> {
@@ -351,4 +437,27 @@ fn write_string(path: &Path, value: &str) -> Result<()> {
         path: path.to_path_buf(),
         source,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hottest_and_positive_smc_average_are_independent() {
+        let mut snapshot = TemperatureSnapshot::default();
+        let mut sum = 0;
+        let mut count = 0;
+        record_temperature(&mut snapshot, TemperatureRole::Cpu, 80, &mut sum, &mut count);
+        record_temperature(&mut snapshot, TemperatureRole::System, 0, &mut sum, &mut count);
+        record_temperature(&mut snapshot, TemperatureRole::System, 40, &mut sum, &mut count);
+        record_temperature(&mut snapshot, TemperatureRole::Gpu, 100, &mut sum, &mut count);
+        record_temperature(&mut snapshot, TemperatureRole::System, 110, &mut sum, &mut count);
+
+        assert_eq!(snapshot.hottest_temp_c, Some(100));
+        assert_eq!(snapshot.overall_hottest_temp_c, Some(110));
+        assert_eq!(snapshot.cpu_temp_c, Some(80));
+        assert_eq!(snapshot.gpu_temp_c, Some(100));
+        assert_eq!((sum, count), (330, 4));
+    }
 }

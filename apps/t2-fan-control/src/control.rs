@@ -1,27 +1,27 @@
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use crate::{
-    config::{curve_for_preset, AppConfig, CurvePoint},
+    config::{curve, AppConfig, CurvePoint},
     error::Result,
     sysfs::{FanEndpoint, TemperatureSnapshot, TemperatureSource},
 };
 
 const CONTROL_INTERVAL: Duration = Duration::from_secs(2);
-const SMOOTHING_SAMPLES: usize = 10;
+const SYSTEM_LIMIT_HYSTERESIS_C: u8 = 5;
 
 pub struct Controller {
-    samples: VecDeque<u8>,
     last_applied_percent: Option<u8>,
     last_tick: Instant,
+    heat_soak_cooling: bool,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct ControlSnapshot {
     pub temperatures: TemperatureSnapshot,
     pub effective_temp_c: Option<u8>,
+    pub system_temp_c: Option<u8>,
+    pub system_sensor_count: usize,
+    pub heat_soak_cooling: bool,
     pub target_percent: Option<u8>,
     pub target_rpm_per_fan: Vec<u32>,
 }
@@ -29,9 +29,9 @@ pub struct ControlSnapshot {
 impl Controller {
     pub fn new() -> Self {
         Self {
-            samples: VecDeque::with_capacity(SMOOTHING_SAMPLES),
             last_applied_percent: None,
             last_tick: Instant::now() - CONTROL_INTERVAL,
+            heat_soak_cooling: false,
         }
     }
 
@@ -44,16 +44,14 @@ impl Controller {
         let snapshot = TemperatureSnapshot::read_from(temperatures);
         let effective_temp = snapshot.effective_temp_c();
 
-        if let Some(temp) = effective_temp {
-            self.samples.push_back(temp);
-            if self.samples.len() > SMOOTHING_SAMPLES {
-                self.samples.pop_front();
-            }
-        }
-
-        let smoothed_temp = self.smoothed_temp();
-        let curve = curve_for_preset(config);
-        let target_percent = smoothed_temp.map(|temp| interpolate_percent(&curve, temp));
+        let curve = curve(config);
+        let curve_target = effective_temp.map(|temp| interpolate_percent(&curve, temp));
+        self.heat_soak_cooling = next_system_cooling(
+            self.heat_soak_cooling,
+            snapshot.system_temp_c,
+            config.soak_temp_c,
+        );
+        let target_percent = if self.heat_soak_cooling { Some(100) } else { curve_target };
 
         let mut target_rpm_per_fan = Vec::with_capacity(fans.len());
         if config.automatic_control_enabled {
@@ -80,9 +78,14 @@ impl Controller {
 
         self.last_tick = Instant::now();
 
+        let system_temp_c = snapshot.system_temp_c;
+        let system_sensor_count = snapshot.system_sensor_count;
         Ok(ControlSnapshot {
             temperatures: snapshot,
-            effective_temp_c: smoothed_temp,
+            effective_temp_c: effective_temp,
+            system_temp_c,
+            system_sensor_count,
+            heat_soak_cooling: self.heat_soak_cooling,
             target_percent,
             target_rpm_per_fan,
         })
@@ -94,6 +97,7 @@ impl Controller {
             fan.app_controlled = Some(false);
         }
         self.last_applied_percent = None;
+        self.heat_soak_cooling = false;
         Ok(())
     }
 
@@ -101,13 +105,13 @@ impl Controller {
         self.last_tick.elapsed() >= CONTROL_INTERVAL
     }
 
-    fn smoothed_temp(&self) -> Option<u8> {
-        if self.samples.is_empty() {
-            return None;
-        }
+}
 
-        let sum: u16 = self.samples.iter().map(|value| *value as u16).sum();
-        Some((sum / self.samples.len() as u16) as u8)
+fn next_system_cooling(active: bool, system_temp_c: Option<u8>, limit_temp_c: u8) -> bool {
+    match system_temp_c {
+        Some(temp) if temp >= limit_temp_c => true,
+        Some(temp) if temp <= limit_temp_c.saturating_sub(SYSTEM_LIMIT_HYSTERESIS_C) => false,
+        _ => active,
     }
 }
 
@@ -140,4 +144,17 @@ fn interpolate_percent(curve: &[CurvePoint], temp_c: u8) -> u8 {
         }
     }
     curve.last().map(|point| point.speed_percent).unwrap_or(100)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_system_cooling;
+
+    #[test]
+    fn system_limit_has_five_degree_hysteresis() {
+        assert!(next_system_cooling(false, Some(80), 80));
+        assert!(next_system_cooling(true, Some(79), 80));
+        assert!(next_system_cooling(true, Some(76), 80));
+        assert!(!next_system_cooling(true, Some(75), 80));
+    }
 }

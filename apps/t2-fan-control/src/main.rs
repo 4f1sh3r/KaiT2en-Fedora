@@ -18,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-use config::{curve_for_preset, normalize_curve, AppConfig, CurvePoint, PresetKind};
+use config::{curve, normalize_curve, resize_soak, AppConfig, CurvePoint, MAX_SOAK_TEMP_C};
 use control::{ControlSnapshot, Controller};
 use adw::StyleManager;
 use gtk4::{
@@ -27,14 +27,14 @@ use gtk4::{
     glib,
     prelude::*,
     Align, Application, ApplicationWindow, Box as GtkBox, CssProvider, DrawingArea, GestureDrag,
-    Grid, Label, LinkButton, Orientation, ToggleButton, gdk,
+    Grid, Label, LinkButton, Orientation, gdk,
 };
 use ipc::{DaemonState, Request};
 use signal_hook::consts::signal::SIGHUP;
 use sysfs::{discover_fans, discover_temperature_sources, FanEndpoint, TemperatureSnapshot, TemperatureSource};
 
 const APP_ID: &str = "org.t2fancontrol.gtk";
-const APP_VERSION: &str = "0.04";
+const APP_VERSION: &str = "0.05";
 const HISTORY_CAPACITY: usize = 90;
 
 #[derive(Clone, Copy)]
@@ -54,6 +54,7 @@ struct ThemePalette {
     cpu: (f64, f64, f64),
     gpu: (f64, f64, f64),
     effective: (f64, f64, f64),
+    system: (f64, f64, f64),
     fan: (f64, f64, f64),
     curve: (f64, f64, f64),
     label: (f64, f64, f64),
@@ -75,6 +76,7 @@ const DARK_PALETTE: ThemePalette = ThemePalette {
     cpu: (0.92, 0.54, 0.28),
     gpu: (0.34, 0.60, 0.86),
     effective: (0.68, 0.82, 0.42),
+    system: (0.78, 0.52, 0.88),
     fan: (0.50, 0.76, 0.58),
     curve: (0.86, 0.86, 0.88),
     label: (0.93, 0.96, 0.99),
@@ -96,6 +98,7 @@ const LIGHT_PALETTE: ThemePalette = ThemePalette {
     cpu: (0.86, 0.43, 0.18),
     gpu: (0.20, 0.45, 0.75),
     effective: (0.42, 0.62, 0.18),
+    system: (0.55, 0.30, 0.68),
     fan: (0.30, 0.58, 0.38),
     curve: (0.20, 0.20, 0.22),
     label: (0.18, 0.18, 0.18),
@@ -106,20 +109,26 @@ struct HistorySample {
     cpu_temp_c: Option<u8>,
     gpu_temp_c: Option<u8>,
     effective_temp_c: Option<u8>,
+    system_temp_c: Option<u8>,
 }
+
+#[derive(Clone, Copy)]
+enum CurveDragTarget { Point(usize), SoakWall }
 
 struct UiRefs {
     status: Label,
     cpu_label: Label,
     gpu_label: Label,
     effective_label: Label,
+    hottest_sensor_label: Label,
+    overall_hottest_sensor_label: Label,
+    system_label: Label,
     target_label: Label,
     fan_label: Label,
     details_label: Label,
-    preset_quiet: ToggleButton,
-    preset_balanced: ToggleButton,
-    preset_performance: ToggleButton,
-    preset_custom: ToggleButton,
+    curve_title: Label,
+    curve_legend: Label,
+    temperature_legend: Label,
     curve_area: DrawingArea,
     temperature_graph: DrawingArea,
     fan_graph: DrawingArea,
@@ -139,7 +148,6 @@ impl AppModel {
     fn new() -> Self {
         let mut config = AppConfig::load();
         config.autostart_enabled = service::autostart_enabled();
-
         let mut model = Self {
             config,
             snapshot: ControlSnapshot::default(),
@@ -172,7 +180,7 @@ impl AppModel {
 
     fn apply_state(&mut self, state: DaemonState) {
         self.status = state.status;
-        self.config.active_preset = state.active_preset;
+        self.config.soak_temp_c = state.soak_temp_c;
         self.config.automatic_control_enabled = state.control_active;
         self.config.autostart_enabled = state.autostart_enabled;
         self.config.custom_curve = state.custom_curve;
@@ -180,8 +188,18 @@ impl AppModel {
             temperatures: TemperatureSnapshot {
                 cpu_temp_c: state.cpu_temp_c,
                 gpu_temp_c: state.gpu_temp_c,
+                hottest_temp_c: state.effective_temp_c,
+                hottest_sensor_name: state.hottest_sensor_name,
+                overall_hottest_temp_c: state.overall_hottest_temp_c,
+                overall_hottest_sensor_name: state.overall_hottest_sensor_name,
+                system_temp_c: state.system_temp_c,
+                system_sensor_count: state.system_sensor_count,
+                monitored_sensor_count: state.monitored_sensor_count,
             },
             effective_temp_c: state.effective_temp_c,
+            system_temp_c: state.system_temp_c,
+            system_sensor_count: state.system_sensor_count,
+            heat_soak_cooling: state.heat_soak_cooling,
             target_percent: state.target_percent,
             target_rpm_per_fan: Vec::new(),
         };
@@ -197,28 +215,33 @@ impl AppModel {
         }
     }
 
-    fn set_preset(&mut self, preset: PresetKind) {
-        self.send_request(
-            Request::SetPreset(preset),
-            String::from("Updating preset failed"),
-        );
-    }
-
     fn update_curve_point(&mut self, index: usize, x: f64, y: f64, width: f64, height: f64) {
-        if self.config.active_preset != PresetKind::Custom {
-            return;
-        }
+        let left_bound = if index == 2 { self.config.custom_curve[1].temp_c + 1 } else { 1 };
+        let right_bound = if index == 1 { self.config.custom_curve[2].temp_c.saturating_sub(1) } else { self.config.soak_temp_c.saturating_sub(1) };
         if let Some(point) = self.config.custom_curve.get_mut(index) {
             let plot = plot_rect(width, height);
             let (temp_c, speed_percent) = pos_to_curve_values(plot, x, y);
-            point.temp_c = temp_c;
+            if index == 1 {
+                point.temp_c = temp_c.clamp(left_bound, right_bound);
+            } else if index == 2 {
+                point.temp_c = temp_c.clamp(left_bound, right_bound);
+            }
             point.speed_percent = speed_percent;
-            normalize_curve(&mut self.config.custom_curve);
+            normalize_curve(&mut self.config.custom_curve, self.config.soak_temp_c);
             self.send_request(
-                Request::SetCurve(self.config.custom_curve.clone()),
+                Request::SetCurve(self.config.soak_temp_c, self.config.custom_curve.clone()),
                 String::from("Updating custom curve failed"),
             );
         }
+    }
+
+    fn update_soak(&mut self, x: f64, width: f64, height: f64) {
+        let (temp, _) = pos_to_curve_values(plot_rect(width, height), x, 0.0);
+        resize_soak(&mut self.config, temp);
+        self.send_request(
+            Request::SetCurve(self.config.soak_temp_c, self.config.custom_curve.clone()),
+            String::from("Updating system temperature limit failed"),
+        );
     }
 
     fn average_fan_percent(&self) -> Option<u8> {
@@ -244,7 +267,7 @@ impl AppModel {
     }
 
     fn curve_points(&self) -> Vec<CurvePoint> {
-        curve_for_preset(&self.config)
+        curve(&self.config)
     }
 }
  
@@ -254,6 +277,7 @@ impl AppModel {
             cpu_temp_c: self.snapshot.temperatures.cpu_temp_c,
             gpu_temp_c: self.snapshot.temperatures.gpu_temp_c,
             effective_temp_c: self.snapshot.effective_temp_c,
+            system_temp_c: self.snapshot.system_temp_c,
         });
         if self.temperature_history.len() > HISTORY_CAPACITY {
             self.temperature_history.pop_front();
@@ -347,6 +371,10 @@ impl DaemonRuntime {
     fn new() -> error::Result<Self> {
         let mut config = AppConfig::load();
         config.autostart_enabled = service::autostart_enabled();
+        config.save().map_err(|source| error::FanControlError::Io {
+            path: std::path::PathBuf::from("/etc/t2-fancontrol/config.txt"),
+            source,
+        })?;
 
         let mut fans = discover_fans()?;
         for fan in &mut fans {
@@ -420,10 +448,7 @@ impl DaemonRuntime {
                 } else {
                     self.config.automatic_control_enabled = true;
                     self.controller = Controller::new();
-                    self.status = format!(
-                        "Fan control active with {} preset",
-                        self.config.active_preset.as_str()
-                    );
+                    self.status = String::from("Fan control active");
                 }
                 self.save_config()?;
             }
@@ -437,14 +462,10 @@ impl DaemonRuntime {
                 };
                 self.save_config()?;
             }
-            Request::SetPreset(preset) => {
-                self.config.active_preset = preset;
-                self.status = format!("Preset changed to {}", preset.as_str());
-                self.save_config()?;
-            }
-            Request::SetCurve(curve) => {
+            Request::SetCurve(soak_temp_c, curve) => {
+                self.config.soak_temp_c = soak_temp_c;
                 self.config.custom_curve = curve;
-                self.status = String::from("Custom preset updated");
+                self.status = format!("Curve updated · system limit at {soak_temp_c} C");
                 self.save_config()?;
             }
         }
@@ -467,6 +488,13 @@ impl DaemonRuntime {
                 self.snapshot.temperatures.cpu_temp_c,
                 self.snapshot.temperatures.gpu_temp_c,
                 self.snapshot.effective_temp_c,
+                self.snapshot.temperatures.hottest_sensor_name.clone(),
+                self.snapshot.temperatures.overall_hottest_temp_c,
+                self.snapshot.temperatures.overall_hottest_sensor_name.clone(),
+                self.snapshot.system_temp_c,
+                self.snapshot.system_sensor_count,
+                self.snapshot.temperatures.monitored_sensor_count,
+                self.snapshot.heat_soak_cooling,
             ),
             self.snapshot.target_percent,
             &self.fans,
@@ -478,13 +506,13 @@ fn build_ui(app: &Application) {
     let css_provider = install_css();
     let model = Rc::new(RefCell::new(AppModel::new()));
     let ui = Rc::new(build_widgets());
-    let dragged_point = Rc::new(RefCell::new(None::<usize>));
+    let dragged_point = Rc::new(RefCell::new(None::<CurveDragTarget>));
     let drag_origin = Rc::new(RefCell::new(None::<(f64, f64)>));
 
     let window = ApplicationWindow::builder()
         .application(app)
         .title("T2 Fan Control")
-        .default_width(348)
+        .default_width(380)
         .default_height(640)
         .build();
     window.set_resizable(true);
@@ -503,25 +531,6 @@ fn build_ui(app: &Application) {
     header.append(&ui.status);
     root.append(&header);
 
-    let preset_grid = Grid::builder()
-        .column_spacing(6)
-        .row_spacing(6)
-        .hexpand(true)
-        .build();
-    ui.preset_quiet.set_hexpand(true);
-    ui.preset_quiet.set_size_request(112, -1);
-    ui.preset_balanced.set_hexpand(true);
-    ui.preset_balanced.set_size_request(112, -1);
-    ui.preset_performance.set_hexpand(true);
-    ui.preset_performance.set_size_request(112, -1);
-    ui.preset_custom.set_hexpand(true);
-    ui.preset_custom.set_size_request(112, -1);
-    preset_grid.attach(&ui.preset_quiet, 0, 0, 1, 1);
-    preset_grid.attach(&ui.preset_balanced, 1, 0, 1, 1);
-    preset_grid.attach(&ui.preset_performance, 0, 1, 1, 1);
-    preset_grid.attach(&ui.preset_custom, 1, 1, 1, 1);
-    root.append(&preset_grid);
-
     let summary = Grid::builder()
         .column_spacing(12)
         .row_spacing(4)
@@ -529,21 +538,17 @@ fn build_ui(app: &Application) {
         .build();
     attach_pair_at(&summary, 0, 0, "CPU", &ui.cpu_label);
     attach_pair_at(&summary, 2, 0, "GPU", &ui.gpu_label);
-    attach_pair_at(&summary, 0, 1, "Effective", &ui.effective_label);
+    attach_pair_at(&summary, 0, 1, "Curve temp", &ui.effective_label);
     attach_pair_at(&summary, 2, 1, "Target", &ui.target_label);
     attach_pair_at(&summary, 0, 2, "Fans", &ui.fan_label);
+    attach_pair_at(&summary, 2, 2, "System", &ui.system_label);
+    attach_pair_at(&summary, 0, 3, "Curve sensor", &ui.hottest_sensor_label);
+    attach_pair_at(&summary, 0, 4, "Hottest sensor", &ui.overall_hottest_sensor_label);
     root.append(&summary);
 
-    root.append(&panel(
-        "Curve",
-        &ui.curve_area,
-        Some("Curve  •  CPU  •  GPU  •  Effective"),
-    ));
-    root.append(&panel(
-        "Temperatures",
-        &ui.temperature_graph,
-        Some("CPU  •  GPU  •  Effective"),
-    ));
+    root.append(&dynamic_panel(&ui.curve_title, &ui.curve_area, &ui.curve_legend));
+    let temperature_title = Label::new(Some("Temperatures"));
+    root.append(&dynamic_panel(&temperature_title, &ui.temperature_graph, &ui.temperature_legend));
     root.append(&panel("Fans", &ui.fan_graph, Some("Fans")));
 
     let details_title = Label::new(Some("Fans"));
@@ -582,15 +587,6 @@ fn build_ui(app: &Application) {
     {
         let model = model.clone();
         let ui = ui.clone();
-        connect_preset_button(&ui.preset_quiet, PresetKind::Quiet, &model, &ui);
-        connect_preset_button(&ui.preset_balanced, PresetKind::Balanced, &model, &ui);
-        connect_preset_button(&ui.preset_performance, PresetKind::Performance, &model, &ui);
-        connect_preset_button(&ui.preset_custom, PresetKind::Custom, &model, &ui);
-    }
-
-    {
-        let model = model.clone();
-        let ui = ui.clone();
         glib::timeout_add_local(Duration::from_millis(900), move || {
             let mut model = model.borrow_mut();
             model.tick();
@@ -607,22 +603,11 @@ fn build_widgets() -> UiRefs {
         let label = Label::new(None);
         label.set_halign(Align::Start);
         label.set_xalign(0.0);
+        label.set_max_width_chars(18);
+        label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
         label.add_css_class("metric-value");
         label
     };
-
-    let preset_quiet = ToggleButton::with_label(PresetKind::Quiet.ui_label());
-    let preset_balanced = ToggleButton::with_label(PresetKind::Balanced.ui_label());
-    let preset_performance = ToggleButton::with_label(PresetKind::Performance.ui_label());
-    let preset_custom = ToggleButton::with_label(PresetKind::Custom.ui_label());
-    for button in [
-        &preset_quiet,
-        &preset_balanced,
-        &preset_performance,
-        &preset_custom,
-    ] {
-        button.add_css_class("preset-chip");
-    }
 
     let curve_area = DrawingArea::new();
     curve_area.set_content_width(248);
@@ -647,13 +632,15 @@ fn build_widgets() -> UiRefs {
         cpu_label: make_value(),
         gpu_label: make_value(),
         effective_label: make_value(),
+        hottest_sensor_label: make_value(),
+        overall_hottest_sensor_label: make_value(),
+        system_label: make_value(),
         target_label: make_value(),
         fan_label: make_value(),
         details_label: make_value(),
-        preset_quiet,
-        preset_balanced,
-        preset_performance,
-        preset_custom,
+        curve_title: Label::new(None),
+        curve_legend: Label::new(None),
+        temperature_legend: Label::new(None),
         curve_area,
         temperature_graph,
         fan_graph,
@@ -664,7 +651,7 @@ fn build_widgets() -> UiRefs {
 fn connect_drawings(
     model: &Rc<RefCell<AppModel>>,
     ui: &Rc<UiRefs>,
-    dragged_point: &Rc<RefCell<Option<usize>>>,
+    dragged_point: &Rc<RefCell<Option<CurveDragTarget>>>,
     drag_origin: &Rc<RefCell<Option<(f64, f64)>>>,
 ) {
     {
@@ -698,11 +685,6 @@ fn connect_drawings(
         let area = ui.curve_area.clone();
         gesture.connect_drag_begin(move |_gesture, x, y| {
             let model = model.borrow();
-            if model.config.active_preset != PresetKind::Custom {
-                *dragged_point.borrow_mut() = None;
-                *drag_origin.borrow_mut() = None;
-                return;
-            }
             let curve = &model.config.custom_curve;
             let width = area.allocated_width() as f64;
             let height = area.allocated_height() as f64;
@@ -710,6 +692,7 @@ fn connect_drawings(
             let selected = curve
                 .iter()
                 .enumerate()
+                .skip(1)
                 .min_by(|(_, left), (_, right)| {
                     let left_pos = curve_to_pos(plot, left);
                     let right_pos = curve_to_pos(plot, right);
@@ -719,10 +702,14 @@ fn connect_drawings(
                         .partial_cmp(&right_dist)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 })
-                .map(|(index, point)| (index, point));
+                .map(|(index, point)| (index, point))
+                .filter(|(_, point)| squared_distance(curve_to_pos(plot, point), (x, y)) <= 14.0_f64.powi(2));
             if let Some((index, point)) = selected {
-                *dragged_point.borrow_mut() = Some(index);
+                *dragged_point.borrow_mut() = Some(CurveDragTarget::Point(index));
                 *drag_origin.borrow_mut() = Some(curve_to_pos(plot, point));
+            } else if (curve_to_pos(plot, curve.last().unwrap()).0 - x).abs() <= 12.0 {
+                *dragged_point.borrow_mut() = Some(CurveDragTarget::SoakWall);
+                *drag_origin.borrow_mut() = Some((x, y));
             } else {
                 *dragged_point.borrow_mut() = None;
                 *drag_origin.borrow_mut() = None;
@@ -736,7 +723,7 @@ fn connect_drawings(
         let drag_origin = drag_origin.clone();
         let area = ui.curve_area.clone();
         gesture.connect_drag_update(move |_gesture, offset_x, offset_y| {
-            let Some(index) = *dragged_point.borrow() else {
+            let Some(target) = *dragged_point.borrow() else {
                 return;
             };
             let Some(start) = *drag_origin.borrow() else {
@@ -746,13 +733,10 @@ fn connect_drawings(
             let y = start.1 + offset_y;
             {
                 let mut model = model.borrow_mut();
-                model.update_curve_point(
-                    index,
-                    x,
-                    y,
-                    area.allocated_width() as f64,
-                    area.allocated_height() as f64,
-                );
+                match target {
+                    CurveDragTarget::Point(index) => model.update_curve_point(index, x, y, area.allocated_width() as f64, area.allocated_height() as f64),
+                    CurveDragTarget::SoakWall => model.update_soak(x, area.allocated_width() as f64, area.allocated_height() as f64),
+                }
                 sync_ui(&model, &ui);
             }
         });
@@ -790,11 +774,27 @@ fn panel(
     box_
 }
 
+fn dynamic_panel(title: &Label, widget: &impl IsA<gtk4::Widget>, legend: &Label) -> GtkBox {
+    let box_ = GtkBox::new(Orientation::Vertical, 3);
+    title.set_halign(Align::Start);
+    title.add_css_class("panel-title");
+    legend.set_halign(Align::Start);
+    legend.set_xalign(0.0);
+    legend.add_css_class("meta-text");
+    box_.append(title);
+    box_.append(widget);
+    box_.append(legend);
+    box_
+}
+
 fn attach_pair_at(grid: &Grid, column: i32, row: i32, title: &str, value: &Label) {
     let key = Label::new(Some(title));
     key.set_halign(Align::Start);
     key.set_xalign(0.0);
     key.add_css_class("metric-key");
+    key.set_size_request(52, -1);
+    value.set_size_request(105, -1);
+    value.set_hexpand(false);
     grid.attach(&key, column, row, 1, 1);
     grid.attach(value, column + 1, row, 1, 1);
 }
@@ -806,11 +806,58 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
     ui.gpu_label.set_label(&format_temp(model.snapshot.temperatures.gpu_temp_c));
     ui.effective_label
         .set_label(&format_temp(model.snapshot.effective_temp_c));
+    ui.system_label.set_label(&format_temp(model.snapshot.system_temp_c));
+    ui.hottest_sensor_label.set_label(
+        model.snapshot.temperatures.hottest_sensor_name.as_deref().unwrap_or("unavailable")
+    );
+    ui.hottest_sensor_label.set_tooltip_text(model.snapshot.temperatures.hottest_sensor_name.as_deref());
+    let overall_hottest = match (
+        model.snapshot.temperatures.overall_hottest_sensor_name.as_deref(),
+        model.snapshot.temperatures.overall_hottest_temp_c,
+    ) {
+        (Some(name), Some(temp)) => format!("{name} · {temp} C"),
+        _ => String::from("unavailable"),
+    };
+    ui.overall_hottest_sensor_label.set_label(&overall_hottest);
+    ui.overall_hottest_sensor_label.set_tooltip_text(Some(&overall_hottest));
+
+    let descriptors = match (
+        model.snapshot.temperatures.cpu_temp_c.is_some(),
+        model.snapshot.temperatures.gpu_temp_c.is_some(),
+    ) {
+        (true, true) => (
+            "Fan curve: hotter of CPU/GPU",
+            "Curve  •  System  •  System limit  •  CPU  •  GPU  •  CPU/GPU max",
+            "CPU  •  GPU  •  CPU/GPU max  •  System",
+        ),
+        (true, false) => (
+            "Fan curve: CPU temperature",
+            "Curve  •  System  •  System limit  •  CPU",
+            "CPU  •  System",
+        ),
+        (false, true) => (
+            "Fan curve: GPU temperature",
+            "Curve  •  System  •  System limit  •  GPU",
+            "GPU  •  System",
+        ),
+        (false, false) => (
+            "Fan curve: no CPU/GPU sensor",
+            "Curve  •  System  •  System limit",
+            "System",
+        ),
+    };
+    ui.curve_title.set_label(descriptors.0);
+    ui.curve_legend.set_markup(&legend_markup(descriptors.1));
+    ui.temperature_legend.set_markup(&legend_markup(descriptors.2));
     ui.target_label.set_label(
         &model
             .snapshot
             .target_percent
-            .map(|value| format!("{value}%"))
+            .map(|value| if model.snapshot.heat_soak_cooling {
+                format!("{value}% · system")
+            } else {
+                format!("{value}%")
+            })
             .unwrap_or_else(|| String::from("system managed")),
     );
     ui.fan_label.set_label(
@@ -820,7 +867,7 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
             .unwrap_or_else(|| String::from("unavailable")),
     );
 
-    let details = if model.fans.is_empty() {
+    let mut details = if model.fans.is_empty() {
         String::from("No T2 fan endpoints found.")
     } else {
         model
@@ -849,16 +896,11 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
             .collect::<Vec<_>>()
             .join("\n")
     };
+    details.push_str(&format!(
+        "\nMonitoring {} temperature sensors.",
+        model.snapshot.temperatures.monitored_sensor_count
+    ));
     ui.details_label.set_label(&details);
-
-    ui.preset_quiet
-        .set_active(model.config.active_preset == PresetKind::Quiet);
-    ui.preset_balanced
-        .set_active(model.config.active_preset == PresetKind::Balanced);
-    ui.preset_performance
-        .set_active(model.config.active_preset == PresetKind::Performance);
-    ui.preset_custom
-        .set_active(model.config.active_preset == PresetKind::Custom);
 
     ui.curve_area.queue_draw();
     ui.temperature_graph.queue_draw();
@@ -870,9 +912,18 @@ fn draw_curve_panel(model: &AppModel, cr: &cairo::Context, width: f64, height: f
     let palette = current_palette();
     let plot = draw_panel(cr, width, height);
     draw_grid(cr, plot);
-    draw_curve_scale_labels(cr, plot);
+    draw_curve_scale_labels(cr, plot, model.config.soak_temp_c);
 
     let curve = model.curve_points();
+    let wall_x = curve_to_pos(plot, curve.last().unwrap()).0;
+    cr.set_source_rgba(0.90, 0.28, 0.22, 0.08);
+    cr.rectangle(wall_x, plot.1, plot.0 + plot.2 - wall_x, plot.3);
+    let _ = cr.fill();
+    cr.set_source_rgba(0.90, 0.28, 0.22, 0.88);
+    cr.set_line_width(2.0);
+    cr.move_to(wall_x, plot.1);
+    cr.line_to(wall_x, plot.1 + plot.3);
+    let _ = cr.stroke();
     draw_curve_line(cr, plot, &curve, palette.curve, 2.2);
 
     for point in &curve {
@@ -908,6 +959,13 @@ fn draw_curve_panel(model: &AppModel, cr: &cairo::Context, width: f64, height: f
         model.snapshot.effective_temp_c,
         model.snapshot.target_percent.or(model.average_fan_percent()),
         palette.effective,
+    );
+    draw_live_marker(
+        cr,
+        plot,
+        model.snapshot.system_temp_c,
+        model.snapshot.target_percent.or(model.average_fan_percent()),
+        palette.system,
     );
 }
 
@@ -970,6 +1028,16 @@ fn draw_temperature_history(model: &AppModel, cr: &cairo::Context, width: f64, h
             .map(|sample| sample.effective_temp_c)
             .collect::<Vec<_>>(),
         palette.effective,
+    );
+    draw_history_series(
+        cr,
+        plot,
+        &model
+            .temperature_history
+            .iter()
+            .map(|sample| sample.system_temp_c)
+            .collect::<Vec<_>>(),
+        palette.system,
     );
 }
 
@@ -1092,17 +1160,19 @@ fn draw_grid(cr: &cairo::Context, plot: (f64, f64, f64, f64)) {
     let _ = cr.stroke();
 }
 
-fn draw_curve_scale_labels(cr: &cairo::Context, plot: (f64, f64, f64, f64)) {
+fn draw_curve_scale_labels(cr: &cairo::Context, plot: (f64, f64, f64, f64), soak_temp_c: u8) {
     draw_label(cr, plot.0, plot.1 + 8.0, "100%", 9.0, 0.70);
-    draw_label(cr, plot.0, plot.1 + plot.3 - 2.0, "20 C", 9.0, 0.70);
+    draw_label(cr, plot.0, plot.1 + plot.3 - 2.0, "0 C", 9.0, 0.70);
     draw_label(
         cr,
         plot.0 + plot.2 - 24.0,
         plot.1 + plot.3 - 2.0,
-        "100 C",
+        &format!("{} C", MAX_SOAK_TEMP_C),
         9.0,
         0.70,
     );
+    let wall_x = remap(soak_temp_c as f64, 0.0, MAX_SOAK_TEMP_C as f64, plot.0, plot.0 + plot.2);
+    draw_label(cr, wall_x - 48.0, plot.1 + 10.0, &format!("System {soak_temp_c} C"), 9.0, 0.85);
 }
 
 fn draw_history_scale_labels(cr: &cairo::Context, plot: (f64, f64, f64, f64), unit: &str) {
@@ -1123,7 +1193,7 @@ fn plot_rect(width: f64, height: f64) -> (f64, f64, f64, f64) {
 
 fn curve_to_pos(plot: (f64, f64, f64, f64), point: &CurvePoint) -> (f64, f64) {
     (
-        remap(point.temp_c as f64, 20.0, 100.0, plot.0, plot.0 + plot.2),
+        remap(point.temp_c.min(MAX_SOAK_TEMP_C) as f64, 0.0, MAX_SOAK_TEMP_C as f64, plot.0, plot.0 + plot.2),
         remap(
             point.speed_percent as f64,
             0.0,
@@ -1137,7 +1207,7 @@ fn curve_to_pos(plot: (f64, f64, f64, f64), point: &CurvePoint) -> (f64, f64) {
 fn pos_to_curve_values(plot: (f64, f64, f64, f64), x: f64, y: f64) -> (u8, u8) {
     let x = x.clamp(plot.0, plot.0 + plot.2);
     let y = y.clamp(plot.1, plot.1 + plot.3);
-    let temp = remap(x, plot.0, plot.0 + plot.2, 20.0, 100.0).round() as u8;
+    let temp = remap(x, plot.0, plot.0 + plot.2, 0.0, MAX_SOAK_TEMP_C as f64).round() as u8;
     let speed = remap(y, plot.1 + plot.3, plot.1, 0.0, 100.0).round() as u8;
     (temp, speed)
 }
@@ -1168,7 +1238,9 @@ fn legend_markup(legend: &str) -> String {
                 "Curve" => (current_palette().curve, "Curve"),
                 "CPU" => (current_palette().cpu, "CPU"),
                 "GPU" => (current_palette().gpu, "GPU"),
-                "Effective" => (current_palette().effective, "Effective"),
+                "CPU/GPU max" => (current_palette().effective, "CPU/GPU max"),
+                "System" => (current_palette().system, "System"),
+                "System limit" => ((0.90, 0.28, 0.22), "System limit"),
                 "Fans" => (current_palette().fan, "Fans"),
                 _ => (current_palette().curve, item),
             };
@@ -1220,53 +1292,6 @@ fn install_css() -> CssProvider {
 fn register_embedded_resources() {
     gio::resources_register_include!("t2-fancontrol.gresource")
         .expect("failed to register embedded GTK resources");
-}
-
-fn connect_preset_button(
-    button: &ToggleButton,
-    preset: PresetKind,
-    model: &Rc<RefCell<AppModel>>,
-    ui: &Rc<UiRefs>,
-) {
-    let model = model.clone();
-    let ui = ui.clone();
-    let button = button.clone();
-    button.connect_toggled(move |btn| {
-        if ui.syncing.get() {
-            return;
-        }
-        if !btn.is_active() {
-            ui.syncing.set(true);
-            btn.set_active(true);
-            ui.syncing.set(false);
-            return;
-        }
-        let mut model = model.borrow_mut();
-        model.set_preset(preset);
-        match preset {
-            PresetKind::Quiet => {
-                ui.preset_balanced.set_active(false);
-                ui.preset_performance.set_active(false);
-                ui.preset_custom.set_active(false);
-            }
-            PresetKind::Balanced => {
-                ui.preset_quiet.set_active(false);
-                ui.preset_performance.set_active(false);
-                ui.preset_custom.set_active(false);
-            }
-            PresetKind::Performance => {
-                ui.preset_quiet.set_active(false);
-                ui.preset_balanced.set_active(false);
-                ui.preset_custom.set_active(false);
-            }
-            PresetKind::Custom => {
-                ui.preset_quiet.set_active(false);
-                ui.preset_balanced.set_active(false);
-                ui.preset_performance.set_active(false);
-            }
-        }
-        sync_ui(&model, &ui);
-    });
 }
 
 fn format_temp(value: Option<u8>) -> String {
@@ -1349,6 +1374,7 @@ fn build_css(palette: ThemePalette) -> String {
 }}
 .metric-value {{
   font-weight: 650;
+  font-feature-settings: \"tnum\" 1;
 }}
 .details-text {{
   color: {};

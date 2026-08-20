@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    config::{normalize_curve, AppConfig, CurvePoint, PresetKind},
+    config::{normalize_curve, AppConfig, CurvePoint, MIN_SOAK_TEMP_C, MAX_SOAK_TEMP_C},
     error::{FanControlError, Result},
     sysfs::FanEndpoint,
 };
@@ -28,11 +28,18 @@ pub struct DaemonState {
     pub status: String,
     pub control_active: bool,
     pub autostart_enabled: bool,
-    pub active_preset: PresetKind,
+    pub soak_temp_c: u8,
     pub custom_curve: Vec<CurvePoint>,
     pub cpu_temp_c: Option<u8>,
     pub gpu_temp_c: Option<u8>,
     pub effective_temp_c: Option<u8>,
+    pub hottest_sensor_name: Option<String>,
+    pub overall_hottest_temp_c: Option<u8>,
+    pub overall_hottest_sensor_name: Option<String>,
+    pub system_temp_c: Option<u8>,
+    pub system_sensor_count: usize,
+    pub monitored_sensor_count: usize,
+    pub heat_soak_cooling: bool,
     pub target_percent: Option<u8>,
     pub fans: Vec<FanStatus>,
 }
@@ -42,8 +49,7 @@ pub enum Request {
     GetState,
     SetActive(bool),
     SetAutostart(bool),
-    SetPreset(PresetKind),
-    SetCurve(Vec<CurvePoint>),
+    SetCurve(u8, Vec<CurvePoint>),
 }
 
 pub fn bind_listener() -> Result<UnixListener> {
@@ -107,14 +113,13 @@ pub fn handle_request_line(line: &str) -> Result<Request> {
     if let Some(value) = line.strip_prefix("SET_AUTOSTART ") {
         return Ok(Request::SetAutostart(parse_bool_flag(value)?));
     }
-    if let Some(value) = line.strip_prefix("SET_PRESET ") {
-        let preset = PresetKind::from_str(value.trim())
-            .ok_or_else(|| protocol_error(format!("invalid preset: {value}")))?;
-        return Ok(Request::SetPreset(preset));
-    }
     if let Some(value) = line.strip_prefix("SET_CURVE ") {
-        let curve = parse_curve(value)?;
-        return Ok(Request::SetCurve(curve));
+        let (soak, points) = value.split_once(' ')
+            .ok_or_else(|| protocol_error(String::from("missing system temperature limit")))?;
+        let soak = soak.parse::<u8>().map_err(|_| protocol_error(format!("invalid system temperature limit: {soak}")))?
+            .clamp(MIN_SOAK_TEMP_C, MAX_SOAK_TEMP_C);
+        let curve = parse_curve(points, soak)?;
+        return Ok(Request::SetCurve(soak, curve));
     }
 
     Err(protocol_error(format!("unknown request: {line}")))
@@ -138,7 +143,7 @@ pub fn write_response(mut stream: &UnixStream, state: &DaemonState) -> Result<()
         "autostart_enabled",
         if state.autostart_enabled { "1" } else { "0" },
     );
-    push_field(&mut body, "active_preset", state.active_preset.as_str());
+    push_field(&mut body, "system_temp_limit_c", &state.soak_temp_c.to_string());
     push_field(
         &mut body,
         "custom_curve",
@@ -147,6 +152,13 @@ pub fn write_response(mut stream: &UnixStream, state: &DaemonState) -> Result<()
     push_option_u8(&mut body, "cpu_temp_c", state.cpu_temp_c);
     push_option_u8(&mut body, "gpu_temp_c", state.gpu_temp_c);
     push_option_u8(&mut body, "effective_temp_c", state.effective_temp_c);
+    push_field(&mut body, "hottest_sensor_name", state.hottest_sensor_name.as_deref().unwrap_or(""));
+    push_option_u8(&mut body, "overall_hottest_temp_c", state.overall_hottest_temp_c);
+    push_field(&mut body, "overall_hottest_sensor_name", state.overall_hottest_sensor_name.as_deref().unwrap_or(""));
+    push_option_u8(&mut body, "system_temp_c", state.system_temp_c);
+    push_field(&mut body, "system_sensor_count", &state.system_sensor_count.to_string());
+    push_field(&mut body, "monitored_sensor_count", &state.monitored_sensor_count.to_string());
+    push_field(&mut body, "heat_soak_cooling", if state.heat_soak_cooling { "1" } else { "0" });
     push_option_u8(&mut body, "target_percent", state.target_percent);
     push_field(&mut body, "fan_count", &state.fans.len().to_string());
     for (index, fan) in state.fans.iter().enumerate() {
@@ -189,16 +201,23 @@ pub fn write_error(mut stream: &UnixStream, message: &str) -> Result<()> {
     stream.flush().map_err(FanControlError::ProcessSpawn)
 }
 
-pub fn state_from(config: &AppConfig, status: String, temps: (Option<u8>, Option<u8>, Option<u8>), target_percent: Option<u8>, fans: &[FanEndpoint]) -> DaemonState {
+pub fn state_from(config: &AppConfig, status: String, temps: (Option<u8>, Option<u8>, Option<u8>, Option<String>, Option<u8>, Option<String>, Option<u8>, usize, usize, bool), target_percent: Option<u8>, fans: &[FanEndpoint]) -> DaemonState {
     DaemonState {
         status,
         control_active: config.automatic_control_enabled,
         autostart_enabled: config.autostart_enabled,
-        active_preset: config.active_preset,
+        soak_temp_c: config.soak_temp_c,
         custom_curve: config.custom_curve.clone(),
         cpu_temp_c: temps.0,
         gpu_temp_c: temps.1,
         effective_temp_c: temps.2,
+        hottest_sensor_name: temps.3,
+        overall_hottest_temp_c: temps.4,
+        overall_hottest_sensor_name: temps.5,
+        system_temp_c: temps.6,
+        system_sensor_count: temps.7,
+        monitored_sensor_count: temps.8,
+        heat_soak_cooling: temps.9,
         target_percent,
         fans: fans
             .iter()
@@ -238,14 +257,19 @@ fn decode_response<R: BufRead>(mut reader: R) -> Result<DaemonState> {
             "status" => state.status = unescape(value),
             "control_active" => state.control_active = parse_bool_flag(value)?,
             "autostart_enabled" => state.autostart_enabled = parse_bool_flag(value)?,
-            "active_preset" => {
-                state.active_preset = PresetKind::from_str(value)
-                    .ok_or_else(|| protocol_error(format!("invalid preset in response: {value}")))?;
-            }
-            "custom_curve" => state.custom_curve = parse_curve(value)?,
+            "system_temp_limit_c" | "soak_temp_c" => state.soak_temp_c = value.parse::<u8>()
+                .map_err(|_| protocol_error(format!("invalid system temperature limit: {value}")))?,
+            "custom_curve" => state.custom_curve = parse_curve(value, state.soak_temp_c.clamp(MIN_SOAK_TEMP_C, MAX_SOAK_TEMP_C))?,
             "cpu_temp_c" => state.cpu_temp_c = parse_option_u8(value)?,
             "gpu_temp_c" => state.gpu_temp_c = parse_option_u8(value)?,
             "effective_temp_c" => state.effective_temp_c = parse_option_u8(value)?,
+            "hottest_sensor_name" => state.hottest_sensor_name = (!value.is_empty()).then(|| unescape(value)),
+            "overall_hottest_temp_c" => state.overall_hottest_temp_c = parse_option_u8(value)?,
+            "overall_hottest_sensor_name" => state.overall_hottest_sensor_name = (!value.is_empty()).then(|| unescape(value)),
+            "system_temp_c" => state.system_temp_c = parse_option_u8(value)?,
+            "system_sensor_count" => state.system_sensor_count = value.parse::<usize>().map_err(|_| protocol_error(format!("invalid sensor count: {value}")))?,
+            "monitored_sensor_count" => state.monitored_sensor_count = value.parse::<usize>().map_err(|_| protocol_error(format!("invalid monitored sensor count: {value}")))?,
+            "heat_soak_cooling" => state.heat_soak_cooling = parse_bool_flag(value)?,
             "target_percent" => state.target_percent = parse_option_u8(value)?,
             "fan_count" => {
                 let count = value.parse::<usize>().map_err(|_| {
@@ -313,12 +337,11 @@ fn encode_request(request: &Request) -> String {
         Request::GetState => String::from("GET_STATE\n"),
         Request::SetActive(enabled) => format!("SET_ACTIVE {}\n", bool_flag(*enabled)),
         Request::SetAutostart(enabled) => format!("SET_AUTOSTART {}\n", bool_flag(*enabled)),
-        Request::SetPreset(preset) => format!("SET_PRESET {}\n", preset.as_str()),
-        Request::SetCurve(curve) => format!("SET_CURVE {}\n", format_curve(curve)),
+        Request::SetCurve(soak, curve) => format!("SET_CURVE {soak} {}\n", format_curve(curve)),
     }
 }
 
-fn parse_curve(value: &str) -> Result<Vec<CurvePoint>> {
+fn parse_curve(value: &str, soak_temp_c: u8) -> Result<Vec<CurvePoint>> {
     let mut curve = Vec::new();
     for entry in value.split(',').filter(|entry| !entry.trim().is_empty()) {
         let (temp, speed) = entry
@@ -335,7 +358,7 @@ fn parse_curve(value: &str) -> Result<Vec<CurvePoint>> {
                 .map_err(|_| protocol_error(format!("invalid speed in curve: {entry}")))?,
         });
     }
-    normalize_curve(&mut curve);
+    normalize_curve(&mut curve, soak_temp_c);
     Ok(curve)
 }
 
