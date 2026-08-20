@@ -67,8 +67,8 @@ New installations use:
 config_version=2
 automatic_control_enabled=true
 autostart_enabled=false
-system_temp_limit_c=50
-custom_curve=0:0,16:2,38:7,50:18
+system_temp_limit_c=45
+custom_curve=0:0,16:2,38:7,45:18
 ```
 
 Curve entries use `temperature:speed-percent` pairs. The active configuration is stored at:

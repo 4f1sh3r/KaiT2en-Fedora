@@ -21,12 +21,12 @@ impl Default for AppConfig {
         Self {
             automatic_control_enabled: true,
             autostart_enabled: false,
-            soak_temp_c: 50,
+            soak_temp_c: 45,
             custom_curve: vec![
                 CurvePoint { temp_c: 0, speed_percent: 0 },
                 CurvePoint { temp_c: 16, speed_percent: 2 },
                 CurvePoint { temp_c: 38, speed_percent: 7 },
-                CurvePoint { temp_c: 50, speed_percent: 18 },
+                CurvePoint { temp_c: 45, speed_percent: 18 },
             ],
         }
     }
@@ -131,7 +131,7 @@ mod tests {
     fn moving_soak_scales_inner_points_and_keeps_anchors() {
         let mut config = AppConfig::default();
         resize_soak(&mut config, 100);
-        assert_eq!(config.custom_curve.iter().map(|p| p.temp_c).collect::<Vec<_>>(), vec![0, 32, 76, 100]);
+        assert_eq!(config.custom_curve.iter().map(|p| p.temp_c).collect::<Vec<_>>(), vec![0, 36, 84, 100]);
         assert_eq!(config.custom_curve[0].speed_percent, 0);
     }
 
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn legacy_configuration_is_replaced_by_new_defaults() {
         let config = parse_config("system_temp_limit_c=100\ncustom_curve=0:0,30:20,70:80,100:100\n").unwrap();
-        assert_eq!(config.soak_temp_c, 50);
+        assert_eq!(config.soak_temp_c, 45);
         assert_eq!(config.custom_curve, AppConfig::default().custom_curve);
     }
 
