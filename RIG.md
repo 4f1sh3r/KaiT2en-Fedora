@@ -66,3 +66,17 @@ and decided case by case.
 
 - `feat/t2bce-vhci-sg-tablesize` (`6aa98ce`) — redundant. Its
   `sg_tablesize` change is already contained in the scatter-gather branch.
+
+## Open questions
+
+### t2bce_audio: branch `t2bce-audio-troubleshoot`
+
+Four fixes on that branch (`dac56f9`, `8958562`, `c111a90`, `b6f7ab0` — post-resume
+pointer interpolation, frame capping, erase-head margin) are in neither `main` nor
+`local/rig`. Meanwhile `main` grew its own attempt at the same clock problem
+(`52fe962`, `ff8b927`), so merging the branch would be a semantic conflict, not just
+a textual one.
+
+Decided 2026-08-20: judge `main`'s version by ear first — headphone output, xruns,
+and audio after suspend/resume. Merge the branch only if `main`'s approach actually
+falls short.
