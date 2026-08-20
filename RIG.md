@@ -53,6 +53,14 @@ and decided case by case.
   at all.
 - Why not upstream yet: downstream-only by intent. It goes upstream only if
   the approach proves itself here first.
+- Upstream drift: upstream released t2-fan-control v0.05 (`3935b19`,
+  `80cc852`), a rewrite of the same five source files. It is deliberately
+  *not* taken here — the whole `apps/t2-fan-control/` directory, README
+  included, is resolved to the `local/rig` side on every `merge main`, so this
+  app stays pinned to the pre-v0.05 base the bias work was written against.
+  `rerere` has that resolution recorded. Revisit by rebasing the bias work
+  onto v0.05 once the approach has proven itself; until then upstream's
+  fan-control changes do not reach this machine.
 
 ## Not merged, deliberately
 
