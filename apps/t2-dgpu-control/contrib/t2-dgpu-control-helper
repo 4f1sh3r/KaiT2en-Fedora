@@ -122,35 +122,6 @@ set_power_profile() {
 	((found)) || fail "no supported AMDGPU device was found"
 }
 
-set_power_cap() {
-	local requested=$1 class dev driver vendor cap default readback
-	[[ $requested =~ ^[0-9]+$ ]] || fail "power cap must be integer microwatts"
-	((requested >= 10000000)) || fail "power cap must be at least 10 W"
-	for dev in /sys/bus/pci/devices/*; do
-		[[ -r "$dev/vendor" && -r "$dev/class" && -L "$dev/driver" ]] || continue
-		read -r vendor <"$dev/vendor"
-		read -r class <"$dev/class"
-		[[ $vendor == 0x1002 && $class == 0x03* ]] || continue
-		driver=$(basename "$(readlink -f "$dev/driver")")
-		[[ $driver == amdgpu ]] || continue
-		for cap in "$dev"/hwmon/hwmon*/power1_cap; do
-			[[ -w $cap ]] || continue
-			default=${cap}_default
-			[[ -r $default ]] || fail "AMDGPU default power cap is unavailable"
-			default=$(<"$default")
-			[[ $default =~ ^[0-9]+$ ]] || fail "AMDGPU default power cap is unavailable while the dGPU is off"
-			((requested <= default)) || fail "power cap exceeds the AMDGPU default"
-			[[ -w "$dev/power_dpm_force_performance_level" ]] || fail "AMDGPU performance control is unavailable"
-			printf 'manual\n' >"$dev/power_dpm_force_performance_level"
-			printf '%s\n' "$requested" >"$cap"
-			readback=$(<"$cap")
-			[[ $readback == "$requested" ]] || fail "AMDGPU power cap verification failed"
-			return 0
-		done
-	done
-	fail "AMDGPU power cap control is unavailable"
-}
-
 power_off_dgpu() {
 	local active
 	[[ -w "$SWITCH_PATH" ]] || fail "vgaswitcheroo is not available"
@@ -195,10 +166,6 @@ case "${1:-}" in
 	apply-power-saving)
 		[[ $# -eq 1 ]] || fail "usage: $0 apply-power-saving"
 		set_power_profile power-saving
-		;;
-	set-power-cap)
-		[[ $# -eq 2 ]] || fail "usage: $0 set-power-cap <microwatts>"
-		set_power_cap "$2"
 		;;
 	power-off)
 		[[ $# -eq 1 ]] || fail "usage: $0 power-off"

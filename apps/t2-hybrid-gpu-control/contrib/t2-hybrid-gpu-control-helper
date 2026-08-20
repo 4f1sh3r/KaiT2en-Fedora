@@ -90,28 +90,6 @@ use_discrete_gpu() {
 	write_boot_gpu discrete
 }
 
-set_power_cap() {
-	local requested=$1 amd cap default readback
-	[[ $requested =~ ^[0-9]+$ ]] || fail "power cap must be integer microwatts"
-	((requested >= 10000000)) || fail "power cap must be at least 10 W"
-	amd=$(find_amd_gpu) || fail "no AMDGPU device was found"
-	for cap in "$amd"/hwmon/hwmon*/power1_cap; do
-		[[ -w $cap ]] || continue
-		default=${cap}_default
-		[[ -r $default ]] || fail "AMDGPU default power cap is unavailable"
-		default=$(<"$default")
-		[[ $default =~ ^[0-9]+$ ]] || fail "AMDGPU default power cap is unavailable while the dGPU is off"
-		((requested <= default)) || fail "power cap exceeds the AMDGPU default"
-		[[ -w "$amd/power_dpm_force_performance_level" ]] || fail "AMDGPU performance control is unavailable"
-		printf 'manual\n' >"$amd/power_dpm_force_performance_level"
-		printf '%s\n' "$requested" >"$cap"
-		readback=$(<"$cap")
-		[[ $readback == "$requested" ]] || fail "AMDGPU power cap verification failed"
-		return 0
-	done
-	fail "AMDGPU power cap control is unavailable"
-}
-
 ((EUID == 0)) || fail "root privileges are required"
 is_supported_macbook || fail "this Mac does not have the supported Intel/AMD hybrid GPU layout"
 
@@ -123,10 +101,6 @@ case "${1:-}" in
 	use-discrete)
 		[[ $# -eq 1 ]] || fail "usage: $0 use-discrete"
 		use_discrete_gpu
-		;;
-	set-power-cap)
-		[[ $# -eq 2 ]] || fail "usage: $0 set-power-cap <microwatts>"
-		set_power_cap "$2"
 		;;
 	reboot)
 		[[ $# -eq 1 ]] || fail "usage: $0 reboot"

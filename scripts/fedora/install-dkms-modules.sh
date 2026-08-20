@@ -106,40 +106,27 @@ HOOK
 	rm -f "$tmp"
 }
 
-remove_dkms_module_versions() {
-	local name=$1 version
+remove_dkms_module_versions_for_kernel() {
+	local name=$1 kernel version
+	local -A seen=()
+	kernel="$(kernel_release)"
 
 	while IFS= read -r version; do
 		[[ -n "$version" ]] || continue
-		info "removing DKMS module $name/$version"
-		dkms remove --no-depmod -m "$name" -v "$version" --all >/dev/null 2>&1 || true
-		if dkms_module_version_exists "$name" "$version"; then
-			purge_dkms_module_version "$name" "$version"
-		fi
-		if dkms_module_version_exists "$name" "$version"; then
-			fail "DKMS still contains $name/$version after purge"
-		fi
+		[[ -z "${seen[$version]:-}" ]] || continue
+		seen[$version]=1
+		dkms status -m "$name" -v "$version" -k "$kernel" 2>/dev/null |
+			grep -q . || continue
+		info "removing DKMS module $name/$version for $kernel"
+		dkms remove --no-depmod -m "$name" -v "$version" -k "$kernel"
 	done < <(dkms status -m "$name" 2>/dev/null | sed -n "s|^$name/\\([^,:]*\\)[,:].*|\\1|p")
-}
-
-remove_module_sources() {
-	local name=$1 source base
-
-	while IFS= read -r -d '' source; do
-		base="${source##*/}"
-		[[ "$source" == /usr/src/* && "$base" == "$name-"* ]] ||
-			fail "refusing to remove unexpected module source path $source"
-		info "removing stale module source $base"
-		rm -rf "$source"
-	done < <(find /usr/src -mindepth 1 -maxdepth 1 -type d -name "$name-*" -print0)
 }
 
 remove_legacy_dkms_modules() {
 	local module
 
 	for module in "${LEGACY_MODULES[@]}"; do
-		remove_dkms_module_versions "$module"
-		remove_module_sources "$module"
+		remove_dkms_module_versions_for_kernel "$module"
 	done
 }
 
@@ -147,8 +134,7 @@ remove_repo_dkms_modules() {
 	local module
 
 	for module in "${MODULES[@]}"; do
-		remove_dkms_module_versions "$module"
-		remove_module_sources "$module"
+		remove_dkms_module_versions_for_kernel "$module"
 	done
 }
 
@@ -183,19 +169,6 @@ dkms_module_version_installed() {
 	kernel="$(kernel_release)"
 
 	dkms status -m "$name" -v "$version" -k "$kernel" 2>/dev/null | grep -Fq ': installed'
-}
-
-purge_dkms_module_version() {
-	local name=$1 version=$2 tree
-	tree="/var/lib/dkms/$name/$version"
-
-	[[ -n "$name" && -n "$version" ]] || fail "refusing to purge DKMS state with empty name or version"
-	[[ "$tree" == /var/lib/dkms/*/* ]] || fail "refusing to purge unexpected DKMS path $tree"
-
-	if [[ -e "$tree" ]]; then
-		info "purging stale DKMS tree $name/$version"
-		rm -rf "$tree"
-	fi
 }
 
 copy_module_source() {
@@ -265,8 +238,10 @@ install_module() {
 	copy_module_source "$name"
 	version="$MODULE_VERSION"
 
-	info "registering $name/$version with DKMS"
-	dkms add -m "$name" -v "$version"
+	if ! dkms_module_version_exists "$name" "$version"; then
+		info "registering $name/$version with DKMS"
+		dkms add -m "$name" -v "$version"
+	fi
 	dkms build -m "$name" -v "$version"
 	dkms install --no-depmod --force -m "$name" -v "$version"
 	if ! dkms_module_version_installed "$name" "$version"; then
