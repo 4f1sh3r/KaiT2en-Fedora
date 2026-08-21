@@ -37,6 +37,26 @@ sudo kernel-install add 7.1.3-201.fc44.x86_64 /lib/modules/7.1.3-201.fc44.x86_64
 sudo grubby --set-default /boot/vmlinuz-7.1.3-201.fc44.x86_64
 ```
 
+### When you can't boot at all
+
+The repair above needs a keyboard and an older kernel you can still boot. If the
+initramfs lost the T2 input drivers you have neither: there is no keyboard, not
+even at the disk encryption prompt. That is what the KAIT2EN USB stick is for.
+
+Boot it and pick `Rescue: repair an installed KaiT2en system`. It comes up as a
+text console instead of the desktop and offers your installation:
+
+```bash
+sudo /run/kait2en/kait2en-live-rescue
+```
+
+It looks for Fedora on the internal disks, offers to unlock an encrypted one,
+and mounts it the way its own `/etc/fstab` describes it. macOS is never touched.
+You then get a shell inside your installation, a rebuild of every initramfs that
+afterwards checks the T2 input drivers really ended up in them, and the list of
+boot entries to pick a new default from. Everything is unmounted again when you
+leave.
+
 ## Murphy's law: We **WILL** mess up!
 
 We are humans. We will mess up at some point. We recommend not to update when

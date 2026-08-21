@@ -45,3 +45,8 @@ menuentry "Troubleshooting: KaiT2en with basic graphics and conservative PCIe" -
 	linux ($fedora)@ISO_KERNEL_PATH@ ${kait2en_common} module_blacklist=${kait2en_blacklist},amdgpu plymouth.enable=0 nomodeset pcie_ports=compat
 	initrd ${kait2en_initrd}
 }
+
+menuentry "Rescue: repair an installed KaiT2en system" --class fedora --class gnu-linux --class gnu --class os {
+	linux ($fedora)@ISO_KERNEL_PATH@ ${kait2en_common} module_blacklist=${kait2en_blacklist} plymouth.enable=0 systemd.unit=multi-user.target kait2en.rescue
+	initrd ${kait2en_initrd}
+}
