@@ -23,7 +23,7 @@ if [ -d "$firmware_source" ]; then
     # firmware for itself. Nothing placed here reaches the installed system.
     for helper in install-wifi-firmware.sh install-bt-firmware.sh \
         kait2en-live-wifi kait2en-live-bluetooth kait2en-live-diagnostics \
-        kait2en-live-rescue; do
+        kait2en-rescue; do
         if [ -f "$helper_source/$helper" ]; then
             cp "$helper_source/$helper" "$target_directory/$helper"
             chmod 0755 "$target_directory/$helper"
@@ -34,8 +34,8 @@ if [ -d "$firmware_source" ]; then
 
     # /run/kait2en is in no PATH, and sudo only honours secure_path anyway.
     if [ -d /sysroot/usr/bin ]; then
-        ln -sf "$target_directory/kait2en-live-rescue" \
-            /sysroot/usr/bin/kait2en-live-rescue || \
+        ln -sf "$target_directory/kait2en-rescue" \
+            /sysroot/usr/bin/kait2en-rescue || \
             warn "KaiT2en: could not link the rescue tool into the live PATH"
     fi
 

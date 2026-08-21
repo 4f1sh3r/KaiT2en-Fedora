@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-script="$repo_root/packaging/installer/runtime/kait2en-live-rescue"
-work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-live-rescue-test.XXXXXX")
+script="$repo_root/packaging/installer/runtime/kait2en-rescue"
+work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-rescue-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
 make_case() {

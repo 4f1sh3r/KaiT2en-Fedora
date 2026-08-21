@@ -269,7 +269,7 @@ install -m 0755 \
 	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-live-diagnostics" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-live-rescue" \
+	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-rescue" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 sed "s|@KERNEL_RELEASE@|$ISO_KERNEL_RELEASE|g" \
 	"$SOURCE_ROOT/packaging/installer/initramfs/20-kait2en-input.sh.in" \
@@ -328,7 +328,7 @@ gzip -dc "$INITRAMFS_IMAGE" | cpio -it --quiet |
 gzip -dc "$INITRAMFS_IMAGE" | cpio -it --quiet |
 	grep -Fx 'usr/lib/kait2en/kait2en-live-diagnostics' >/dev/null
 gzip -dc "$INITRAMFS_IMAGE" | cpio -it --quiet |
-	grep -Fx 'usr/lib/kait2en/kait2en-live-rescue' >/dev/null
+	grep -Fx 'usr/lib/kait2en/kait2en-rescue' >/dev/null
 grep -Fq 'inst.updates=file:///run/kait2en/updates.img' "$LAYOUT/grub.cfg.in"
 grep -Fq '@ISO_VOLUME_LABEL@' "$LAYOUT/grub.cfg.in"
 ! grep -Fq 'inst.ks=' "$LAYOUT/grub.cfg.in"

@@ -17,7 +17,7 @@ shell_files=(
 	packaging/installer/runtime/kait2en-launch-terminal
 	packaging/installer/runtime/kait2en-live-bluetooth
 	packaging/installer/runtime/kait2en-live-diagnostics
-	packaging/installer/runtime/kait2en-live-rescue
+	packaging/installer/runtime/kait2en-rescue
 	packaging/installer/runtime/kait2en-live-wifi
 	packaging/installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
@@ -34,7 +34,7 @@ shell_files=(
 	scripts/tests/release-bootstrap.sh
 	scripts/tests/bt-firmware.sh
 	scripts/tests/live-bluetooth.sh
-	scripts/tests/live-rescue.sh
+	scripts/tests/rescue.sh
 	scripts/tests/live-wifi.sh
 	scripts/tests/terminal-launcher.sh
 	scripts/tests/wifi-firmware.sh
@@ -116,14 +116,14 @@ grep -Fq 'ExecStart=/run/kait2en/kait2en-live-wifi' \
 ! grep -rInE --exclude-dir=target 'kait2en-live-wifi' \
 	packaging/installer/anaconda-addon
 
-grep -Fq 'usr/lib/kait2en/kait2en-live-rescue' packaging/installer/build-in-container.sh
-grep -Fq 'kait2en-live-rescue' packaging/installer/initramfs/90-kait2en-updates.sh
-grep -Fq '/sysroot/usr/bin/kait2en-live-rescue' \
+grep -Fq 'usr/lib/kait2en/kait2en-rescue' packaging/installer/build-in-container.sh
+grep -Fq 'kait2en-rescue' packaging/installer/initramfs/90-kait2en-updates.sh
+grep -Fq '/sysroot/usr/bin/kait2en-rescue' \
 	packaging/installer/initramfs/90-kait2en-updates.sh
-grep -Fq 'apfs' packaging/installer/runtime/kait2en-live-rescue
-grep -Fq 'set-default-index' packaging/installer/runtime/kait2en-live-rescue
-! grep -Fq -- '--set-default ' packaging/installer/runtime/kait2en-live-rescue
-! grep -rInE --exclude-dir=target 'kait2en-live-rescue' \
+grep -Fq 'apfs' packaging/installer/runtime/kait2en-rescue
+grep -Fq 'set-default-index' packaging/installer/runtime/kait2en-rescue
+! grep -Fq -- '--set-default ' packaging/installer/runtime/kait2en-rescue
+! grep -rInE --exclude-dir=target 'kait2en-rescue' \
 	packaging/installer/anaconda-addon
 
 # Bluetooth firmware is loaded from disk by BCM4377 alone. Every entry point has
@@ -200,7 +200,7 @@ bash scripts/tests/wifi-firmware.sh
 bash scripts/tests/bt-firmware.sh
 bash scripts/tests/live-wifi.sh
 bash scripts/tests/live-bluetooth.sh
-bash scripts/tests/live-rescue.sh
+bash scripts/tests/rescue.sh
 bash scripts/tests/prepare-install.sh
 bash scripts/tests/install-launcher.sh
 bash scripts/tests/release-bootstrap.sh
