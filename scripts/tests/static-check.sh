@@ -117,15 +117,7 @@ grep -Fq 'ExecStart=/run/kait2en/kait2en-live-wifi' \
 	packaging/installer/anaconda-addon
 
 grep -Fq 'usr/lib/kait2en/kait2en-live-rescue' packaging/installer/build-in-container.sh
-grep -Fq 'usr/lib/kait2en/kait2en-live-rescue.service' \
-	packaging/installer/build-in-container.sh
 grep -Fq 'kait2en-live-rescue' packaging/installer/initramfs/90-kait2en-updates.sh
-grep -Fq 'ExecStart=/run/kait2en/kait2en-live-rescue' \
-	packaging/installer/runtime/kait2en-live-rescue.service
-grep -Fq 'ConditionKernelCommandLine=kait2en.rescue' \
-	packaging/installer/runtime/kait2en-live-rescue.service
-grep -Fq 'kait2en.rescue' packaging/installer/grub.cfg.in
-grep -Fq 'systemd.unit=multi-user.target' packaging/installer/grub.cfg.in
 grep -Fq 'apfs' packaging/installer/runtime/kait2en-live-rescue
 grep -Fq 'set-default-index' packaging/installer/runtime/kait2en-live-rescue
 ! grep -Fq -- '--set-default ' packaging/installer/runtime/kait2en-live-rescue

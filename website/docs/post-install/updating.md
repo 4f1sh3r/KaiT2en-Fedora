@@ -43,8 +43,7 @@ The repair above needs a keyboard and an older kernel you can still boot. If the
 initramfs lost the T2 input drivers you have neither: there is no keyboard, not
 even at the disk encryption prompt. That is what the KAIT2EN USB stick is for.
 
-Boot it and pick `Rescue: repair an installed KaiT2en system`. It comes up as a
-text console instead of the desktop and offers your installation:
+Boot it into the live desktop as usual, open a terminal and run:
 
 ```bash
 sudo /run/kait2en/kait2en-live-rescue

@@ -33,8 +33,7 @@ if [ -d "$firmware_source" ]; then
     done
 
     mkdir -p "$runtime_units/multi-user.target.wants"
-    for unit_name in kait2en-live-wifi.service kait2en-live-bluetooth.service \
-        kait2en-live-rescue.service; do
+    for unit_name in kait2en-live-wifi.service kait2en-live-bluetooth.service; do
         if [ -f "$helper_source/$unit_name" ]; then
             cp "$helper_source/$unit_name" "$runtime_units/$unit_name"
             chmod 0644 "$runtime_units/$unit_name"
