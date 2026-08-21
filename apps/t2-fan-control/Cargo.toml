@@ -1,6 +1,6 @@
 [package]
 name = "t2-fancontrol-gtk"
-version = "0.1.0"
+version = "0.0.1-afi"
 edition = "2024"
 
 [dependencies.adw]

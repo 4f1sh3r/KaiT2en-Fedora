@@ -34,7 +34,7 @@ use signal_hook::consts::signal::SIGHUP;
 use sysfs::{discover_fans, discover_temperature_sources, FanEndpoint, TemperatureSnapshot, TemperatureSource};
 
 const APP_ID: &str = "org.t2fancontrol.gtk";
-const APP_VERSION: &str = "0.04";
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const HISTORY_CAPACITY: usize = 90;
 
 #[derive(Clone, Copy)]
