@@ -16,7 +16,7 @@ Supported profiles:
 - `MacBookAir8,2` -> `8_2`
 - `MacBookAir9,1` -> `9_1`
 - `MacBookPro15,1` -> `15_1`
-- `MacBookPro15,2` -> `15_2` (experimental; currently based on `16_2`)
+- `MacBookPro15,2` -> `15_2`
 - `MacBookPro15,4` -> `15_4`
 - `MacBookPro16,1` -> `16_1`
 - `MacBookPro16,2` -> `16_2`

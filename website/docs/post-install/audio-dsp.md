@@ -31,6 +31,7 @@ and diagnostics. Headphones do not pass through the speaker DSP graph.
 | MacBook Air 2019 | `MacBookAir8,2` |
 | MacBook Air 2020 (Intel) | `MacBookAir9,1` |
 | MacBook Pro 15-inch 2018/2019 | `MacBookPro15,1` |
+| MacBook Pro 13-inch 2018/2019, four Thunderbolt ports | `MacBookPro15,2` |
 | MacBook Pro 13-inch 2019, two Thunderbolt ports | `MacBookPro15,4` |
 | MacBook Pro 16-inch 2019 | `MacBookPro16,1` |
 | MacBook Pro 13-inch 2020, four Thunderbolt ports | `MacBookPro16,2` |
