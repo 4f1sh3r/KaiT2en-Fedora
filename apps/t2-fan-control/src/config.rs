@@ -54,9 +54,15 @@ impl PresetKind {
     }
 }
 
+/// Heat-soak bias inputs. Each group is either an explicit label list or, when the
+/// list is empty, auto-discovered from the sensor roles of whatever the SMC exposes.
 #[derive(Clone, Debug)]
 pub struct PlatformBiasConfig {
     pub enabled: bool,
+    /// Mean of all non-CPU/GPU sensors; the one group that exists on every machine.
+    pub system_threshold_c: f32,
+    pub system_factor: f32,
+    pub system_max_bias_c: f32,
     pub skin_sensors: Vec<String>,
     pub skin_threshold_c: f32,
     pub skin_factor: f32,
@@ -65,49 +71,25 @@ pub struct PlatformBiasConfig {
     pub battery_threshold_c: f32,
     pub battery_factor: f32,
     pub battery_max_bias_c: f32,
-    pub max_effective_temp_c: f32,
-    /// Read and logged only, never part of the bias.
-    pub log_sensors: Vec<String>,
 }
 
 impl Default for PlatformBiasConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            skin_sensors: labels(&["Ts0S", "Ts1S"]),
-            skin_threshold_c: 40.5,
-            skin_factor: 6.0,
-            skin_max_bias_c: 25.0,
-            battery_sensors: labels(&["TB0T", "TB1T", "TB2T"]),
+            system_threshold_c: 40.0,
+            system_factor: 4.0,
+            system_max_bias_c: 25.0,
+            skin_sensors: Vec::new(),
+            skin_threshold_c: 42.0,
+            skin_factor: 4.0,
+            skin_max_bias_c: 20.0,
+            battery_sensors: Vec::new(),
             battery_threshold_c: 38.0,
             battery_factor: 2.0,
             battery_max_bias_c: 6.0,
-            max_effective_temp_c: 100.0,
-            log_sensors: labels(&["TaLC", "TaRC", "TH0X", "TTRD", "TTTD", "TTWD", "TTXD"]),
         }
     }
-}
-
-impl PlatformBiasConfig {
-    /// Every SMC label the daemon has to sample, bias inputs plus log-only ones.
-    pub fn sensors_of_interest(&self) -> Vec<String> {
-        let mut all = Vec::new();
-        for label in self
-            .skin_sensors
-            .iter()
-            .chain(&self.battery_sensors)
-            .chain(&self.log_sensors)
-        {
-            if !all.contains(label) {
-                all.push(label.clone());
-            }
-        }
-        all
-    }
-}
-
-fn labels(values: &[&str]) -> Vec<String> {
-    values.iter().map(|value| (*value).to_owned()).collect()
 }
 
 #[derive(Clone, Debug)]
@@ -163,24 +145,26 @@ impl AppConfig {
         let bias = &self.platform_bias;
         format!(
             "active_preset={}\nautomatic_control_enabled={}\nautostart_enabled={}\ncustom_curve={}\n\
-             platform_bias_enabled={}\nskin_sensors={}\nskin_threshold_c={}\nskin_factor={}\n\
+             platform_bias_enabled={}\nsystem_threshold_c={}\nsystem_factor={}\n\
+             system_max_bias_c={}\nskin_sensors={}\nskin_threshold_c={}\nskin_factor={}\n\
              skin_max_bias_c={}\nbattery_sensors={}\nbattery_threshold_c={}\nbattery_factor={}\n\
-             battery_max_bias_c={}\nmax_effective_temp_c={}\nlog_sensors={}\n",
+             battery_max_bias_c={}\n",
             self.active_preset.as_str(),
             self.automatic_control_enabled,
             self.autostart_enabled,
             curve,
             bias.enabled,
-            bias.skin_sensors.join(","),
+            bias.system_threshold_c,
+            bias.system_factor,
+            bias.system_max_bias_c,
+            format_labels(&bias.skin_sensors),
             bias.skin_threshold_c,
             bias.skin_factor,
             bias.skin_max_bias_c,
-            bias.battery_sensors.join(","),
+            format_labels(&bias.battery_sensors),
             bias.battery_threshold_c,
             bias.battery_factor,
-            bias.battery_max_bias_c,
-            bias.max_effective_temp_c,
-            bias.log_sensors.join(",")
+            bias.battery_max_bias_c
         )
     }
 }
@@ -287,7 +271,9 @@ fn parse_config(raw: &str) -> Option<AppConfig> {
             }
             "skin_sensors" => config.platform_bias.skin_sensors = parse_labels(value),
             "battery_sensors" => config.platform_bias.battery_sensors = parse_labels(value),
-            "log_sensors" => config.platform_bias.log_sensors = parse_labels(value),
+            "system_threshold_c" => assign_f32(&mut config.platform_bias.system_threshold_c, value),
+            "system_factor" => assign_f32(&mut config.platform_bias.system_factor, value),
+            "system_max_bias_c" => assign_f32(&mut config.platform_bias.system_max_bias_c, value),
             "skin_threshold_c" => assign_f32(&mut config.platform_bias.skin_threshold_c, value),
             "skin_factor" => assign_f32(&mut config.platform_bias.skin_factor, value),
             "skin_max_bias_c" => assign_f32(&mut config.platform_bias.skin_max_bias_c, value),
@@ -296,9 +282,6 @@ fn parse_config(raw: &str) -> Option<AppConfig> {
             }
             "battery_factor" => assign_f32(&mut config.platform_bias.battery_factor, value),
             "battery_max_bias_c" => assign_f32(&mut config.platform_bias.battery_max_bias_c, value),
-            "max_effective_temp_c" => {
-                assign_f32(&mut config.platform_bias.max_effective_temp_c, value)
-            }
             _ => {}
         }
     }
@@ -306,13 +289,25 @@ fn parse_config(raw: &str) -> Option<AppConfig> {
     Some(config)
 }
 
+/// An empty list or the word `auto` means: pick the sensors by role at runtime.
 fn parse_labels(value: &str) -> Vec<String> {
+    if value.trim().eq_ignore_ascii_case("auto") {
+        return Vec::new();
+    }
     value
         .split(',')
         .map(str::trim)
         .filter(|label| !label.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+fn format_labels(labels: &[String]) -> String {
+    if labels.is_empty() {
+        String::from("auto")
+    } else {
+        labels.join(",")
+    }
 }
 
 fn assign_f32(target: &mut f32, value: &str) {

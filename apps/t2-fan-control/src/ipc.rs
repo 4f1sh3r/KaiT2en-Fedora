@@ -34,6 +34,7 @@ pub struct DaemonState {
     pub cpu_temp_c: Option<u8>,
     pub gpu_temp_c: Option<u8>,
     pub base_temp_c: Option<u8>,
+    pub system_temp_c: Option<f32>,
     pub skin_temp_c: Option<f32>,
     pub battery_temp_c: Option<f32>,
     pub platform_bias_c: Option<f32>,
@@ -152,6 +153,7 @@ pub fn write_response(mut stream: &UnixStream, state: &DaemonState) -> Result<()
     push_option_u8(&mut body, "cpu_temp_c", state.cpu_temp_c);
     push_option_u8(&mut body, "gpu_temp_c", state.gpu_temp_c);
     push_option_u8(&mut body, "base_temp_c", state.base_temp_c);
+    push_option_f32(&mut body, "system_temp_c", state.system_temp_c);
     push_option_f32(&mut body, "skin_temp_c", state.skin_temp_c);
     push_option_f32(&mut body, "battery_temp_c", state.battery_temp_c);
     push_option_f32(&mut body, "platform_bias_c", state.platform_bias_c);
@@ -208,6 +210,7 @@ pub fn state_from(config: &AppConfig, status: String, snapshot: &ControlSnapshot
         cpu_temp_c: snapshot.temperatures.cpu_temp_c,
         gpu_temp_c: snapshot.temperatures.gpu_temp_c,
         base_temp_c: snapshot.base_temp_c,
+        system_temp_c: snapshot.system_temp_c,
         skin_temp_c: snapshot.skin_temp_c,
         battery_temp_c: snapshot.battery_temp_c,
         platform_bias_c: snapshot.platform_bias_c,
@@ -259,6 +262,7 @@ fn decode_response<R: BufRead>(mut reader: R) -> Result<DaemonState> {
             "cpu_temp_c" => state.cpu_temp_c = parse_option_u8(value)?,
             "gpu_temp_c" => state.gpu_temp_c = parse_option_u8(value)?,
             "base_temp_c" => state.base_temp_c = parse_option_u8(value)?,
+            "system_temp_c" => state.system_temp_c = parse_option_f32(value)?,
             "skin_temp_c" => state.skin_temp_c = parse_option_f32(value)?,
             "battery_temp_c" => state.battery_temp_c = parse_option_f32(value)?,
             "platform_bias_c" => state.platform_bias_c = parse_option_f32(value)?,
