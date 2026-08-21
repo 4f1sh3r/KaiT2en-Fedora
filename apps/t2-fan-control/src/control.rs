@@ -8,11 +8,15 @@ use crate::{
 
 const CONTROL_INTERVAL: Duration = Duration::from_secs(2);
 const SYSTEM_LIMIT_HYSTERESIS_C: u8 = 5;
+const SYSTEM_STABLE_RELEASE_TIME: Duration = Duration::from_secs(20);
 
 pub struct Controller {
     last_applied_percent: Option<u8>,
     last_tick: Instant,
     heat_soak_cooling: bool,
+    any_sensor_cooling: bool,
+    system_cooling_started_at: Option<Instant>,
+    system_below_target_since: Option<Instant>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -22,6 +26,7 @@ pub struct ControlSnapshot {
     pub system_temp_c: Option<u8>,
     pub system_sensor_count: usize,
     pub heat_soak_cooling: bool,
+    pub any_sensor_cooling: bool,
     pub target_percent: Option<u8>,
     pub target_rpm_per_fan: Vec<u32>,
 }
@@ -32,6 +37,9 @@ impl Controller {
             last_applied_percent: None,
             last_tick: Instant::now() - CONTROL_INTERVAL,
             heat_soak_cooling: false,
+            any_sensor_cooling: false,
+            system_cooling_started_at: None,
+            system_below_target_since: None,
         }
     }
 
@@ -41,17 +49,28 @@ impl Controller {
         fans: &mut [FanEndpoint],
         temperatures: &mut [TemperatureSource],
     ) -> Result<ControlSnapshot> {
-        let snapshot = TemperatureSnapshot::read_from(temperatures);
+        let mut snapshot = TemperatureSnapshot::read_from(temperatures);
+        snapshot.include_curve_sensor(temperatures, config.curve_sensor_key.as_deref());
         let effective_temp = snapshot.effective_temp_c();
 
         let curve = curve(config);
         let curve_target = effective_temp.map(|temp| interpolate_percent(&curve, temp));
-        self.heat_soak_cooling = next_system_cooling(
-            self.heat_soak_cooling,
-            snapshot.system_temp_c,
-            config.soak_temp_c,
-        );
-        let target_percent = if self.heat_soak_cooling { Some(100) } else { curve_target };
+        self.update_system_cooling(config, snapshot.system_temp_c);
+        self.any_sensor_cooling = if config.any_sensor_enabled {
+            next_threshold_cooling(
+                self.any_sensor_cooling,
+                snapshot.overall_hottest_temp_c,
+                config.any_sensor_temp_c,
+                config.any_sensor_temp_c.saturating_sub(SYSTEM_LIMIT_HYSTERESIS_C),
+            )
+        } else {
+            false
+        };
+        let target_percent = if self.heat_soak_cooling || self.any_sensor_cooling {
+            Some(100)
+        } else {
+            curve_target
+        };
 
         let mut target_rpm_per_fan = Vec::with_capacity(fans.len());
         if config.automatic_control_enabled {
@@ -86,6 +105,7 @@ impl Controller {
             system_temp_c,
             system_sensor_count,
             heat_soak_cooling: self.heat_soak_cooling,
+            any_sensor_cooling: self.any_sensor_cooling,
             target_percent,
             target_rpm_per_fan,
         })
@@ -98,6 +118,9 @@ impl Controller {
         }
         self.last_applied_percent = None;
         self.heat_soak_cooling = false;
+        self.any_sensor_cooling = false;
+        self.system_cooling_started_at = None;
+        self.system_below_target_since = None;
         Ok(())
     }
 
@@ -105,12 +128,43 @@ impl Controller {
         self.last_tick.elapsed() >= CONTROL_INTERVAL
     }
 
+    fn update_system_cooling(&mut self, config: &AppConfig, system_temp_c: Option<u8>) {
+        let now = Instant::now();
+        let engage = config.soak_temp_c.saturating_add(SYSTEM_LIMIT_HYSTERESIS_C);
+        let release = config.soak_temp_c.saturating_sub(SYSTEM_LIMIT_HYSTERESIS_C);
+
+        if !self.heat_soak_cooling {
+            if system_temp_c.is_some_and(|temp| temp >= engage) {
+                self.heat_soak_cooling = true;
+                self.system_cooling_started_at = Some(now);
+                self.system_below_target_since = None;
+            }
+            return;
+        }
+
+        if system_temp_c.is_some_and(|temp| temp <= release) {
+            self.system_below_target_since.get_or_insert(now);
+        } else {
+            self.system_below_target_since = None;
+        }
+
+        let minimum_elapsed = self.system_cooling_started_at
+            .is_some_and(|started| now.duration_since(started) >= Duration::from_secs(config.system_cooling_time_s as u64));
+        let stable_elapsed = self.system_below_target_since
+            .is_some_and(|started| now.duration_since(started) >= SYSTEM_STABLE_RELEASE_TIME);
+        if minimum_elapsed && stable_elapsed {
+            self.heat_soak_cooling = false;
+            self.system_cooling_started_at = None;
+            self.system_below_target_since = None;
+        }
+    }
+
 }
 
-fn next_system_cooling(active: bool, system_temp_c: Option<u8>, limit_temp_c: u8) -> bool {
-    match system_temp_c {
-        Some(temp) if temp >= limit_temp_c => true,
-        Some(temp) if temp <= limit_temp_c.saturating_sub(SYSTEM_LIMIT_HYSTERESIS_C) => false,
+fn next_threshold_cooling(active: bool, temp_c: Option<u8>, engage_temp_c: u8, release_temp_c: u8) -> bool {
+    match temp_c {
+        Some(temp) if temp >= engage_temp_c => true,
+        Some(temp) if temp <= release_temp_c => false,
         _ => active,
     }
 }
@@ -148,13 +202,13 @@ fn interpolate_percent(curve: &[CurvePoint], temp_c: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::next_system_cooling;
+    use super::next_threshold_cooling;
 
     #[test]
-    fn system_limit_has_five_degree_hysteresis() {
-        assert!(next_system_cooling(false, Some(80), 80));
-        assert!(next_system_cooling(true, Some(79), 80));
-        assert!(next_system_cooling(true, Some(76), 80));
-        assert!(!next_system_cooling(true, Some(75), 80));
+    fn system_target_has_plus_minus_five_degree_hysteresis() {
+        assert!(next_threshold_cooling(false, Some(50), 50, 40));
+        assert!(next_threshold_cooling(true, Some(45), 50, 40));
+        assert!(next_threshold_cooling(true, Some(41), 50, 40));
+        assert!(!next_threshold_cooling(true, Some(40), 50, 40));
     }
 }

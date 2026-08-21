@@ -19,6 +19,7 @@ pub struct FanEndpoint {
 
 #[derive(Clone, Debug)]
 pub struct TemperatureSource {
+    pub key: String,
     pub name: String,
     pub path: PathBuf,
     pub last_temp_c: Option<u8>,
@@ -34,6 +35,7 @@ pub struct TemperatureSnapshot {
     pub gpu_temp_c: Option<u8>,
     pub hottest_temp_c: Option<u8>,
     pub hottest_sensor_name: Option<String>,
+    pub optional_curve_temp_c: Option<u8>,
     pub overall_hottest_temp_c: Option<u8>,
     pub overall_hottest_sensor_name: Option<String>,
     pub system_temp_c: Option<u8>,
@@ -70,6 +72,17 @@ impl TemperatureSnapshot {
 
     pub fn effective_temp_c(&self) -> Option<u8> {
         self.hottest_temp_c
+    }
+
+    pub fn include_curve_sensor(&mut self, sources: &[TemperatureSource], key: Option<&str>) {
+        let Some(key) = key else { return; };
+        let Some(source) = sources.iter().find(|source| source.key == key) else { return; };
+        let Some(temp) = source.last_temp_c.filter(|temp| *temp > 0) else { return; };
+        self.optional_curve_temp_c = Some(temp);
+        if self.hottest_temp_c.map_or(true, |hottest| temp > hottest) {
+            self.hottest_temp_c = Some(temp);
+            self.hottest_sensor_name = Some(source.name.clone());
+        }
     }
 }
 
@@ -285,6 +298,7 @@ pub fn discover_temperature_sources() -> Vec<TemperatureSource> {
         "/sys/devices/platform/coretemp.0/hwmon/hwmon*/temp1_input",
     ) {
         sources.push(TemperatureSource {
+            key: String::from("CPU"),
             name: String::from("CPU package"),
             path,
             last_temp_c: None,
@@ -307,6 +321,7 @@ pub fn discover_temperature_sources() -> Vec<TemperatureSource> {
                 let temp_path = entry.with_file_name(entry.file_name().unwrap_or_default().to_string_lossy().replace("_label", "_input"));
                 if temp_path.exists() && read_temperature(&temp_path).is_ok() {
                     sources.push(TemperatureSource {
+                        key: label.to_owned(),
                         name: sensor_label(label),
                         path: temp_path,
                         last_temp_c: None,
@@ -459,5 +474,31 @@ mod tests {
         assert_eq!(snapshot.cpu_temp_c, Some(80));
         assert_eq!(snapshot.gpu_temp_c, Some(100));
         assert_eq!((sum, count), (330, 4));
+    }
+
+    #[test]
+    fn optional_curve_sensor_can_raise_but_not_replace_cpu_gpu_input() {
+        let sources = vec![TemperatureSource {
+            key: String::from("TPCD"),
+            name: String::from("PCH Die"),
+            path: PathBuf::new(),
+            last_temp_c: Some(105),
+            role: TemperatureRole::System,
+        }];
+        let mut snapshot = TemperatureSnapshot {
+            hottest_temp_c: Some(90),
+            hottest_sensor_name: Some(String::from("CPU package")),
+            ..TemperatureSnapshot::default()
+        };
+        snapshot.include_curve_sensor(&sources, Some("TPCD"));
+        assert_eq!(snapshot.hottest_temp_c, Some(105));
+        assert_eq!(snapshot.hottest_sensor_name.as_deref(), Some("PCH Die"));
+
+        let mut without_optional = TemperatureSnapshot {
+            hottest_temp_c: Some(90),
+            ..TemperatureSnapshot::default()
+        };
+        without_optional.include_curve_sensor(&sources, None);
+        assert_eq!(without_optional.hottest_temp_c, Some(90));
     }
 }
