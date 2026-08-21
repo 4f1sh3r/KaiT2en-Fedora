@@ -17,6 +17,7 @@ const MAX_EFFECTIVE_TEMP_C: f32 = 100.0;
 
 pub struct Controller {
     samples: VecDeque<u8>,
+    system_temp_avg: Option<f32>,
     last_applied_percent: Option<u8>,
     last_tick: Instant,
     last_sensor_log: Option<Instant>,
@@ -50,8 +51,8 @@ pub struct PlatformBias {
 pub fn compute_platform_bias(
     config: &PlatformBiasConfig,
     temperatures: &TemperatureSnapshot,
+    system_temp_c: Option<f32>,
 ) -> PlatformBias {
-    let system_temp_c = temperatures.system_temp_c();
     let skin_temp_c = group_temp(temperatures, &config.skin_sensors, SensorRole::Skin);
     let battery_temp_c = group_temp(temperatures, &config.battery_sensors, SensorRole::Battery);
 
@@ -104,6 +105,29 @@ fn group_temp(
     }
 }
 
+/// First-order low-pass with separate rise and fall time constants. A time constant
+/// of zero passes the sample straight through.
+pub fn smooth_system_temp(
+    previous: Option<f32>,
+    sample: Option<f32>,
+    rise_time_s: f32,
+    fall_time_s: f32,
+) -> Option<f32> {
+    let Some(sample) = sample else {
+        return previous;
+    };
+    if !sample.is_finite() {
+        return previous;
+    }
+    let Some(previous) = previous else {
+        return Some(sample);
+    };
+    let time_constant = if sample >= previous { rise_time_s } else { fall_time_s };
+    let step = CONTROL_INTERVAL.as_secs_f32();
+    let alpha = (step / (time_constant.max(0.0) + step)).clamp(0.0, 1.0);
+    Some(previous + alpha * (sample - previous))
+}
+
 fn linear_bias(value: Option<f32>, threshold: f32, factor: f32, max_bias: f32) -> f32 {
     let Some(value) = value else {
         return 0.0;
@@ -122,6 +146,7 @@ impl Controller {
     pub fn new() -> Self {
         Self {
             samples: VecDeque::with_capacity(SMOOTHING_SAMPLES),
+            system_temp_avg: None,
             last_applied_percent: None,
             last_tick: Instant::now() - CONTROL_INTERVAL,
             last_sensor_log: None,
@@ -145,7 +170,14 @@ impl Controller {
         }
 
         let smoothed_temp = self.smoothed_temp();
-        let bias = compute_platform_bias(&config.platform_bias, &snapshot);
+        let raw_system_temp = snapshot.system_temp_c();
+        self.system_temp_avg = smooth_system_temp(
+            self.system_temp_avg,
+            raw_system_temp,
+            config.platform_bias.system_rise_time_s,
+            config.platform_bias.system_fall_time_s,
+        );
+        let bias = compute_platform_bias(&config.platform_bias, &snapshot, self.system_temp_avg);
         let effective_temp = smoothed_temp.map(|temp| apply_platform_bias(temp, bias.bias_c));
         let curve = curve_for_preset(config);
         let target_percent = effective_temp.map(|temp| interpolate_percent(&curve, temp));
@@ -174,7 +206,7 @@ impl Controller {
         }
 
         self.last_tick = Instant::now();
-        self.log_sensors(&snapshot, smoothed_temp, &bias, effective_temp);
+        self.log_sensors(&snapshot, smoothed_temp, &bias, raw_system_temp, effective_temp);
 
         Ok(ControlSnapshot {
             temperatures: snapshot,
@@ -194,6 +226,7 @@ impl Controller {
         temperatures: &TemperatureSnapshot,
         base_temp_c: Option<u8>,
         bias: &PlatformBias,
+        raw_system_temp_c: Option<f32>,
         effective_temp_c: Option<u8>,
     ) {
         if self
@@ -211,9 +244,10 @@ impl Controller {
             .collect::<Vec<_>>()
             .join(" ");
         eprintln!(
-            "sensors: base={} system={} (n={}) skin={} battery={} bias={:.2} effective={} {}",
+            "sensors: base={} system={} (raw={}, n={}) skin={} battery={} bias={:.2} effective={} {}",
             format_opt_u8(base_temp_c),
             format_opt_f32(bias.system_temp_c),
+            format_opt_f32(raw_system_temp_c),
             temperatures.system_sensor_count(),
             format_opt_f32(bias.skin_temp_c),
             format_opt_f32(bias.battery_temp_c),
@@ -353,7 +387,7 @@ mod tests {
     #[test]
     fn system_temp_is_none_without_any_platform_sensor() {
         assert_eq!(snapshot(&[]).system_temp_c(), None);
-        assert_eq!(compute_platform_bias(&PlatformBiasConfig::default(), &snapshot(&[])).bias_c, 0.0);
+        assert_eq!(compute_platform_bias(&PlatformBiasConfig::default(), &snapshot(&[]), None).bias_c, 0.0);
     }
 
     #[test]
@@ -361,7 +395,7 @@ mod tests {
         let config = PlatformBiasConfig::default();
         // mean 45 C -> (45 - 40) * 4 = 20
         let temps = snapshot(&[("TTXD", 44.0), ("TW0P", 46.0)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert_eq!(bias.system_temp_c, Some(45.0));
         assert!((bias.bias_c - 20.0).abs() < 1e-3, "got {}", bias.bias_c);
         assert_eq!(apply_platform_bias(60, bias.bias_c), 80);
@@ -371,7 +405,7 @@ mod tests {
     fn system_bias_is_capped() {
         let config = PlatformBiasConfig::default();
         let temps = snapshot(&[("TTXD", 80.0)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert!((bias.bias_c - config.system_max_bias_c).abs() < 1e-3);
     }
 
@@ -380,7 +414,7 @@ mod tests {
         let config = PlatformBiasConfig::default();
         assert!(config.skin_sensors.is_empty());
         let temps = snapshot(&[("Ts0S", 43.0), ("Ts1S", 45.2), ("TB0T", 36.0), ("TB2T", 39.5)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert_eq!(bias.skin_temp_c, Some(45.2));
         assert_eq!(bias.battery_temp_c, Some(39.5));
     }
@@ -392,7 +426,7 @@ mod tests {
             ..PlatformBiasConfig::default()
         };
         let temps = snapshot(&[("Ts0S", 43.0), ("Ts1S", 45.2)]);
-        assert_eq!(compute_platform_bias(&config, &temps).skin_temp_c, Some(43.0));
+        assert_eq!(compute_platform_bias(&config, &temps, temps.system_temp_c()).skin_temp_c, Some(43.0));
     }
 
     #[test]
@@ -400,7 +434,7 @@ mod tests {
         let config = no_system(PlatformBiasConfig::default());
         // skin 44.0 -> 8.0, battery 40.0 -> 4.0; summing would give 12.0
         let temps = snapshot(&[("Ts0S", 44.0), ("TB0T", 40.0)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert!((bias.bias_c - 8.0).abs() < 1e-3, "got {}", bias.bias_c);
     }
 
@@ -409,7 +443,7 @@ mod tests {
         let config = no_system(PlatformBiasConfig::default());
         // Ts1S 45.2 C at the observed PROCHOT event: (45.2 - 42.0) * 4.0 = 12.8
         let temps = snapshot(&[("Ts0S", 44.0), ("Ts1S", 45.2)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert!((bias.bias_c - 12.8).abs() < 1e-3, "got {}", bias.bias_c);
         assert_eq!(apply_platform_bias(68, bias.bias_c), 81);
     }
@@ -418,11 +452,11 @@ mod tests {
     fn below_threshold_yields_no_bias() {
         let config = PlatformBiasConfig::default();
         let temps = snapshot(&[("Ts0S", 39.0), ("Ts1S", 30.0), ("TB0T", 38.0)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert_eq!(bias.bias_c, 0.0);
         // far below threshold must never pull the temperature down
         let cold = snapshot(&[("Ts0S", 20.0), ("TB0T", 15.0)]);
-        assert_eq!(compute_platform_bias(&config, &cold).bias_c, 0.0);
+        assert_eq!(compute_platform_bias(&config, &cold, cold.system_temp_c()).bias_c, 0.0);
     }
 
     #[test]
@@ -430,7 +464,7 @@ mod tests {
         let config = PlatformBiasConfig::default();
         // no skin and no battery sensor, only an unclassified one
         let temps = snapshot(&[("TTXD", 30.0)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert_eq!(bias.skin_temp_c, None);
         assert_eq!(bias.battery_temp_c, None);
         assert_eq!(bias.system_temp_c, Some(30.0));
@@ -442,7 +476,7 @@ mod tests {
     fn battery_bias_is_capped() {
         let config = no_system(PlatformBiasConfig::default());
         let temps = snapshot(&[("TB0T", 60.0)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert!((bias.bias_c - config.battery_max_bias_c).abs() < 1e-3);
     }
 
@@ -453,7 +487,7 @@ mod tests {
             ..PlatformBiasConfig::default()
         };
         let temps = snapshot(&[("Ts1S", 50.0)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert_eq!(bias.skin_temp_c, Some(50.0));
         assert_eq!(bias.system_temp_c, Some(50.0));
         assert_eq!(bias.bias_c, 0.0);
@@ -463,7 +497,7 @@ mod tests {
     fn cpu_sensors_never_reach_the_bias() {
         let config = PlatformBiasConfig::default();
         let temps = snapshot(&[("TCXC", 95.0), ("TC0P", 90.0), ("TG0P", 88.0)]);
-        let bias = compute_platform_bias(&config, &temps);
+        let bias = compute_platform_bias(&config, &temps, temps.system_temp_c());
         assert_eq!(bias.system_temp_c, None);
         assert_eq!(bias.bias_c, 0.0);
     }
@@ -477,6 +511,38 @@ mod tests {
     }
 
     #[test]
+    fn smoothing_seeds_on_the_first_sample() {
+        assert_eq!(smooth_system_temp(None, Some(40.0), 30.0, 180.0), Some(40.0));
+        assert_eq!(smooth_system_temp(None, None, 30.0, 180.0), None);
+        // a sensor that vanishes must not reset the average
+        assert_eq!(smooth_system_temp(Some(40.0), None, 30.0, 180.0), Some(40.0));
+    }
+
+    #[test]
+    fn smoothing_rises_faster_than_it_falls() {
+        let rise = smooth_system_temp(Some(40.0), Some(50.0), 30.0, 180.0).unwrap();
+        let fall = smooth_system_temp(Some(50.0), Some(40.0), 30.0, 180.0).unwrap();
+        assert!(rise - 40.0 > 50.0 - fall, "rise {rise} fall {fall}");
+        // both stay between the previous value and the new sample
+        assert!((40.0..50.0).contains(&rise));
+        assert!((40.0..50.0).contains(&fall));
+    }
+
+    #[test]
+    fn zero_time_constant_disables_smoothing() {
+        assert_eq!(smooth_system_temp(Some(40.0), Some(50.0), 0.0, 0.0), Some(50.0));
+    }
+
+    #[test]
+    fn smoothing_converges_on_a_steady_sample() {
+        let mut value = Some(30.0);
+        for _ in 0..600 {
+            value = smooth_system_temp(value, Some(45.0), 30.0, 180.0);
+        }
+        assert!((value.unwrap() - 45.0).abs() < 0.1, "got {value:?}");
+    }
+
+    #[test]
     fn custom_thresholds_and_factors_are_honoured() {
         let config = no_system(PlatformBiasConfig {
             skin_threshold_c: 42.0,
@@ -485,8 +551,8 @@ mod tests {
             ..PlatformBiasConfig::default()
         });
         let temps = snapshot(&[("Ts0S", 43.0)]);
-        assert!((compute_platform_bias(&config, &temps).bias_c - 2.0).abs() < 1e-3);
+        assert!((compute_platform_bias(&config, &temps, temps.system_temp_c()).bias_c - 2.0).abs() < 1e-3);
         let hot = snapshot(&[("Ts0S", 50.0)]);
-        assert!((compute_platform_bias(&config, &hot).bias_c - 3.0).abs() < 1e-3);
+        assert!((compute_platform_bias(&config, &hot, hot.system_temp_c()).bias_c - 3.0).abs() < 1e-3);
     }
 }
