@@ -112,6 +112,23 @@ impl TemperatureSnapshot {
         snapshot
     }
 
+    /// Reads CPU and GPU only and carries the platform sensors over unchanged. Each SMC
+    /// key costs a mailbox round trip, and the heat-soak signals move far too slowly to
+    /// be worth waking up for on every tick.
+    pub fn read_cpu_gpu(sources: &mut [TemperatureSource], sensors: Vec<PlatformSensor>) -> Self {
+        let mut snapshot = Self { sensors, ..Self::default() };
+        for source in sources {
+            let target = match source.name.as_str() {
+                "CPU" => &mut snapshot.cpu_temp_c,
+                "GPU" => &mut snapshot.gpu_temp_c,
+                _ => continue,
+            };
+            source.last_temp_mc = read_temperature_mc(&source.path).ok();
+            *target = source.last_temp_mc.map(mc_to_c);
+        }
+        snapshot
+    }
+
     /// Highest of CPU/GPU, the untouched pre-bias input of the fan curve.
     pub fn base_temp_c(&self) -> Option<u8> {
         match (self.cpu_temp_c, self.gpu_temp_c) {
