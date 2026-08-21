@@ -9,12 +9,12 @@ use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
     io::ErrorKind,
+    os::{fd::AsRawFd, unix::net::UnixListener},
     rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    thread,
     time::Duration,
 };
 
@@ -340,7 +340,22 @@ fn daemon_main() -> error::Result<()> {
             }
         }
 
-        thread::sleep(Duration::from_millis(100));
+        wait_for_work(&listener, runtime.time_until_tick());
+    }
+}
+
+/// Blocks until a client connects or the next control tick is due. Replaces polling,
+/// so an idle daemon wakes a handful of times a minute and the package can stay in a
+/// deep C-state in between.
+fn wait_for_work(listener: &UnixListener, timeout: Duration) {
+    let mut fds = [libc::pollfd {
+        fd: listener.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    }];
+    let millis = timeout.as_millis().min(i32::MAX as u128) as i32;
+    unsafe {
+        libc::poll(fds.as_mut_ptr(), 1, millis.max(1));
     }
 }
 
@@ -377,6 +392,10 @@ impl DaemonRuntime {
             snapshot,
             status: String::from("Daemon ready"),
         })
+    }
+
+    fn time_until_tick(&self) -> Duration {
+        self.controller.time_until_tick()
     }
 
     fn tick(&mut self) {
@@ -598,7 +617,11 @@ fn build_ui(app: &Application) {
     {
         let model = model.clone();
         let ui = ui.clone();
-        glib::timeout_add_local(Duration::from_millis(900), move || {
+        let window = window.clone();
+        glib::timeout_add_local(Duration::from_secs(2), move || {
+            if !window.is_visible() {
+                return glib::ControlFlow::Continue;
+            }
             let mut model = model.borrow_mut();
             model.tick();
             sync_ui(&model, &ui);

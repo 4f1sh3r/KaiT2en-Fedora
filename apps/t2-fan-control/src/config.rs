@@ -103,6 +103,10 @@ pub struct AppConfig {
     pub active_preset: PresetKind,
     pub automatic_control_enabled: bool,
     pub autostart_enabled: bool,
+    /// How fast the commanded fan speed may change, in percentage points per second.
+    /// Falling slower than rising keeps the fan note steady instead of pumping.
+    pub fan_rise_rate_pct_per_s: f32,
+    pub fan_fall_rate_pct_per_s: f32,
     pub custom_curve: Vec<CurvePoint>,
     pub platform_bias: PlatformBiasConfig,
 }
@@ -113,6 +117,8 @@ impl Default for AppConfig {
             active_preset: PresetKind::Balanced,
             automatic_control_enabled: true,
             autostart_enabled: false,
+            fan_rise_rate_pct_per_s: 1.0,
+            fan_fall_rate_pct_per_s: 0.35,
             custom_curve: default_curve_for(PresetKind::Custom),
             platform_bias: PlatformBiasConfig::default(),
         }
@@ -150,7 +156,8 @@ impl AppConfig {
 
         let bias = &self.platform_bias;
         format!(
-            "active_preset={}\nautomatic_control_enabled={}\nautostart_enabled={}\ncustom_curve={}\n\
+            "active_preset={}\nautomatic_control_enabled={}\nautostart_enabled={}\n\
+             fan_rise_rate_pct_per_s={}\nfan_fall_rate_pct_per_s={}\ncustom_curve={}\n\
              platform_bias_enabled={}\nsystem_threshold_c={}\nsystem_factor={}\n\
              system_max_bias_c={}\nsystem_rise_time_s={}\nsystem_fall_time_s={}\nskin_sensors={}\nskin_threshold_c={}\nskin_factor={}\n\
              skin_max_bias_c={}\nbattery_sensors={}\nbattery_threshold_c={}\nbattery_factor={}\n\
@@ -158,6 +165,8 @@ impl AppConfig {
             self.active_preset.as_str(),
             self.automatic_control_enabled,
             self.autostart_enabled,
+            self.fan_rise_rate_pct_per_s,
+            self.fan_fall_rate_pct_per_s,
             curve,
             bias.enabled,
             bias.system_threshold_c,
@@ -258,6 +267,8 @@ fn parse_config(raw: &str) -> Option<AppConfig> {
             "autostart_enabled" => {
                 config.autostart_enabled = value.trim().parse().ok()?;
             }
+            "fan_rise_rate_pct_per_s" => assign_f32(&mut config.fan_rise_rate_pct_per_s, value),
+            "fan_fall_rate_pct_per_s" => assign_f32(&mut config.fan_fall_rate_pct_per_s, value),
             "custom_curve" => {
                 let mut curve = Vec::new();
                 for entry in value.split(',').filter(|entry| !entry.trim().is_empty()) {
