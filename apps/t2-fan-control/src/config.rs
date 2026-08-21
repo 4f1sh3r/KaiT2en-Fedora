@@ -63,6 +63,10 @@ pub struct PlatformBiasConfig {
     pub system_threshold_c: f32,
     pub system_factor: f32,
     pub system_max_bias_c: f32,
+    /// Low-pass time constants for the system average, in seconds. Rising faster than
+    /// falling keeps the fan from chasing the cooling it just caused itself.
+    pub system_rise_time_s: f32,
+    pub system_fall_time_s: f32,
     pub skin_sensors: Vec<String>,
     pub skin_threshold_c: f32,
     pub skin_factor: f32,
@@ -80,6 +84,8 @@ impl Default for PlatformBiasConfig {
             system_threshold_c: 40.0,
             system_factor: 4.0,
             system_max_bias_c: 25.0,
+            system_rise_time_s: 30.0,
+            system_fall_time_s: 180.0,
             skin_sensors: Vec::new(),
             skin_threshold_c: 42.0,
             skin_factor: 4.0,
@@ -146,7 +152,7 @@ impl AppConfig {
         format!(
             "active_preset={}\nautomatic_control_enabled={}\nautostart_enabled={}\ncustom_curve={}\n\
              platform_bias_enabled={}\nsystem_threshold_c={}\nsystem_factor={}\n\
-             system_max_bias_c={}\nskin_sensors={}\nskin_threshold_c={}\nskin_factor={}\n\
+             system_max_bias_c={}\nsystem_rise_time_s={}\nsystem_fall_time_s={}\nskin_sensors={}\nskin_threshold_c={}\nskin_factor={}\n\
              skin_max_bias_c={}\nbattery_sensors={}\nbattery_threshold_c={}\nbattery_factor={}\n\
              battery_max_bias_c={}\n",
             self.active_preset.as_str(),
@@ -157,6 +163,8 @@ impl AppConfig {
             bias.system_threshold_c,
             bias.system_factor,
             bias.system_max_bias_c,
+            bias.system_rise_time_s,
+            bias.system_fall_time_s,
             format_labels(&bias.skin_sensors),
             bias.skin_threshold_c,
             bias.skin_factor,
@@ -274,6 +282,8 @@ fn parse_config(raw: &str) -> Option<AppConfig> {
             "system_threshold_c" => assign_f32(&mut config.platform_bias.system_threshold_c, value),
             "system_factor" => assign_f32(&mut config.platform_bias.system_factor, value),
             "system_max_bias_c" => assign_f32(&mut config.platform_bias.system_max_bias_c, value),
+            "system_rise_time_s" => assign_f32(&mut config.platform_bias.system_rise_time_s, value),
+            "system_fall_time_s" => assign_f32(&mut config.platform_bias.system_fall_time_s, value),
             "skin_threshold_c" => assign_f32(&mut config.platform_bias.skin_threshold_c, value),
             "skin_factor" => assign_f32(&mut config.platform_bias.skin_factor, value),
             "skin_max_bias_c" => assign_f32(&mut config.platform_bias.skin_max_bias_c, value),
