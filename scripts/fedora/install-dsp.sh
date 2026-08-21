@@ -30,6 +30,7 @@ model_dir_for_product() {
 		MacBookAir8,2) printf '%s\n' "8_2" ;;
 		MacBookAir9,1) printf '%s\n' "9_1" ;;
 		MacBookPro15,1) printf '%s\n' "15_1" ;;
+		MacBookPro15,2) printf '%s\n' "15_2" ;;
 		MacBookPro15,4) printf '%s\n' "15_4" ;;
 		MacBookPro16,1) printf '%s\n' "16_1" ;;
 		MacBookPro16,2) printf '%s\n' "16_2" ;;
