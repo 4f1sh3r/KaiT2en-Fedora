@@ -90,9 +90,6 @@ pub fn bind_listener() -> Result<UnixListener> {
         path: socket_path.to_path_buf(),
         source,
     })?;
-    listener
-        .set_nonblocking(true)
-        .map_err(FanControlError::ProcessSpawn)?;
     fs::set_permissions(socket_path, fs::Permissions::from_mode(0o666)).map_err(|source| {
         FanControlError::Io {
             path: socket_path.to_path_buf(),

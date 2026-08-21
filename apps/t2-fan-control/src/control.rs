@@ -48,8 +48,13 @@ impl Controller {
         config: &AppConfig,
         fans: &mut [FanEndpoint],
         temperatures: &mut [TemperatureSource],
+        refresh_all_sensors: bool,
     ) -> Result<ControlSnapshot> {
-        let mut snapshot = TemperatureSnapshot::read_from(temperatures);
+        let mut snapshot = TemperatureSnapshot::read_for_control(
+            temperatures,
+            config.curve_sensor_key.as_deref(),
+            refresh_all_sensors,
+        );
         snapshot.include_curve_sensor(temperatures, config.curve_sensor_key.as_deref());
         let effective_temp = snapshot.effective_temp_c();
 

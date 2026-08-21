@@ -45,11 +45,32 @@ pub struct TemperatureSnapshot {
 
 impl TemperatureSnapshot {
     pub fn read_from(sources: &mut [TemperatureSource]) -> Self {
+        for source in sources.iter_mut() {
+            source.last_temp_c = read_temperature(&source.path).ok();
+        }
+        Self::from_cached(sources)
+    }
+
+    pub fn read_for_control(
+        sources: &mut [TemperatureSource],
+        optional_key: Option<&str>,
+        refresh_all: bool,
+    ) -> Self {
+        for source in sources.iter_mut() {
+            let needed_for_fast_control = source.role != TemperatureRole::System
+                || optional_key.is_some_and(|key| source.key == key);
+            if refresh_all || needed_for_fast_control {
+                source.last_temp_c = read_temperature(&source.path).ok();
+            }
+        }
+        Self::from_cached(sources)
+    }
+
+    fn from_cached(sources: &[TemperatureSource]) -> Self {
         let mut snapshot = Self::default();
         let mut system_sum = 0_u32;
         let mut system_count = 0_usize;
         for source in sources {
-            source.last_temp_c = read_temperature(&source.path).ok();
             let Some(temp) = source.last_temp_c.filter(|temp| *temp > 0) else { continue; };
             snapshot.monitored_sensor_count += 1;
             if snapshot.overall_hottest_temp_c.map_or(true, |hottest| temp > hottest) {

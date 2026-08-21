@@ -8,10 +8,10 @@ mod sysfs;
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
-    io::ErrorKind,
     rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
+        mpsc,
         Arc,
     },
     thread,
@@ -350,6 +350,12 @@ fn main() -> glib::ExitCode {
 
 fn daemon_main() -> error::Result<()> {
     let listener = ipc::bind_listener()?;
+    let (connections_tx, connections_rx) = mpsc::channel();
+    thread::spawn(move || loop {
+        if connections_tx.send(listener.accept()).is_err() {
+            break;
+        }
+    });
     let reload_requested = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(SIGHUP, reload_requested.clone()).map_err(|source| {
         error::FanControlError::Io {
@@ -365,35 +371,35 @@ fn daemon_main() -> error::Result<()> {
         }
 
         runtime.tick();
-        loop {
-            match listener.accept() {
-                Ok((stream, _addr)) => {
-                    let request = ipc::read_request(&stream);
-                    match request {
-                        Ok(request) => match runtime.handle_request(request) {
-                            Ok(state) => {
-                                let _ = ipc::write_response(&stream, &state);
-                            }
-                            Err(error) => {
-                                let _ = ipc::write_error(&stream, &error.to_string());
-                            }
-                        },
+        match connections_rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(Ok((stream, _addr))) => {
+                let request = ipc::read_request(&stream);
+                match request {
+                    Ok(request) => match runtime.handle_request(request) {
+                        Ok(state) => {
+                            let _ = ipc::write_response(&stream, &state);
+                        }
                         Err(error) => {
                             let _ = ipc::write_error(&stream, &error.to_string());
                         }
+                    },
+                    Err(error) => {
+                        let _ = ipc::write_error(&stream, &error.to_string());
                     }
                 }
-                Err(error) if error.kind() == ErrorKind::WouldBlock => break,
-                Err(error) => {
-                    return Err(error::FanControlError::Io {
-                        path: std::path::PathBuf::from(ipc::SOCKET_PATH),
-                        source: error,
-                    });
-                }
             }
+            Ok(Err(source)) => return Err(error::FanControlError::Io {
+                path: std::path::PathBuf::from(ipc::SOCKET_PATH),
+                source,
+            }),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Err(
+                error::FanControlError::ProcessSpawn(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "IPC listener stopped",
+                )),
+            ),
         }
-
-        thread::sleep(Duration::from_millis(100));
     }
 }
 
@@ -404,6 +410,8 @@ struct DaemonRuntime {
     temperatures: Vec<TemperatureSource>,
     snapshot: ControlSnapshot,
     status: String,
+    last_full_sensor_read: std::time::Instant,
+    last_ui_request: Option<std::time::Instant>,
 }
 
 impl DaemonRuntime {
@@ -432,21 +440,35 @@ impl DaemonRuntime {
             temperatures,
             snapshot,
             status: String::from("Daemon ready"),
+            last_full_sensor_read: std::time::Instant::now(),
+            last_ui_request: None,
         })
     }
 
     fn tick(&mut self) {
         if self.controller.should_tick() {
-            for fan in &mut self.fans {
-                let _ = fan.refresh_state();
+            let ui_active = self.last_ui_request
+                .is_some_and(|seen| seen.elapsed() <= Duration::from_secs(3));
+            if ui_active {
+                for fan in &mut self.fans {
+                    let _ = fan.refresh_state();
+                }
             }
-
-            match self
-                .controller
-                .tick(&self.config, &mut self.fans, &mut self.temperatures)
+            let refresh_all_sensors = self.config.any_sensor_enabled
+                || ui_active
+                || self.last_full_sensor_read.elapsed() >= Duration::from_secs(10);
+            match self.controller.tick(
+                &self.config,
+                &mut self.fans,
+                &mut self.temperatures,
+                refresh_all_sensors,
+            )
             {
                 Ok(snapshot) => {
                     self.snapshot = snapshot;
+                    if refresh_all_sensors {
+                        self.last_full_sensor_read = std::time::Instant::now();
+                    }
                 }
                 Err(error) => {
                     self.status = format!("Fan control failed: {error}");
@@ -475,6 +497,7 @@ impl DaemonRuntime {
     }
 
     fn handle_request(&mut self, request: Request) -> error::Result<DaemonState> {
+        self.last_ui_request = Some(std::time::Instant::now());
         match request {
             Request::GetState => {}
             Request::SetActive(enabled) => {
