@@ -124,7 +124,7 @@ The ALSA UCM profiles define the T2 speaker, microphone and headset paths:
 
 The installer deploys model-specific FIR filters and a generated WirePlumber
 rule on these models: `MacBookAir8,1`, `MacBookAir8,2`, `MacBookAir9,1`,
-`MacBookPro15,1`, `MacBookPro15,4`, `MacBookPro16,1`, `MacBookPro16,2`,
+`MacBookPro15,1`, `MacBookPro15,2`, `MacBookPro15,4`, `MacBookPro16,1`, `MacBookPro16,2`,
 `MacBookPro16,3` and `MacBookPro16,4`.
 
 ```text

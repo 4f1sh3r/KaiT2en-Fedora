@@ -1,0 +1,459 @@
+#!/usr/bin/env bash
+
+# Repair an installed KaiT2en system from the live session. Finds the Fedora
+# installation on the internal disk, unlocks it if it is encrypted, mounts it
+# the way its own fstab describes it, and chroots into it.
+#
+# This exists for the one failure that leaves no way back: a kernel update after
+# which the initramfs no longer carries the T2 input modules. There is no
+# keyboard then, not even at the LUKS prompt, so the stick is the only way in.
+#
+# The macOS partition is never a candidate and is never touched.
+
+set -Eeuo pipefail
+shopt -s nullglob
+
+mount_root=${KAIT2EN_RESCUE_ROOT:-/mnt/kait2en-rescue}
+probe_root=${KAIT2EN_RESCUE_PROBE:-/run/kait2en-rescue-probe}
+live_mount=${KAIT2EN_RESCUE_LIVE_MOUNT:-/run/initramfs/live}
+input_modules=(t2bce_dma t2bce_core t2bce_vhci t2hid)
+skip_filesystems=(apfs hfsplus hfs ntfs vfat swap iso9660 squashfs)
+root_filesystems=(btrfs ext4 xfs)
+
+action=
+target_device=
+target_subvol=
+assume_yes=0
+mounted=()
+opened=()
+resolv_backup=
+candidates=()
+
+log() {
+	printf '[kait2en] %s\n' "$*"
+}
+
+die() {
+	printf '[kait2en] error: %s\n' "$*" >&2
+	exit 1
+}
+
+usage() {
+	printf 'Usage: %s [OPTION]...\n' "${0##*/}"
+	printf '  --list                only show the installations that were found\n'
+	printf '  --shell               open a shell inside the installed system\n'
+	printf '  --rebuild-initramfs   rebuild every initramfs and verify the T2 input drivers\n'
+	printf '  --repair-boot         show the boot entries and pick the default\n'
+	printf '  --target DEVICE       skip detection and use this device\n'
+	printf '  --subvol NAME         btrfs subvolume of --target\n'
+	printf '  --yes                 do not ask before writing to the installation\n'
+	printf '\nWithout an action a menu is shown.\n'
+}
+
+while (($# > 0)); do
+	case "$1" in
+		--list|--shell|--rebuild-initramfs|--repair-boot)
+			[[ -z "$action" ]] || die 'give only one action'
+			action=${1#--}
+			shift
+			;;
+		--target)
+			[[ $# -ge 2 ]] || die '--target needs a device'
+			target_device=$2
+			shift 2
+			;;
+		--subvol)
+			[[ $# -ge 2 ]] || die '--subvol needs a name'
+			target_subvol=$2
+			shift 2
+			;;
+		--yes)
+			assume_yes=1
+			shift
+			;;
+		-h|--help)
+			usage
+			exit 0
+			;;
+		*)
+			usage >&2
+			exit 2
+			;;
+	esac
+done
+
+if [[ ${KAIT2EN_TEST_MODE:-0} != 1 ]]; then
+	[[ ${EUID:-$(id -u)} -eq 0 ]] || die 'run this command with sudo'
+fi
+
+for command in lsblk findmnt mount umount chroot; do
+	command -v "$command" >/dev/null 2>&1 || die "missing command: $command"
+done
+
+cleanup() {
+	local status=$? index path name
+
+	if [[ -n "$resolv_backup" && -f "$resolv_backup" ]]; then
+		cat "$resolv_backup" >"$mount_root/etc/resolv.conf" 2>/dev/null || :
+		rm -f "$resolv_backup"
+	fi
+	for ((index = ${#mounted[@]} - 1; index >= 0; index--)); do
+		path=${mounted[index]}
+		umount -R "$path" >/dev/null 2>&1 ||
+			umount -l "$path" >/dev/null 2>&1 || :
+	done
+	for ((index = ${#opened[@]} - 1; index >= 0; index--)); do
+		name=${opened[index]}
+		cryptsetup close "$name" >/dev/null 2>&1 || :
+	done
+	rmdir "$probe_root" >/dev/null 2>&1 || :
+	rmdir "$mount_root" >/dev/null 2>&1 || :
+	exit "$status"
+}
+trap cleanup EXIT
+
+confirm() {
+	local prompt=$1 answer
+
+	((assume_yes == 0)) || return 0
+	printf '%s\nType YES to continue: ' "$prompt"
+	IFS= read -r answer || return 1
+	[[ "$answer" == YES ]]
+}
+
+is_fedora_root() {
+	local path=$1
+
+	[[ -r "$path/etc/os-release" && -r "$path/etc/fstab" ]] || return 1
+	grep -Fxq 'ID=fedora' "$path/etc/os-release"
+}
+
+describe_root() {
+	local path=$1 version
+
+	version=$(sed -n 's/^VERSION_ID=//p' "$path/etc/os-release" | tr -d '"')
+	printf 'Fedora %s\n' "${version:-unknown}"
+}
+
+live_disk() {
+	local source parent
+
+	source=$(findmnt -no SOURCE "$live_mount" 2>/dev/null) || return 1
+	[[ -n "$source" ]] || return 1
+	parent=$(lsblk -no PKNAME "$source" 2>/dev/null | head -n 1) || return 1
+	[[ -n "$parent" ]] || return 1
+	printf '/dev/%s\n' "$parent"
+}
+
+probe_plain() {
+	local device=$1
+
+	mount -o ro "$device" "$probe_root" >/dev/null 2>&1 || return 1
+	if is_fedora_root "$probe_root"; then
+		candidates+=("$device	$(describe_root "$probe_root")	")
+		umount "$probe_root" >/dev/null 2>&1 || :
+		return 0
+	fi
+	umount "$probe_root" >/dev/null 2>&1 || :
+	return 1
+}
+
+probe_btrfs() {
+	local device=$1 subvol found=1
+	local subvols=()
+
+	if mount -o ro "$device" "$probe_root" >/dev/null 2>&1; then
+		if is_fedora_root "$probe_root"; then
+			candidates+=("$device	$(describe_root "$probe_root")	")
+			umount "$probe_root" >/dev/null 2>&1 || :
+			return 0
+		fi
+		mapfile -t subvols < <(
+			btrfs subvolume list -o "$probe_root" 2>/dev/null |
+				awk '{print $NF}'
+		)
+		umount "$probe_root" >/dev/null 2>&1 || :
+	fi
+
+	for subvol in "${subvols[@]}"; do
+		mount -o "ro,subvol=$subvol" "$device" "$probe_root" >/dev/null 2>&1 ||
+			continue
+		if is_fedora_root "$probe_root"; then
+			candidates+=("$device	$(describe_root "$probe_root")	$subvol")
+			found=0
+		fi
+		umount "$probe_root" >/dev/null 2>&1 || :
+	done
+	return "$found"
+}
+
+probe_device() {
+	local device=$1 fstype=$2
+
+	case "$fstype" in
+		btrfs) probe_btrfs "$device" ;;
+		*) probe_plain "$device" ;;
+	esac
+}
+
+unlock_luks() {
+	local device=$1 name
+
+	command -v cryptsetup >/dev/null 2>&1 || return 1
+	name="kait2en-rescue-${device##*/}"
+	cryptsetup open "$device" "$name" || return 1
+	opened+=("$name")
+	printf '/dev/mapper/%s\n' "$name"
+}
+
+scan() {
+	local exclude path fstype type locked=()
+	local mapper answer
+
+	exclude=$(live_disk) || exclude=
+	[[ -z "$exclude" ]] || log "ignoring the live medium on $exclude"
+
+	mkdir -p "$probe_root"
+	while IFS=' ' read -r path fstype type; do
+		[[ -n "$path" && -n "$fstype" ]] || continue
+		[[ "$type" == part || "$type" == crypt || "$type" == lvm ]] || continue
+		[[ -z "$exclude" || "$path" != "$exclude"* ]] || continue
+
+		case " ${skip_filesystems[*]} " in
+			*" $fstype "*) continue ;;
+		esac
+		if [[ "$fstype" == LVM2_member ]]; then
+			log "$path is an LVM physical volume, which this tool cannot open"
+			continue
+		fi
+		if [[ "$fstype" == crypto_LUKS ]]; then
+			locked+=("$path")
+			continue
+		fi
+		case " ${root_filesystems[*]} " in
+			*" $fstype "*) probe_device "$path" "$fstype" || : ;;
+		esac
+	done < <(lsblk -rno PATH,FSTYPE,TYPE 2>/dev/null)
+
+	for path in "${locked[@]}"; do
+		if [[ ! -t 0 ]]; then
+			log "$path is encrypted; unlocking it needs a terminal"
+			continue
+		fi
+		printf 'Unlock the encrypted installation on %s? [y/N] ' "$path"
+		IFS= read -r answer || answer=
+		[[ "$answer" == [yY]* ]] || continue
+		mapper=$(unlock_luks "$path") || {
+			log "$path stayed locked"
+			continue
+		}
+		fstype=$(lsblk -no FSTYPE "$mapper" 2>/dev/null | head -n 1) || fstype=
+		[[ -n "$fstype" ]] || continue
+		probe_device "$mapper" "$fstype" || :
+	done
+	rmdir "$probe_root" >/dev/null 2>&1 || :
+}
+
+print_candidates() {
+	local index entry device description subvol
+
+	for index in "${!candidates[@]}"; do
+		IFS='	' read -r device description subvol <<<"${candidates[index]}"
+		entry=$(printf '  %2d) %s — %s' "$((index + 1))" "$description" "$device")
+		[[ -z "$subvol" ]] || entry+=" (subvolume $subvol)"
+		printf '%s\n' "$entry"
+	done
+}
+
+select_candidate() {
+	local answer index
+
+	((${#candidates[@]} > 0)) ||
+		die 'no Fedora installation was found on the internal disks'
+	if ((${#candidates[@]} == 1)); then
+		index=0
+	else
+		printf 'Installations found:\n'
+		print_candidates
+		while :; do
+			printf 'Which installation should be repaired? '
+			IFS= read -r answer || die 'no selection was made'
+			[[ "$answer" =~ ^[0-9]+$ ]] || continue
+			((answer >= 1 && answer <= ${#candidates[@]})) || continue
+			index=$((answer - 1))
+			break
+		done
+	fi
+	IFS='	' read -r target_device _ target_subvol <<<"${candidates[index]}"
+}
+
+mount_from_fstab() {
+	local target source fstype options destination entry
+	local entries=()
+
+	mapfile -t entries < <(
+		findmnt --fstab -F "$mount_root/etc/fstab" \
+			-no TARGET,SOURCE,FSTYPE,OPTIONS 2>/dev/null | sort
+	)
+	for entry in "${entries[@]}"; do
+		read -r target source fstype options <<<"$entry"
+		[[ -n "$target" && "$target" != / ]] || continue
+		[[ "$target" == /* ]] || continue
+		case "$fstype" in
+			swap|nfs|nfs4|cifs|sshfs|fuse.*) continue ;;
+		esac
+		destination="$mount_root$target"
+		mkdir -p "$destination"
+		if mount -t "$fstype" -o "$options" "$source" "$destination" \
+				>/dev/null 2>&1 ||
+			mount -t "$fstype" "$source" "$destination" >/dev/null 2>&1; then
+			mounted+=("$destination")
+			log "mounted $target from $source"
+		else
+			log "warning: could not mount $target from $source"
+		fi
+	done
+}
+
+mount_target() {
+	local api destination
+
+	mkdir -p "$mount_root"
+	if [[ -n "$target_subvol" ]]; then
+		mount -o "subvol=$target_subvol" "$target_device" "$mount_root" ||
+			die "could not mount $target_device"
+	else
+		mount "$target_device" "$mount_root" ||
+			die "could not mount $target_device"
+	fi
+	mounted+=("$mount_root")
+	is_fedora_root "$mount_root" ||
+		die "$target_device does not hold a Fedora installation"
+	log "mounted $target_device at $mount_root"
+
+	mount_from_fstab
+
+	for api in /dev /dev/pts /proc /sys /run; do
+		destination="$mount_root$api"
+		mkdir -p "$destination"
+		if mount --bind "$api" "$destination" >/dev/null 2>&1; then
+			mounted+=("$destination")
+		else
+			log "warning: could not bind $api"
+		fi
+	done
+	if [[ -d /sys/firmware/efi/efivars ]]; then
+		destination="$mount_root/sys/firmware/efi/efivars"
+		if mount -o rw --bind /sys/firmware/efi/efivars "$destination" \
+				>/dev/null 2>&1; then
+			mounted+=("$destination")
+		fi
+	fi
+
+	if [[ -r /etc/resolv.conf ]]; then
+		resolv_backup=$(mktemp "${TMPDIR:-/tmp}/kait2en-resolv.XXXXXX")
+		cat "$mount_root/etc/resolv.conf" >"$resolv_backup" 2>/dev/null || :
+		cat /etc/resolv.conf >"$mount_root/etc/resolv.conf" 2>/dev/null || :
+	fi
+}
+
+run_shell() {
+	printf '\nYou are now inside the installed system. Type exit when you are done.\n\n'
+	chroot "$mount_root" /bin/bash -l || :
+}
+
+rebuild_initramfs() {
+	local image kernel listing module missing=0
+
+	confirm "This rebuilds every initramfs in $mount_root/boot." || return 0
+	if [[ ! -r "$mount_root/etc/dracut.conf.d/90-kait2en-input.conf" ]]; then
+		log 'warning: the KaiT2en dracut configuration is missing, the input drivers may not be included'
+	fi
+	chroot "$mount_root" dracut --regenerate-all --force ||
+		die 'dracut failed inside the installed system'
+
+	for image in "$mount_root"/boot/initramfs-*.img; do
+		kernel=${image##*/initramfs-}
+		kernel=${kernel%.img}
+		listing=$(chroot "$mount_root" lsinitrd "/boot/initramfs-$kernel.img") || {
+			log "warning: could not read the initramfs for $kernel"
+			continue
+		}
+		for module in "${input_modules[@]}"; do
+			if grep -Eq "/${module}\.ko(\.[a-z0-9]+)?$" <<<"$listing"; then
+				continue
+			fi
+			log "MISSING: $module is not in the initramfs for $kernel"
+			missing=1
+		done
+		((missing == 1)) || log "$kernel carries all T2 input drivers"
+	done
+	((missing == 0)) ||
+		log 'this system will boot without a keyboard; do not reboot into it yet'
+}
+
+repair_boot() {
+	local answer
+
+	chroot "$mount_root" grubby --info=ALL || die 'grubby failed'
+	printf '\nWhich index should boot by default? Press Enter to keep it as it is: '
+	IFS= read -r answer || return 0
+	[[ -n "$answer" ]] || return 0
+	[[ "$answer" =~ ^[0-9]+$ ]] || die "not an index: $answer"
+	confirm "Boot entry $answer becomes the default." || return 0
+	chroot "$mount_root" grubby "--set-default-index=$answer" ||
+		die 'could not set the default boot entry'
+	log "default boot entry is now $answer"
+}
+
+menu() {
+	local answer
+
+	while :; do
+		printf '\nKaiT2en rescue — %s\n' "$target_device"
+		printf '  1) Open a shell inside the installed system\n'
+		printf '  2) Rebuild the initramfs and check the T2 input drivers\n'
+		printf '  3) Show the boot entries and pick the default\n'
+		printf '  4) Leave\n'
+		printf 'Choice: '
+		IFS= read -r answer || return 0
+		case "$answer" in
+			1) run_shell ;;
+			2) rebuild_initramfs ;;
+			3) repair_boot ;;
+			4) return 0 ;;
+		esac
+	done
+}
+
+if [[ -n "$target_device" ]]; then
+	[[ -b "$target_device" || -e "$target_device" ]] ||
+		die "no such device: $target_device"
+else
+	log 'looking for installed Fedora systems'
+	scan
+fi
+
+if [[ "$action" == list ]]; then
+	if [[ -n "$target_device" ]]; then
+		printf '  %s\n' "$target_device"
+	elif ((${#candidates[@]} == 0)); then
+		printf 'No Fedora installation was found.\n'
+	else
+		printf 'Installations found:\n'
+		print_candidates
+	fi
+	exit 0
+fi
+
+[[ -n "$target_device" ]] || select_candidate
+mount_target
+
+case "$action" in
+	shell) run_shell ;;
+	rebuild-initramfs) rebuild_initramfs ;;
+	repair-boot) repair_boot ;;
+	*) menu ;;
+esac
+
+log 'unmounting the installed system'
