@@ -29,7 +29,8 @@ The repository checkout method remains available below for development builds.
    shows up there, `sudo /run/kait2en/kait2en-live-bluetooth` if a BCM4377 Mac
    finds no Bluetooth controller, and
    `sudo /run/kait2en/kait2en-live-diagnostics --rerun` to write one diagnostics
-   archive to a second USB drive.
+   archive to a second USB drive. `sudo kait2en-rescue` mounts an already
+   installed Fedora and chroots into it.
 4. Connect to Wi-Fi after the first login. One guided KaiT2en installer opens
    automatically and updates Fedora. Reboot when its first phase succeeds.
    If no terminal appears, open one and run `kait2en-install` without

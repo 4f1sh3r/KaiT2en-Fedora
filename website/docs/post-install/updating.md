@@ -37,6 +37,19 @@ sudo kernel-install add 7.1.3-201.fc44.x86_64 /lib/modules/7.1.3-201.fc44.x86_64
 sudo grubby --set-default /boot/vmlinuz-7.1.3-201.fc44.x86_64
 ```
 
+### When you can't boot at all
+
+If you can no longer boot your system or the input drivers are not loaded, use
+the KAIT2EN USB stick. Boot into a live desktop and run:
+
+```bash
+sudo kait2en-rescue
+```
+
+The rescue tool finds and mounts your Fedora installation, chroots you into it,
+and lets you rebuild the initramfs, verify the T2 input drivers, or choose the
+default boot entry.
+
 ## Murphy's law: We **WILL** mess up!
 
 We are humans. We will mess up at some point. We recommend not to update when
