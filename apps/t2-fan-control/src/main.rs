@@ -112,6 +112,7 @@ struct UiRefs {
     status: Label,
     cpu_label: Label,
     gpu_label: Label,
+    system_label: Label,
     skin_label: Label,
     battery_label: Label,
     bias_label: Label,
@@ -186,6 +187,7 @@ impl AppModel {
                 ..TemperatureSnapshot::default()
             },
             base_temp_c: state.base_temp_c,
+            system_temp_c: state.system_temp_c,
             skin_temp_c: state.skin_temp_c,
             battery_temp_c: state.battery_temp_c,
             platform_bias_c: state.platform_bias_c,
@@ -361,7 +363,7 @@ impl DaemonRuntime {
             let _ = fan.refresh_state();
         }
         let mut temperatures =
-            discover_temperature_sources(&config.platform_bias.sensors_of_interest());
+            discover_temperature_sources();
         let snapshot = ControlSnapshot {
             temperatures: TemperatureSnapshot::read_from(&mut temperatures),
             ..ControlSnapshot::default()
@@ -404,7 +406,7 @@ impl DaemonRuntime {
         self.config = next_config;
         self.config.autostart_enabled = service::autostart_enabled();
         self.temperatures =
-            discover_temperature_sources(&self.config.platform_bias.sensors_of_interest());
+            discover_temperature_sources();
 
         if was_active && !next_active {
             self.controller.release_to_system(&mut self.fans)?;
@@ -530,12 +532,13 @@ fn build_ui(app: &Application) {
         .build();
     attach_pair_at(&summary, 0, 0, "CPU", &ui.cpu_label);
     attach_pair_at(&summary, 2, 0, "GPU", &ui.gpu_label);
-    attach_pair_at(&summary, 0, 1, "Skin", &ui.skin_label);
-    attach_pair_at(&summary, 2, 1, "Battery", &ui.battery_label);
-    attach_pair_at(&summary, 0, 2, "Bias", &ui.bias_label);
-    attach_pair_at(&summary, 2, 2, "Effective", &ui.effective_label);
-    attach_pair_at(&summary, 0, 3, "Target", &ui.target_label);
-    attach_pair_at(&summary, 2, 3, "Fans", &ui.fan_label);
+    attach_pair_at(&summary, 0, 1, "System", &ui.system_label);
+    attach_pair_at(&summary, 2, 1, "Skin", &ui.skin_label);
+    attach_pair_at(&summary, 0, 2, "Battery", &ui.battery_label);
+    attach_pair_at(&summary, 2, 2, "Bias", &ui.bias_label);
+    attach_pair_at(&summary, 0, 3, "Effective", &ui.effective_label);
+    attach_pair_at(&summary, 2, 3, "Target", &ui.target_label);
+    attach_pair_at(&summary, 0, 4, "Fans", &ui.fan_label);
     root.append(&summary);
 
     root.append(&panel(
@@ -650,6 +653,7 @@ fn build_widgets() -> UiRefs {
         status: make_value(),
         cpu_label: make_value(),
         gpu_label: make_value(),
+        system_label: make_value(),
         skin_label: make_value(),
         battery_label: make_value(),
         bias_label: make_value(),
@@ -811,6 +815,8 @@ fn sync_ui(model: &AppModel, ui: &UiRefs) {
     ui.status.set_label(&model.status);
     ui.cpu_label.set_label(&format_temp(model.snapshot.temperatures.cpu_temp_c));
     ui.gpu_label.set_label(&format_temp(model.snapshot.temperatures.gpu_temp_c));
+    ui.system_label
+        .set_label(&format_temp_f32(model.snapshot.system_temp_c));
     ui.skin_label
         .set_label(&format_temp_f32(model.snapshot.skin_temp_c));
     ui.battery_label

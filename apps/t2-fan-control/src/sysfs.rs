@@ -24,12 +24,71 @@ pub struct TemperatureSource {
     pub last_temp_mc: Option<i32>,
 }
 
+/// Coarse role of a hwmon/SMC sensor, derived from its label. Unknown labels are
+/// treated as system sensors so a machine we have never seen still contributes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SensorRole {
+    Cpu,
+    Gpu,
+    Skin,
+    Battery,
+    System,
+}
+
+pub fn classify_label(label: &str) -> SensorRole {
+    let lower = label.to_ascii_lowercase();
+    if lower.contains("cpu") || lower.contains("package") || lower.contains("core") {
+        return SensorRole::Cpu;
+    }
+    if lower.contains("gpu") {
+        return SensorRole::Gpu;
+    }
+    if lower.contains("batt") {
+        return SensorRole::Battery;
+    }
+    if lower.contains("skin") || lower.contains("palm") {
+        return SensorRole::Skin;
+    }
+    match smc_prefix(label) {
+        Some("TC") => SensorRole::Cpu,
+        Some("TG") => SensorRole::Gpu,
+        Some("TB") => SensorRole::Battery,
+        Some("Ts") => SensorRole::Skin,
+        _ => SensorRole::System,
+    }
+}
+
+/// First two characters of a 4-character SMC key, None for any other label shape.
+fn smc_prefix(label: &str) -> Option<&str> {
+    if label.len() == 4 && label.is_ascii() {
+        Some(&label[..2])
+    } else {
+        None
+    }
+}
+
+/// Readings outside this range come from unpopulated or broken sensors and would
+/// drag the system average around; TF0S reports 3.5 C on this machine.
+const PLAUSIBLE_MIN_C: f32 = 10.0;
+const PLAUSIBLE_MAX_C: f32 = 125.0;
+
+fn is_plausible(temp_c: f32) -> bool {
+    temp_c.is_finite() && (PLAUSIBLE_MIN_C..=PLAUSIBLE_MAX_C).contains(&temp_c)
+}
+
+#[derive(Clone, Debug)]
+pub struct PlatformSensor {
+    pub label: String,
+    pub temp_c: f32,
+    pub role: SensorRole,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct TemperatureSnapshot {
     pub cpu_temp_c: Option<u8>,
     pub gpu_temp_c: Option<u8>,
-    /// SMC platform sensors by label, in discovery order.
-    pub sensors: Vec<(String, f32)>,
+    /// Every SMC sensor the machine exposes, in discovery order.
+    pub sensors: Vec<PlatformSensor>,
 }
 
 impl TemperatureSnapshot {
@@ -43,9 +102,11 @@ impl TemperatureSnapshot {
             match source.name.as_str() {
                 "CPU" => snapshot.cpu_temp_c = Some(mc_to_c(millis)),
                 "GPU" => snapshot.gpu_temp_c = Some(mc_to_c(millis)),
-                label => snapshot
-                    .sensors
-                    .push((label.to_owned(), millis as f32 / 1000.0)),
+                label => snapshot.sensors.push(PlatformSensor {
+                    label: label.to_owned(),
+                    temp_c: millis as f32 / 1000.0,
+                    role: classify_label(label),
+                }),
             }
         }
         snapshot
@@ -61,21 +122,50 @@ impl TemperatureSnapshot {
         }
     }
 
-    pub fn sensor(&self, label: &str) -> Option<f32> {
-        self.sensors
-            .iter()
-            .find(|(name, _)| name == label)
-            .map(|(_, value)| *value)
-    }
-
     /// Hottest of the given labels, None when none of them is present.
     pub fn max_sensor(&self, labels: &[String]) -> Option<f32> {
-        labels
-            .iter()
-            .filter_map(|label| self.sensor(label))
+        self.fold_max(
+            self.sensors
+                .iter()
+                .filter(|sensor| labels.iter().any(|label| *label == sensor.label)),
+        )
+    }
+
+    /// Hottest sensor of a role, used when the config leaves the group on auto.
+    pub fn max_by_role(&self, role: SensorRole) -> Option<f32> {
+        self.fold_max(self.sensors.iter().filter(|sensor| sensor.role == role))
+    }
+
+    fn fold_max<'a>(&self, sensors: impl Iterator<Item = &'a PlatformSensor>) -> Option<f32> {
+        sensors
+            .map(|sensor| sensor.temp_c)
+            .filter(|temp| is_plausible(*temp))
             .fold(None, |acc: Option<f32>, value| {
                 Some(acc.map_or(value, |best| best.max(value)))
             })
+    }
+
+    fn system_sensors(&self) -> impl Iterator<Item = &PlatformSensor> {
+        self.sensors
+            .iter()
+            .filter(|sensor| !matches!(sensor.role, SensorRole::Cpu | SensorRole::Gpu))
+            .filter(|sensor| is_plausible(sensor.temp_c))
+    }
+
+    /// Mean of every plausible sensor that is not a CPU or GPU sensor: how hot the
+    /// chassis itself has become, independent of what the silicon is doing.
+    pub fn system_temp_c(&self) -> Option<f32> {
+        let mut sum = 0.0;
+        let mut count = 0u32;
+        for sensor in self.system_sensors() {
+            sum += sensor.temp_c;
+            count += 1;
+        }
+        (count > 0).then(|| sum / count as f32)
+    }
+
+    pub fn system_sensor_count(&self) -> usize {
+        self.system_sensors().count()
     }
 }
 
@@ -268,9 +358,9 @@ pub fn discover_fans() -> Result<Vec<FanEndpoint>> {
         .unwrap_or(Err(FanControlError::NoFans))
 }
 
-/// `platform_labels` are extra SMC labels to sample (heat-soak proxies, log-only sensors).
-/// Labels the SMC does not expose are silently skipped.
-pub fn discover_temperature_sources(platform_labels: &[String]) -> Vec<TemperatureSource> {
+/// Samples the CPU package plus every labelled SMC sensor the machine exposes.
+/// Nothing is hardcoded: which sensors exist differs from Mac to Mac.
+pub fn discover_temperature_sources() -> Vec<TemperatureSource> {
     let mut sources = Vec::new();
 
     // CPU from coretemp (Intel built-in)
@@ -291,14 +381,14 @@ pub fn discover_temperature_sources(platform_labels: &[String]) -> Vec<Temperatu
     if let Some(hwmon_dir) = smc_hwmon {
         let mut gpu_found = false;
         for (label, path) in smc_labeled_sensors(&hwmon_dir) {
-            if !gpu_found && (label == "TG0P" || label == "TGDD") {
+            if !gpu_found && classify_label(&label) == SensorRole::Gpu {
                 gpu_found = true;
                 sources.push(TemperatureSource {
                     name: String::from("GPU"),
                     path,
                     last_temp_mc: None,
                 });
-            } else if platform_labels.contains(&label) {
+            } else {
                 sources.push(TemperatureSource {
                     name: label,
                     path,
