@@ -58,7 +58,13 @@ and decided case by case.
   *not* taken here — the whole `apps/t2-fan-control/` directory, README
   included, is resolved to the `local/rig` side on every `merge main`, so this
   app stays pinned to the pre-v0.05 base the bias work was written against.
-  `rerere` has that resolution recorded. Revisit by rebasing the bias work
+  `rerere` has that resolution recorded.
+- Config trap: `/etc/t2-fancontrol/config.txt` holds the bias keys and has no
+  `config_version` line. v0.05 discards any config whose version does not match
+  and rewrites the file from its own defaults, so running an upstream install
+  (e.g. `kait2en-install`) destroys the file — the binaries round-trip, the
+  config does not. A copy is kept at `/etc/t2-fancontrol/config.txt.rig-backup`.
+  Back it up before letting any upstream install touch this machine. Revisit by rebasing the bias work
   onto v0.05 once the approach has proven itself; until then upstream's
   fan-control changes do not reach this machine.
 
