@@ -1,7 +1,4 @@
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use crate::{
     config::{curve_for_preset, AppConfig, CurvePoint, PlatformBiasConfig},
@@ -10,11 +7,11 @@ use crate::{
 };
 
 const CONTROL_INTERVAL: Duration = Duration::from_secs(5);
-const SMOOTHING_SAMPLES: usize = 10;
 /// Speed changes below this many percentage points are not worth a fan write.
 const APPLY_DEADBAND_PCT: f32 = 3.0;
-/// Above this effective temperature the slew limit is bypassed and the target applied at once.
-const EMERGENCY_TEMP_C: u8 = 92;
+/// While a ramp is running the daemon only moves the fan, it reads no sensors, so it can
+/// afford to do it often enough that the sweep is heard as a glide instead of steps.
+const RAMP_INTERVAL: Duration = Duration::from_millis(100);
 const SENSOR_LOG_INTERVAL: Duration = Duration::from_secs(30);
 /// How often the full SMC sensor set is sampled. The heat-soak signals are low-passed
 /// over minutes, so reading them on every tick would only cost wakeups.
@@ -23,11 +20,17 @@ const PLATFORM_SAMPLE_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_EFFECTIVE_TEMP_C: f32 = 100.0;
 
 pub struct Controller {
-    samples: VecDeque<u8>,
+    base_temp_avg: Option<f32>,
     system_temp_avg: Option<f32>,
     platform_sensors: Vec<PlatformSensor>,
     last_platform_read: Option<Instant>,
+    /// Where the fan is being driven right now, kept fractional so a slow rate still
+    /// accumulates instead of rounding away to nothing on every step.
+    commanded_percent: Option<f32>,
+    /// Where the curve wants it to end up.
+    target_percent: Option<u8>,
     last_applied_percent: Option<u8>,
+    last_ramp: Instant,
     last_tick: Instant,
     last_sensor_log: Option<Instant>,
 }
@@ -116,7 +119,7 @@ fn group_temp(
 
 /// First-order low-pass with separate rise and fall time constants. A time constant
 /// of zero passes the sample straight through.
-pub fn smooth_system_temp(
+pub fn smooth_temp(
     previous: Option<f32>,
     sample: Option<f32>,
     rise_time_s: f32,
@@ -155,11 +158,14 @@ pub fn apply_platform_bias(base_temp_c: u8, bias_c: f32) -> u8 {
 impl Controller {
     pub fn new() -> Self {
         Self {
-            samples: VecDeque::with_capacity(SMOOTHING_SAMPLES),
+            base_temp_avg: None,
             system_temp_avg: None,
             platform_sensors: Vec::new(),
             last_platform_read: None,
+            commanded_percent: None,
+            target_percent: None,
             last_applied_percent: None,
+            last_ramp: Instant::now(),
             last_tick: Instant::now() - CONTROL_INTERVAL,
             last_sensor_log: None,
         }
@@ -187,17 +193,17 @@ impl Controller {
         };
         let base_temp = snapshot.base_temp_c();
 
-        if let Some(temp) = base_temp {
-            self.samples.push_back(temp);
-            if self.samples.len() > SMOOTHING_SAMPLES {
-                self.samples.pop_front();
-            }
-        }
-
-        let smoothed_temp = self.smoothed_temp();
+        self.base_temp_avg = smooth_temp(
+            self.base_temp_avg,
+            base_temp.map(f32::from),
+            config.base_rise_time_s,
+            config.base_fall_time_s,
+            CONTROL_INTERVAL.as_secs_f32(),
+        );
+        let smoothed_temp = self.base_temp_avg.map(round_temp);
         let raw_system_temp = snapshot.system_temp_c();
         if platform_age.is_none() {
-            self.system_temp_avg = smooth_system_temp(
+            self.system_temp_avg = smooth_temp(
                 self.system_temp_avg,
                 raw_system_temp,
                 config.platform_bias.system_rise_time_s,
@@ -210,30 +216,20 @@ impl Controller {
         let curve = curve_for_preset(config);
         let target_percent = effective_temp.map(|temp| interpolate_percent(&curve, temp));
 
-        let mut target_rpm_per_fan = Vec::with_capacity(fans.len());
         let mut commanded_percent = target_percent;
         if config.automatic_control_enabled {
-            let (commanded, should_apply) = self.next_command(config, target_percent, effective_temp);
-            commanded_percent = commanded;
-
-            for fan in fans {
-                let rpm = commanded
-                    .map(|percent| fan.percent_to_rpm(percent))
-                    .unwrap_or(fan.min_speed);
-
-                if should_apply {
-                    fan.set_target_speed(rpm)?;
-                    fan.current_speed = Some(rpm);
-                    fan.app_controlled = Some(true);
-                }
-
-                target_rpm_per_fan.push(rpm);
-            }
-
-            if should_apply {
-                self.last_applied_percent = commanded;
-            }
+            self.target_percent = target_percent;
+            self.ramp(config, fans)?;
+            commanded_percent = self.commanded_percent.map(round_percent);
         }
+        let target_rpm_per_fan = fans
+            .iter()
+            .map(|fan| {
+                commanded_percent
+                    .map(|percent| fan.percent_to_rpm(percent))
+                    .unwrap_or(fan.min_speed)
+            })
+            .collect();
 
         self.log_sensors(
             &snapshot,
@@ -258,31 +254,67 @@ impl Controller {
         })
     }
 
-    /// Decides what to write this tick: the curve target, rate-limited toward it, or
-    /// nothing at all while the change stays inside the deadband.
-    fn next_command(
-        &self,
-        config: &AppConfig,
-        target_percent: Option<u8>,
-        effective_temp_c: Option<u8>,
-    ) -> (Option<u8>, bool) {
-        let Some(target) = target_percent else {
-            return (None, self.last_applied_percent.is_some());
-        };
-        if effective_temp_c.is_some_and(|temp| temp >= EMERGENCY_TEMP_C) {
-            return (Some(target), self.last_applied_percent != Some(target));
+    /// Moves the fan one step toward the target. Reads nothing, so it is cheap enough to
+    /// run at RAMP_INTERVAL for as long as a ramp is actually in progress.
+    pub fn ramp(&mut self, config: &AppConfig, fans: &mut [FanEndpoint]) -> Result<()> {
+        let elapsed = self.last_ramp.elapsed().as_secs_f32();
+        self.last_ramp = Instant::now();
+        if !config.automatic_control_enabled {
+            return Ok(());
         }
 
-        let step = CONTROL_INTERVAL.as_secs_f32();
-        match next_percent(
-            self.last_applied_percent,
-            target,
-            config.fan_rise_rate_pct_per_s * step,
-            config.fan_fall_rate_pct_per_s * step,
-        ) {
-            Some(next) => (Some(next), true),
-            None => (self.last_applied_percent, false),
+        let Some(target) = self.target_percent else {
+            if self.last_applied_percent.is_some() {
+                self.commanded_percent = None;
+                self.last_applied_percent = None;
+                for fan in fans {
+                    let speed = fan.min_speed;
+                    fan.set_target_speed(speed)?;
+                    fan.current_speed = Some(speed);
+                    fan.app_controlled = Some(true);
+                }
+            }
+            return Ok(());
+        };
+
+        let next = match self.commanded_percent {
+            None => target as f32,
+            Some(current) => {
+                // never spend more than one interval of movement in a single step, so a
+                // target that jumps while the daemon was idle still leaves as a ramp
+                let step_s = elapsed.min(RAMP_INTERVAL.as_secs_f32());
+                advance_percent(current, target, ramp_rate(config, current, target), step_s)
+            }
+        };
+        self.commanded_percent = Some(next);
+
+        let percent = round_percent(next);
+        if self.last_applied_percent == Some(percent) {
+            return Ok(());
         }
+        for fan in fans {
+            let rpm = fan.percent_to_rpm(percent);
+            fan.set_target_speed(rpm)?;
+            fan.current_speed = Some(rpm);
+            fan.app_controlled = Some(true);
+        }
+        self.last_applied_percent = Some(percent);
+        Ok(())
+    }
+
+    /// True while the commanded speed is still meaningfully away from the target.
+    fn ramping(&self) -> bool {
+        match (self.commanded_percent, self.target_percent) {
+            (Some(current), Some(target)) => {
+                (target as f32 - current).abs() >= APPLY_DEADBAND_PCT
+            }
+            (None, Some(_)) => true,
+            _ => false,
+        }
+    }
+
+    pub fn should_ramp(&self) -> bool {
+        self.ramping() && self.last_ramp.elapsed() >= RAMP_INTERVAL
     }
 
     fn log_sensors(
@@ -330,6 +362,8 @@ impl Controller {
             fan.release_to_auto()?;
             fan.app_controlled = Some(false);
         }
+        self.commanded_percent = None;
+        self.target_percent = None;
         self.last_applied_percent = None;
         Ok(())
     }
@@ -338,18 +372,17 @@ impl Controller {
         self.last_tick.elapsed() >= CONTROL_INTERVAL
     }
 
-    pub fn time_until_tick(&self) -> Duration {
-        CONTROL_INTERVAL.saturating_sub(self.last_tick.elapsed())
-    }
-
-    fn smoothed_temp(&self) -> Option<u8> {
-        if self.samples.is_empty() {
-            return None;
+    /// How long the daemon may sleep before it has work again: the next control tick, or
+    /// the next ramp step while the fan is still on its way.
+    pub fn time_until_work(&self) -> Duration {
+        let until_tick = CONTROL_INTERVAL.saturating_sub(self.last_tick.elapsed());
+        if self.ramping() {
+            until_tick.min(RAMP_INTERVAL.saturating_sub(self.last_ramp.elapsed()))
+        } else {
+            until_tick
         }
-
-        let sum: u16 = self.samples.iter().map(|value| *value as u16).sum();
-        Some((sum / self.samples.len() as u16) as u8)
     }
+
 }
 
 fn format_opt_u8(value: Option<u8>) -> String {
@@ -360,26 +393,38 @@ fn format_opt_f32(value: Option<f32>) -> String {
     value.map_or_else(|| String::from("n/a"), |value| format!("{value:.2}"))
 }
 
-/// Moves the commanded speed toward the target by at most one step, so the fan note
-/// glides instead of jumping. None means: stay where you are. A rate of zero is no limit.
-pub fn next_percent(current: Option<u8>, target: u8, rise_step: f32, fall_step: f32) -> Option<u8> {
-    let Some(current) = current else {
-        return Some(target);
-    };
-    let diff = target as f32 - current as f32;
-    if diff.abs() < APPLY_DEADBAND_PCT {
-        return None;
+/// How fast the fan may move right now, in percentage points per second. Small
+/// corrections crawl at the configured base rate; the bigger the gap, the closer the
+/// rate gets to closing it within `fan_ramp_time_s`. Only speeding up is boosted --
+/// coming down fast buys nothing and is what makes the fan pump.
+pub fn ramp_rate(config: &AppConfig, current: f32, target: u8) -> f32 {
+    let gap = target as f32 - current;
+    if gap <= 0.0 {
+        return config.fan_fall_rate_pct_per_s.max(0.0);
     }
-    let step = if diff > 0.0 { rise_step } else { fall_step };
-    if !(step > 0.0) {
-        return Some(target);
+    let ramp_time = config.fan_ramp_time_s.max(0.01);
+    config
+        .fan_rise_rate_pct_per_s
+        .max(0.0)
+        .max(gap.abs() / ramp_time)
+}
+
+/// One step of the ramp: move toward the target at `rate`, never past it.
+pub fn advance_percent(current: f32, target: u8, rate: f32, step_s: f32) -> f32 {
+    let gap = target as f32 - current;
+    let step = rate.max(0.0) * step_s.max(0.0);
+    if step >= gap.abs() {
+        return target as f32;
     }
-    let mut next = (current as f32 + diff.clamp(-step, step)).round();
-    if next as u8 == current {
-        next = current as f32 + diff.signum();
-    }
-    let next = next.clamp(0.0, 100.0) as u8;
-    (next != current).then_some(next)
+    (current + step * gap.signum()).clamp(0.0, 100.0)
+}
+
+fn round_temp(value: f32) -> u8 {
+    value.clamp(0.0, 255.0).round() as u8
+}
+
+fn round_percent(value: f32) -> u8 {
+    value.clamp(0.0, 100.0).round() as u8
 }
 
 fn interpolate_percent(curve: &[CurvePoint], temp_c: u8) -> u8 {
@@ -598,16 +643,16 @@ mod tests {
 
     #[test]
     fn smoothing_seeds_on_the_first_sample() {
-        assert_eq!(smooth_system_temp(None, Some(40.0), 30.0, 180.0, 2.0), Some(40.0));
-        assert_eq!(smooth_system_temp(None, None, 30.0, 180.0, 2.0), None);
+        assert_eq!(smooth_temp(None, Some(40.0), 30.0, 180.0, 2.0), Some(40.0));
+        assert_eq!(smooth_temp(None, None, 30.0, 180.0, 2.0), None);
         // a sensor that vanishes must not reset the average
-        assert_eq!(smooth_system_temp(Some(40.0), None, 30.0, 180.0, 2.0), Some(40.0));
+        assert_eq!(smooth_temp(Some(40.0), None, 30.0, 180.0, 2.0), Some(40.0));
     }
 
     #[test]
     fn smoothing_rises_faster_than_it_falls() {
-        let rise = smooth_system_temp(Some(40.0), Some(50.0), 30.0, 180.0, 2.0).unwrap();
-        let fall = smooth_system_temp(Some(50.0), Some(40.0), 30.0, 180.0, 2.0).unwrap();
+        let rise = smooth_temp(Some(40.0), Some(50.0), 30.0, 180.0, 2.0).unwrap();
+        let fall = smooth_temp(Some(50.0), Some(40.0), 30.0, 180.0, 2.0).unwrap();
         assert!(rise - 40.0 > 50.0 - fall, "rise {rise} fall {fall}");
         // both stay between the previous value and the new sample
         assert!((40.0..50.0).contains(&rise));
@@ -615,61 +660,106 @@ mod tests {
     }
 
     #[test]
+    fn the_base_temperature_answers_a_load_step_within_seconds() {
+        let config = AppConfig::default();
+        // idle at 60 C, then a full load step to 95 C
+        let mut avg = Some(60.0);
+        for _ in 0..2 {
+            avg = smooth_temp(avg, Some(95.0), config.base_rise_time_s, config.base_fall_time_s, 5.0);
+        }
+        assert!(avg.unwrap() > 90.0, "after 10 s: {avg:?}");
+        // and takes minutes to come back down again
+        let mut avg = Some(95.0);
+        for _ in 0..2 {
+            avg = smooth_temp(avg, Some(60.0), config.base_rise_time_s, config.base_fall_time_s, 5.0);
+        }
+        assert!(avg.unwrap() > 88.0, "after 10 s: {avg:?}");
+    }
+
+    #[test]
     fn a_longer_sampling_step_moves_the_average_further() {
-        let slow = smooth_system_temp(Some(40.0), Some(50.0), 30.0, 180.0, 2.0).unwrap();
-        let fast = smooth_system_temp(Some(40.0), Some(50.0), 30.0, 180.0, 30.0).unwrap();
+        let slow = smooth_temp(Some(40.0), Some(50.0), 30.0, 180.0, 2.0).unwrap();
+        let fast = smooth_temp(Some(40.0), Some(50.0), 30.0, 180.0, 30.0).unwrap();
         assert!(fast > slow, "slow {slow} fast {fast}");
         assert!((fast - 45.0).abs() < 1e-3, "got {fast}");
     }
 
     #[test]
     fn zero_time_constant_disables_smoothing() {
-        assert_eq!(smooth_system_temp(Some(40.0), Some(50.0), 0.0, 0.0, 2.0), Some(50.0));
+        assert_eq!(smooth_temp(Some(40.0), Some(50.0), 0.0, 0.0, 2.0), Some(50.0));
     }
 
     #[test]
     fn smoothing_converges_on_a_steady_sample() {
         let mut value = Some(30.0);
         for _ in 0..600 {
-            value = smooth_system_temp(value, Some(45.0), 30.0, 180.0, 2.0);
+            value = smooth_temp(value, Some(45.0), 30.0, 180.0, 2.0);
         }
         assert!((value.unwrap() - 45.0).abs() < 0.1, "got {value:?}");
     }
 
-    #[test]
-    fn small_changes_stay_inside_the_deadband() {
-        assert_eq!(next_percent(Some(40), 42, 5.0, 1.75), None);
-        assert_eq!(next_percent(Some(40), 38, 5.0, 1.75), None);
+    fn rates(rise: f32, fall: f32, ramp: f32) -> AppConfig {
+        AppConfig {
+            fan_rise_rate_pct_per_s: rise,
+            fan_fall_rate_pct_per_s: fall,
+            fan_ramp_time_s: ramp,
+            ..AppConfig::default()
+        }
     }
 
     #[test]
-    fn the_first_command_is_applied_directly() {
-        assert_eq!(next_percent(None, 42, 5.0, 1.75), Some(42));
+    fn the_base_rates_act_as_a_floor() {
+        let config = rates(1.0, 0.35, 1.5);
+        // falling is never boosted, whatever the gap
+        assert!((ramp_rate(&config, 40.0, 38) - 0.35).abs() < 1e-3);
+        assert!((ramp_rate(&config, 90.0, 20) - 0.35).abs() < 1e-3);
+        // a rise floor above the gap-proportional rate wins
+        let brisk = rates(10.0, 0.35, 1.5);
+        assert!((ramp_rate(&brisk, 40.0, 42) - 10.0).abs() < 1e-3);
     }
 
     #[test]
-    fn the_fan_ramps_up_faster_than_it_ramps_down() {
-        assert_eq!(next_percent(Some(40), 100, 5.0, 1.75), Some(45));
-        assert_eq!(next_percent(Some(40), 0, 5.0, 1.75), Some(38));
+    fn a_large_gap_is_closed_within_the_ramp_time() {
+        let config = rates(1.0, 0.35, 1.5);
+        // 70 points to climb in 1.5 s is far more than the base rate allows
+        assert!((ramp_rate(&config, 20.0, 90) - 70.0 / 1.5).abs() < 1e-3);
+        // coming down is never boosted, that is what makes a fan pump
+        assert!((ramp_rate(&config, 90.0, 20) - 0.35).abs() < 1e-3);
     }
 
     #[test]
-    fn a_ramp_reaches_the_target_and_then_stops() {
-        let mut current = Some(30u8);
-        for _ in 0..200 {
-            match next_percent(current, 70, 5.0, 1.75) {
-                Some(next) => current = Some(next),
-                None => break,
+    fn a_ramp_reaches_the_target_and_stops_there() {
+        let config = rates(1.0, 0.35, 1.5);
+        let mut current = 20.0f32;
+        let mut steps = 0;
+        let mut steps_to_deadband = None;
+        while (90.0 - current).abs() > 0.05 && steps < 1000 {
+            current = advance_percent(current, 90, ramp_rate(&config, current, 90), 0.1);
+            steps += 1;
+            if steps_to_deadband.is_none() && 90.0 - current < APPLY_DEADBAND_PCT {
+                steps_to_deadband = Some(steps);
             }
         }
-        assert_eq!(current, Some(70));
-        // a tiny step must still make progress instead of stalling on the rounding
-        assert_eq!(next_percent(Some(50), 60, 0.2, 0.2), Some(51));
+        assert_eq!(current, 90.0);
+        // 20 -> 90 arrives within a few seconds, and never in a single jump
+        let steps_to_deadband = steps_to_deadband.unwrap();
+        assert!((10..60).contains(&steps_to_deadband), "took {steps_to_deadband} steps");
     }
 
     #[test]
-    fn a_rate_of_zero_disables_the_limit() {
-        assert_eq!(next_percent(Some(40), 100, 0.0, 0.0), Some(100));
+    fn a_single_step_never_overshoots() {
+        assert_eq!(advance_percent(88.0, 90, 100.0, 0.1), 90.0);
+        assert_eq!(advance_percent(92.0, 90, 100.0, 0.1), 90.0);
+    }
+
+    #[test]
+    fn a_slow_rate_still_accumulates_instead_of_rounding_away() {
+        let mut current = 50.0f32;
+        for _ in 0..30 {
+            current = advance_percent(current, 20, 0.35, 0.1);
+        }
+        // 3 s at 0.35 points per second, which a u8 command would have dropped entirely
+        assert!((current - 48.95).abs() < 1e-2, "got {current}");
     }
 
     #[test]

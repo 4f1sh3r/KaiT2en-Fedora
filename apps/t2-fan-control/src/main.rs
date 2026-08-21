@@ -340,7 +340,7 @@ fn daemon_main() -> error::Result<()> {
             }
         }
 
-        wait_for_work(&listener, runtime.time_until_tick());
+        wait_for_work(&listener, runtime.time_until_work());
     }
 }
 
@@ -394,27 +394,30 @@ impl DaemonRuntime {
         })
     }
 
-    fn time_until_tick(&self) -> Duration {
-        self.controller.time_until_tick()
+    fn time_until_work(&self) -> Duration {
+        self.controller.time_until_work()
     }
 
     fn tick(&mut self) {
-        if self.controller.should_tick() {
-            for fan in &mut self.fans {
-                let _ = fan.refresh_state();
-            }
-
-            match self
-                .controller
-                .tick(&self.config, &mut self.fans, &mut self.temperatures)
-            {
-                Ok(snapshot) => {
-                    self.snapshot = snapshot;
-                }
-                Err(error) => {
+        if !self.controller.should_tick() {
+            if self.controller.should_ramp() {
+                if let Err(error) = self.controller.ramp(&self.config, &mut self.fans) {
                     self.status = format!("Fan control failed: {error}");
                 }
             }
+            return;
+        }
+
+        for fan in &mut self.fans {
+            let _ = fan.refresh_state();
+        }
+
+        match self
+            .controller
+            .tick(&self.config, &mut self.fans, &mut self.temperatures)
+        {
+            Ok(snapshot) => self.snapshot = snapshot,
+            Err(error) => self.status = format!("Fan control failed: {error}"),
         }
     }
 

@@ -107,6 +107,14 @@ pub struct AppConfig {
     /// Falling slower than rising keeps the fan note steady instead of pumping.
     pub fan_rise_rate_pct_per_s: f32,
     pub fan_fall_rate_pct_per_s: f32,
+    /// A large gap is closed within roughly this many seconds instead of at the base
+    /// rate, so a load step is answered quickly without the fan ever jumping.
+    pub fan_ramp_time_s: f32,
+    /// Low-pass time constants for the CPU/GPU temperature that drives the curve.
+    /// Rising within seconds and falling over a minute keeps the fan ahead of a load
+    /// step without letting a short spike keep it up.
+    pub base_rise_time_s: f32,
+    pub base_fall_time_s: f32,
     pub custom_curve: Vec<CurvePoint>,
     pub platform_bias: PlatformBiasConfig,
 }
@@ -119,6 +127,9 @@ impl Default for AppConfig {
             autostart_enabled: false,
             fan_rise_rate_pct_per_s: 1.0,
             fan_fall_rate_pct_per_s: 0.35,
+            fan_ramp_time_s: 1.5,
+            base_rise_time_s: 3.0,
+            base_fall_time_s: 45.0,
             custom_curve: default_curve_for(PresetKind::Custom),
             platform_bias: PlatformBiasConfig::default(),
         }
@@ -157,7 +168,9 @@ impl AppConfig {
         let bias = &self.platform_bias;
         format!(
             "active_preset={}\nautomatic_control_enabled={}\nautostart_enabled={}\n\
-             fan_rise_rate_pct_per_s={}\nfan_fall_rate_pct_per_s={}\ncustom_curve={}\n\
+             fan_rise_rate_pct_per_s={}\nfan_fall_rate_pct_per_s={}\n\
+             fan_ramp_time_s={}\nbase_rise_time_s={}\nbase_fall_time_s={}\n\
+             custom_curve={}\n\
              platform_bias_enabled={}\nsystem_threshold_c={}\nsystem_factor={}\n\
              system_max_bias_c={}\nsystem_rise_time_s={}\nsystem_fall_time_s={}\nskin_sensors={}\nskin_threshold_c={}\nskin_factor={}\n\
              skin_max_bias_c={}\nbattery_sensors={}\nbattery_threshold_c={}\nbattery_factor={}\n\
@@ -167,6 +180,9 @@ impl AppConfig {
             self.autostart_enabled,
             self.fan_rise_rate_pct_per_s,
             self.fan_fall_rate_pct_per_s,
+            self.fan_ramp_time_s,
+            self.base_rise_time_s,
+            self.base_fall_time_s,
             curve,
             bias.enabled,
             bias.system_threshold_c,
@@ -269,6 +285,9 @@ fn parse_config(raw: &str) -> Option<AppConfig> {
             }
             "fan_rise_rate_pct_per_s" => assign_f32(&mut config.fan_rise_rate_pct_per_s, value),
             "fan_fall_rate_pct_per_s" => assign_f32(&mut config.fan_fall_rate_pct_per_s, value),
+            "fan_ramp_time_s" => assign_f32(&mut config.fan_ramp_time_s, value),
+            "base_rise_time_s" => assign_f32(&mut config.base_rise_time_s, value),
+            "base_fall_time_s" => assign_f32(&mut config.base_fall_time_s, value),
             "custom_curve" => {
                 let mut curve = Vec::new();
                 for entry in value.split(',').filter(|entry| !entry.trim().is_empty()) {
