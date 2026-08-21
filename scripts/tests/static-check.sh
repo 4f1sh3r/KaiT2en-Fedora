@@ -118,6 +118,8 @@ grep -Fq 'ExecStart=/run/kait2en/kait2en-live-wifi' \
 
 grep -Fq 'usr/lib/kait2en/kait2en-live-rescue' packaging/installer/build-in-container.sh
 grep -Fq 'kait2en-live-rescue' packaging/installer/initramfs/90-kait2en-updates.sh
+grep -Fq '/sysroot/usr/bin/kait2en-live-rescue' \
+	packaging/installer/initramfs/90-kait2en-updates.sh
 grep -Fq 'apfs' packaging/installer/runtime/kait2en-live-rescue
 grep -Fq 'set-default-index' packaging/installer/runtime/kait2en-live-rescue
 ! grep -Fq -- '--set-default ' packaging/installer/runtime/kait2en-live-rescue

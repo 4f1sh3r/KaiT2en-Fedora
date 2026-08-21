@@ -32,6 +32,13 @@ if [ -d "$firmware_source" ]; then
         fi
     done
 
+    # /run/kait2en is in no PATH, and sudo only honours secure_path anyway.
+    if [ -d /sysroot/usr/bin ]; then
+        ln -sf "$target_directory/kait2en-live-rescue" \
+            /sysroot/usr/bin/kait2en-live-rescue || \
+            warn "KaiT2en: could not link the rescue tool into the live PATH"
+    fi
+
     mkdir -p "$runtime_units/multi-user.target.wants"
     for unit_name in kait2en-live-wifi.service kait2en-live-bluetooth.service; do
         if [ -f "$helper_source/$unit_name" ]; then

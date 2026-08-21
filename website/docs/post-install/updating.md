@@ -46,8 +46,11 @@ even at the disk encryption prompt. That is what the KAIT2EN USB stick is for.
 Boot it into the live desktop as usual, open a terminal and run:
 
 ```bash
-sudo /run/kait2en/kait2en-live-rescue
+sudo kait2en-live-rescue
 ```
+
+It works the same in the GNOME, KDE and Cosmic live images. If the command is
+not found, call it by its full path, `sudo /run/kait2en/kait2en-live-rescue`.
 
 It looks for Fedora on the internal disks, offers to unlock an encrypted one,
 and mounts it the way its own `/etc/fstab` describes it. macOS is never touched.
