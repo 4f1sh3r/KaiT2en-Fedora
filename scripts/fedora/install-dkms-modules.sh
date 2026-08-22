@@ -233,17 +233,18 @@ copy_module_source() {
 }
 
 install_module() {
-	local name=$1 version
+	local name=$1 version kernel
 	MODULE_VERSION=
 	copy_module_source "$name"
 	version="$MODULE_VERSION"
+	kernel="$(kernel_release)"
 
 	if ! dkms_module_version_exists "$name" "$version"; then
 		info "registering $name/$version with DKMS"
 		dkms add -m "$name" -v "$version"
 	fi
-	dkms build -m "$name" -v "$version"
-	dkms install --no-depmod --force -m "$name" -v "$version"
+	dkms build -m "$name" -v "$version" -k "$kernel"
+	dkms install --no-depmod --force -m "$name" -v "$version" -k "$kernel"
 	if ! dkms_module_version_installed "$name" "$version"; then
 		fail "DKMS did not install $name/$version for kernel $(kernel_release)"
 	fi
