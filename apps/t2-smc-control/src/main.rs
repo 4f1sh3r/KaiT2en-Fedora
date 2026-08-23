@@ -21,6 +21,45 @@ const INSTALLED_BIN_PATH: &str = "/usr/local/bin/t2-smc-control";
 const APPLY_RETRY_ATTEMPTS: usize = 40;
 const APPLY_RETRY_DELAY: Duration = Duration::from_millis(250);
 
+fn palette_css(dark: bool) -> String {
+    let (window_bg, window_fg, box_bg, box_border) = if dark {
+        ("#181818", "#efefef", "#1d1d1d", "rgba(230,230,235,0.20)")
+    } else {
+        ("#f4f1ea", "#1f1e1b", "#f4f1ec", "rgba(87,77,64,0.20)")
+    };
+    format!(
+        "window, .smc-root, .smc-root headerbar {{
+             background: {window_bg};
+             color: {window_fg};
+         }}
+         .smc-panel, .boxed-list {{
+             background: {box_bg};
+             color: {window_fg};
+             border: 1px solid {box_border};
+             border-radius: 12px;
+             box-shadow: none;
+         }}
+         .smc-panel > border {{ border: none; }}
+         .boxed-list row {{ background: {box_bg}; color: {window_fg}; }}"
+    )
+}
+
+fn install_palette() {
+    let provider = gtk4::CssProvider::new();
+    let style = adw::StyleManager::default();
+    provider.load_from_data(&palette_css(style.is_dark()));
+    if let Some(display) = gtk4::gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
+    style.connect_dark_notify(move |manager| {
+        provider.load_from_data(&palette_css(manager.is_dark()));
+    });
+}
+
 fn cpu_core_label(key: &str) -> Option<String> {
     let bytes = key.as_bytes();
     if bytes.len() != 4 || bytes[0] != b'T' || bytes[1] != b'C' || bytes[3] != b'C' {
@@ -830,6 +869,7 @@ fn main() {
         .build();
 
     app.connect_activate(|app| {
+        install_palette();
         let hwmon = Rc::new(RefCell::new(find_hwmon()));
         let rtc = Rc::new(RefCell::new(find_t2smc_rtc()));
 
@@ -874,6 +914,7 @@ fn main() {
         charge_box.append(&status);
 
         let charge_frame = gtk4::Frame::new(None);
+        charge_frame.add_css_class("smc-panel");
         charge_frame.set_child(Some(&charge_box));
 
         // SMC RTC
@@ -904,6 +945,7 @@ fn main() {
         rtc_box.append(&rtc_status);
 
         let rtc_frame = gtk4::Frame::new(None);
+        rtc_frame.add_css_class("smc-panel");
         rtc_frame.set_child(Some(&rtc_box));
 
         // Battery and adapter telemetry
@@ -974,6 +1016,7 @@ fn main() {
         vbox.append(&telemetry);
 
         let root = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        root.add_css_class("smc-root");
         root.set_vexpand(true);
         root.append(&header);
         root.append(&vbox);
