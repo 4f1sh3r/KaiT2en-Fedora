@@ -1,0 +1,49 @@
+From 008906d3224a46491ab6db0d0f16a8be1336d7f3 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Sat, 15 Aug 2026 19:41:39 +0200
+Subject: [PATCH] x86/cache: restore AP cache state while bringing CPUs online
+
+Some firmware, including Intel Macs, can restore secondary CPUs with an
+invalid MTRR state after suspend. x86 currently delays AP cache
+initialization until every secondary CPU has been brought online. An
+affected AP therefore executes with uncached memory until the final cache
+rendezvous and can take several seconds to come online.
+
+Leave the architecture thaw hooks at their default no-op implementation.
+cache_ap_online() then restores MTRR and PAT state through
+stop_machine_from_inactive_cpu() while each AP is still inactive. The
+delayed initialization used during initial boot remains unchanged.
+
+This is a modern adaptation of Chen Yu's earlier MTRR resume fix.
+
+Link: https://lore.kernel.org/all/20180319041843.28218-1-yu.c.chen@intel.com/
+Suggested-by: Chen Yu <yu.c.chen@intel.com>
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ arch/x86/kernel/smpboot.c | 10 ----------
+ 1 file changed, 10 deletions(-)
+
+diff --git a/arch/x86/kernel/smpboot.c b/arch/x86/kernel/smpboot.c
+index cb999feb6..fe578418a 100644
+--- a/arch/x86/kernel/smpboot.c
++++ b/arch/x86/kernel/smpboot.c
+@@ -1254,16 +1254,6 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
+ 	snp_set_wakeup_secondary_cpu();
+ }
+ 
+-void arch_thaw_secondary_cpus_begin(void)
+-{
+-	set_cache_aps_delayed_init(true);
+-}
+-
+-void arch_thaw_secondary_cpus_end(void)
+-{
+-	cache_aps_init();
+-}
+-
+ /*
+  * Early setup to make printk work.
+  */
+-- 
+2.55.0
+
