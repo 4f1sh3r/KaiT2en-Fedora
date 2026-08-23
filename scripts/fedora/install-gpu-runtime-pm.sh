@@ -119,8 +119,19 @@ if [[ -f "$MODULE_DIR/amdgpu.ko.xz" &&
 fi
 
 info "installing build dependencies for $KVER"
+build_tree=$(readlink -f "/lib/modules/$KVER/build" 2>/dev/null || true)
+if [[ -n "$build_tree" && -f "$build_tree/Makefile" &&
+	-f "$build_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c" ]]; then
+	local_kernel_tree=1
+	info "using local kernel build tree $build_tree"
+	development_package=()
+else
+	local_kernel_tree=0
+	development_package=("kernel-devel-$KVER")
+fi
+
 dnf install -y \
-	"kernel-devel-$KVER" \
+	"${development_package[@]}" \
 	cpio \
 	curl \
 	elfutils-libelf-devel \
@@ -132,49 +143,55 @@ dnf install -y \
 	xz
 require_command cpio curl git install make nproc patch rpm2cpio sed tar xz
 
-[[ -d "/usr/src/kernels/$KVER" ]] || fail "kernel-devel is unavailable for $KVER"
+if ((local_kernel_tree == 0)); then
+	build_tree="/usr/src/kernels/$KVER"
+	[[ -d "$build_tree" ]] || fail "kernel-devel is unavailable for $KVER"
+fi
 
 if ! modinfo -k "$KVER" t2gmux >/dev/null 2>&1; then
 	fail "t2gmux is not installed for $KVER"
 fi
 
-source_rpm=$(rpm -q --qf '%{SOURCERPM}\n' "kernel-core-$KVER") ||
-	fail "kernel-core-$KVER is not installed"
-source_name=${source_rpm%%-*}
-source_version=$(rpm -q --qf '%{VERSION}\n' "kernel-core-$KVER")
-source_release=$(rpm -q --qf '%{RELEASE}\n' "kernel-core-$KVER")
-source_url="https://kojipkgs.fedoraproject.org/packages/$source_name/$source_version/$source_release/src/$source_rpm"
-
 workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
-source_dir="$workdir/sources"
-download_dir="$workdir/download"
-mkdir -p "$source_dir" "$download_dir" "$workdir/kernel"
+if ((local_kernel_tree)); then
+	kernel_tree=$build_tree
+else
+	source_rpm=$(rpm -q --qf '%{SOURCERPM}\n' "kernel-core-$KVER") ||
+		fail "kernel-core-$KVER is not installed"
+	source_name=${source_rpm%%-*}
+	source_version=$(rpm -q --qf '%{VERSION}\n' "kernel-core-$KVER")
+	source_release=$(rpm -q --qf '%{RELEASE}\n' "kernel-core-$KVER")
+	source_url="https://kojipkgs.fedoraproject.org/packages/$source_name/$source_version/$source_release/src/$source_rpm"
+	source_dir="$workdir/sources"
+	download_dir="$workdir/download"
+	mkdir -p "$source_dir" "$download_dir" "$workdir/kernel"
 
-info "downloading $source_rpm"
-downloaded_srpm="$download_dir/$source_rpm"
-curl --fail --location --output "$downloaded_srpm" "$source_url" ||
-	fail "unable to download $source_url"
+	info "downloading $source_rpm"
+	downloaded_srpm="$download_dir/$source_rpm"
+	curl --fail --location --output "$downloaded_srpm" "$source_url" ||
+		fail "unable to download $source_url"
 
-info "extracting Fedora kernel sources"
-(
-	cd "$source_dir"
-	rpm2cpio "$downloaded_srpm" | cpio -idm --quiet
-)
+	info "extracting Fedora kernel sources"
+	(
+		cd "$source_dir"
+		rpm2cpio "$downloaded_srpm" | cpio -idm --quiet
+	)
 
-kernel_tarball=$(find "$source_dir" -maxdepth 1 -type f -name 'linux-*.tar.xz' -print -quit)
-redhat_patch=$(find "$source_dir" -maxdepth 1 -type f -name 'patch-*-redhat.patch' -print -quit)
-[[ -n "$kernel_tarball" ]] || fail "upstream kernel tarball is missing from $source_rpm"
-[[ -n "$redhat_patch" ]] || fail "Fedora kernel patch is missing from $source_rpm"
+	kernel_tarball=$(find "$source_dir" -maxdepth 1 -type f -name 'linux-*.tar.xz' -print -quit)
+	redhat_patch=$(find "$source_dir" -maxdepth 1 -type f -name 'patch-*-redhat.patch' -print -quit)
+	[[ -n "$kernel_tarball" ]] || fail "upstream kernel tarball is missing from $source_rpm"
+	[[ -n "$redhat_patch" ]] || fail "Fedora kernel patch is missing from $source_rpm"
 
-info "preparing the Fedora kernel sources for $KVER"
-tar -xf "$kernel_tarball" -C "$workdir/kernel"
-amdgpu_source=$(find "$workdir/kernel" -type f \
-	-path '*/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c' -print -quit)
-[[ -n "$amdgpu_source" ]] || fail "kernel source tree was not found"
-kernel_tree=${amdgpu_source%/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c}
-git -C "$kernel_tree" apply "$redhat_patch" ||
-	fail "Fedora kernel patch does not apply to its upstream source"
+	info "preparing the Fedora kernel sources for $KVER"
+	tar -xf "$kernel_tarball" -C "$workdir/kernel"
+	amdgpu_source=$(find "$workdir/kernel" -type f \
+		-path '*/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c' -print -quit)
+	[[ -n "$amdgpu_source" ]] || fail "kernel source tree was not found"
+	kernel_tree=${amdgpu_source%/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c}
+	git -C "$kernel_tree" apply "$redhat_patch" ||
+		fail "Fedora kernel patch does not apply to its upstream source"
+fi
 
 for patch_file in "${PATCH_FILES[@]}"; do
 	apply_patch_if_needed "$kernel_tree" "$patch_file"
@@ -187,11 +204,11 @@ sed -i 's|^#define TRACE_INCLUDE_PATH ../../drivers/gpu/drm/amd/amdgpu$|#define 
 	"$trace_header"
 
 info "building AMDGPU for $KVER"
-make -j "$(nproc)" -C "/usr/src/kernels/$KVER" \
+make -j "$(nproc)" -C "$build_tree" \
 	M="$kernel_tree/drivers/gpu/drm/amd/amdgpu" modules
 
 info "building Intel HDA for $KVER"
-make -j "$(nproc)" -C "/usr/src/kernels/$KVER" \
+make -j "$(nproc)" -C "$build_tree" \
 	M="$kernel_tree/sound/hda/controllers" modules
 
 amdgpu_module="$kernel_tree/drivers/gpu/drm/amd/amdgpu/amdgpu.ko"
