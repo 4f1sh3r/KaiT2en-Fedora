@@ -25,13 +25,23 @@ constraint() {
     fail "RAPL constraint '$name' is unavailable"
 }
 capture_defaults() {
-    local z long short no_turbo=0
+    local z long short no_turbo=0 target tcc_offset
     mkdir -p "$STATE_DIR"
-    [[ -e "$DEFAULTS" ]] && return
+    if [[ -e $DEFAULTS ]]; then
+        if ! grep -q '^tcc_offset=' "$DEFAULTS"; then
+            modprobe msr
+            target=$((16#$(rdmsr -p 0 0x1a2)))
+            printf 'tcc_offset=%s\ntcc_msr=%x\n' "$(((target >> 24) & 0x3f))" "$target" >>"$DEFAULTS"
+        fi
+        return
+    fi
     z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
     [[ -r $NO_TURBO ]] && no_turbo=$(<"$NO_TURBO")
-    printf 'pl1_uw=%s\npl2_uw=%s\nno_turbo=%s\n' \
-        "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" "$no_turbo" >"$DEFAULTS"
+    modprobe msr
+    target=$((16#$(rdmsr -p 0 0x1a2)))
+    tcc_offset=$(((target >> 24) & 0x3f))
+    printf 'pl1_uw=%s\npl2_uw=%s\nno_turbo=%s\ntcc_offset=%s\ntcc_msr=%x\n' \
+        "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" "$no_turbo" "$tcc_offset" "$target" >"$DEFAULTS"
 }
 write_limits() {
     local pl1=$1 pl2=$2 z long short
@@ -48,10 +58,58 @@ write_no_turbo() {
     printf '%s\n' "$disabled" >"$NO_TURBO"
     [[ $(<"$NO_TURBO") == "$disabled" ]] || fail "intel_pstate turbo state verification failed"
 }
+write_tcc_offset() {
+    local offset=$1 cpu core value new_value readback
+    [[ $offset =~ ^[0-9]+$ ]] && ((offset <= 63)) || fail "TCC offset must be between 0 and 63 C"
+    modprobe msr
+    for cpu in /dev/cpu/[0-9]*; do
+        [[ -d $cpu ]] || continue
+        core=${cpu##*/}
+        value=$((16#$(rdmsr -p "$core" 0x1a2))) || fail "cannot read MSR_TEMPERATURE_TARGET on CPU $core"
+        new_value=$(((value & ~(0x3f << 24)) | (offset << 24)))
+        printf -v new_value '0x%x' "$new_value"
+        wrmsr -p "$core" 0x1a2 "$new_value" || fail "cannot set CPU thermal target on CPU $core"
+        readback=$((16#$(rdmsr -p "$core" 0x1a2))) || fail "cannot verify CPU thermal target on CPU $core"
+        ((((readback >> 24) & 0x3f) == offset)) || \
+            fail "CPU thermal target verification failed on CPU $core"
+        (((readback & ~(0x3f << 24)) == (value & ~(0x3f << 24)))) || \
+            fail "MSR_TEMPERATURE_TARGET fields changed unexpectedly on CPU $core"
+    done
+}
+write_tcc_target() {
+    local target_c=$1 value tjmax offset
+    [[ $target_c =~ ^[0-9]+$ ]] || fail "CPU thermal target must be an integer temperature"
+    modprobe msr
+    value=$((16#$(rdmsr -p 0 0x1a2))) || fail "cannot read MSR_TEMPERATURE_TARGET"
+    tjmax=$(((value >> 16) & 0xff))
+    ((target_c >= 60 && target_c <= tjmax && tjmax - target_c <= 63)) || \
+        fail "CPU thermal target must be between $((tjmax - 63 > 60 ? tjmax - 63 : 60)) and $tjmax C"
+    offset=$((tjmax - target_c))
+    write_tcc_offset "$offset"
+}
+write_tcc_msr() {
+    local value=$1 cpu core readback
+    [[ $value =~ ^[0-9a-fA-F]+$ ]] || fail "invalid saved MSR_TEMPERATURE_TARGET value"
+    modprobe msr
+    for cpu in /dev/cpu/[0-9]*; do
+        [[ -d $cpu ]] || continue
+        core=${cpu##*/}
+        wrmsr -p "$core" 0x1a2 "0x$value" || fail "cannot restore MSR_TEMPERATURE_TARGET on CPU $core"
+        readback=$(rdmsr -p "$core" 0x1a2) || fail "cannot verify MSR_TEMPERATURE_TARGET on CPU $core"
+        [[ ${readback,,} == ${value,,} ]] || fail "MSR_TEMPERATURE_TARGET restore verification failed on CPU $core"
+    done
+}
+current_tcc_target() {
+    local value tjmax offset
+    modprobe msr
+    value=$((16#$(rdmsr -p 0 0x1a2))) || fail "cannot read MSR_TEMPERATURE_TARGET"
+    tjmax=$(((value >> 16) & 0xff)); offset=$(((value >> 24) & 0x3f))
+    printf '%s' "$((tjmax - offset))"
+}
 save_config() {
-    local pl1=$1 pl2=$2 enabled=$3 no_turbo=$4
-    printf 'pl1_uw=%s\npl2_uw=%s\nenabled=%s\nno_turbo=%s\n' \
-        "$pl1" "$pl2" "$enabled" "$no_turbo" >"$CONFIG"
+    local pl1=$1 pl2=$2 enabled=$3 no_turbo=$4 tcc_target_c=$5
+    printf 'pl1_uw=%s\npl2_uw=%s\nenabled=%s\nno_turbo=%s\ntcc_target_c=%s\n' \
+        "$pl1" "$pl2" "$enabled" "$no_turbo" "$tcc_target_c" >"$CONFIG"
     chmod 0644 "$CONFIG"
 }
 capture_thermald_state() {
@@ -100,7 +158,7 @@ restore_thermald_state() {
     rm -f "$THERMALD_STATE"
 }
 apply_saved() {
-    local pl1_uw= pl2_uw= enabled=0 no_turbo=0 z long short active_pl1 active_pl2
+    local pl1_uw= pl2_uw= enabled=0 no_turbo=0 tcc_target_c= z long short active_pl1 active_pl2
     capture_defaults
     [[ -r "$CONFIG" ]] || return 0
     # shellcheck disable=SC1090
@@ -108,11 +166,12 @@ apply_saved() {
     [[ $enabled == 1 ]] || return 0
     write_limits "$pl1_uw" "$pl2_uw"
     write_no_turbo "$no_turbo"
+    [[ -z $tcc_target_c ]] || write_tcc_target "$tcc_target_c"
     z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
     active_pl1=$(<"${long}_power_limit_uw")
     active_pl2=$(<"${short}_power_limit_uw")
-    printf 't2-cpu-control: requested PL1=%s PL2=%s no_turbo=%s; read back PL1=%s PL2=%s no_turbo=%s\n' \
-        "$pl1_uw" "$pl2_uw" "$no_turbo" "$active_pl1" "$active_pl2" "$(<"$NO_TURBO")"
+    printf 't2-cpu-control: requested PL1=%s PL2=%s no_turbo=%s TCC=%s; read back PL1=%s PL2=%s no_turbo=%s TCC=%s\n' \
+        "$pl1_uw" "$pl2_uw" "$no_turbo" "${tcc_target_c:-unchanged}" "$active_pl1" "$active_pl2" "$(<"$NO_TURBO")" "$(current_tcc_target)"
 }
 fans_max() {
     local d f
@@ -169,13 +228,15 @@ set_prochot_override() {
 ((EUID == 0)) || fail "root privileges are required"
 case ${1:-} in
     apply)
-        [[ $# == 5 ]] || fail "usage: $0 apply <pl1_uw> <pl2_uw> <persist:0|1> <no_turbo:0|1>"
+        [[ $# == 6 || $# == 7 ]] || fail "usage: $0 apply <pl1_uw> <pl2_uw> <persist:0|1> <no_turbo:0|1> <tcc_target_c> [prochot_override]"
         [[ $4 == 0 || $4 == 1 ]] || fail "persistence must be 0 or 1"
         capture_defaults
         take_rapl_ownership "$4"
         write_limits "$2" "$3"
         write_no_turbo "$5"
-        save_config "$2" "$3" "$4" "$5"
+        write_tcc_target "$6"
+        [[ $# == 6 ]] || set_prochot_override "$7"
+        save_config "$2" "$3" "$4" "$5" "$6"
         ;;
     apply-saved) apply_saved ;;
     restore)
@@ -184,12 +245,24 @@ case ${1:-} in
         source "$DEFAULTS"
         write_limits "$pl1_uw" "$pl2_uw"
         write_no_turbo "${no_turbo:-0}"
-        save_config "$pl1_uw" "$pl2_uw" 0 "${no_turbo:-0}"
+        if [[ -n ${tcc_msr:-} ]]; then
+            write_tcc_msr "$tcc_msr"
+        else
+            write_tcc_offset "${tcc_offset:-0}"
+        fi
+        save_config "$pl1_uw" "$pl2_uw" 0 "${no_turbo:-0}" "$(current_tcc_target)"
         restore_thermald_state
         ;;
     disable-persistence)
-        save_config 0 0 0 "$(<"$NO_TURBO")"
+        save_config 0 0 0 "$(<"$NO_TURBO")" "$(current_tcc_target)"
         restore_thermald_state
+        ;;
+    enable-persistence)
+        capture_defaults
+        z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
+        take_rapl_ownership 1
+        save_config "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" 1 \
+            "$(<"$NO_TURBO")" "$(current_tcc_target)"
         ;;
     fans-max) fans_max ;;
     fans-restore) fans_restore ;;

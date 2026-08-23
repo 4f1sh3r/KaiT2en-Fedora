@@ -7,9 +7,13 @@ require_fedora
 require_command dnf install systemctl
 
 dnf install -y \
-    "kernel-devel-$(uname -r)" \
     cpio curl elfutils-libelf-devel gcc git-core gtk4 libadwaita make msr-tools \
     patch polkit python3-gobject rpm-build xz
+if [[ ! -d /lib/modules/$(uname -r)/build ]]; then
+    if ! dnf install -y "kernel-devel-$(uname -r)"; then
+        warn "kernel headers for $(uname -r) are unavailable; the app will work, but CPU auto-tuning needs a valid /lib/modules/$(uname -r)/build tree"
+    fi
+fi
 install -d -m 0755 /usr/local/bin /usr/local/libexec /usr/local/share/applications \
     /usr/local/share/icons/hicolor/scalable/apps /usr/local/lib/systemd/system \
     /usr/local/lib/systemd/system-sleep /usr/share/polkit-1/actions
