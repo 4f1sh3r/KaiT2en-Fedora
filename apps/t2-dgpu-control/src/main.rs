@@ -18,6 +18,40 @@ const DGPU_SUSPEND_SERVICE: &str = "kait2en-dgpu-suspend.service";
 const POWER_PROFILE_SERVICE: &str = "kait2en-amdgpu-profile.service";
 const POWER_PROFILE_RESUME_SERVICE: &str = "kait2en-amdgpu-profile-resume.service";
 
+fn palette_css(dark: bool) -> String {
+    let (window_bg, window_fg, box_bg, box_border) = if dark {
+        ("#181818", "#efefef", "#1d1d1d", "rgba(230,230,235,0.20)")
+    } else {
+        ("#f4f1ea", "#1f1e1b", "#f4f1ec", "rgba(87,77,64,0.20)")
+    };
+    format!(
+        "window, preferencespage, headerbar {{ background: {window_bg}; color: {window_fg}; }}
+         .boxed-list {{
+             background: {box_bg};
+             border: 1px solid {box_border};
+             border-radius: 12px;
+             box-shadow: none;
+         }}
+         .boxed-list row {{ background: {box_bg}; color: {window_fg}; }}"
+    )
+}
+
+fn install_palette() {
+    let provider = gtk::CssProvider::new();
+    let style = adw::StyleManager::default();
+    provider.load_from_data(&palette_css(style.is_dark()));
+    if let Some(display) = gtk::gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
+    style.connect_dark_notify(move |manager| {
+        provider.load_from_data(&palette_css(manager.is_dark()));
+    });
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Gpu {
     Integrated,
@@ -122,6 +156,7 @@ fn set_status(label: &gtk::Label, message: &str, error: bool) {
 }
 
 fn build_ui(app: &adw::Application) {
+    install_palette();
     let (current, discrete_state) = switcheroo_status();
     let configured = configured_gpu();
     let configured_power_off = service_enabled(DGPU_OFF_SERVICE);
