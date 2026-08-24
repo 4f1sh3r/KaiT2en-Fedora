@@ -76,13 +76,33 @@ no_turbo=0
 [[ -r /sys/devices/system/cpu/intel_pstate/no_turbo ]] && \
     no_turbo=$(</sys/devices/system/cpu/intel_pstate/no_turbo)
 printf 'no_turbo=%s\n' "$no_turbo"
+freq_min_khz=0; freq_max_khz=0; max_freq_khz=0; freq_policy_count=0; freq_writable=1
+for f in /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq; do
+    [[ -r $f ]] || continue
+    freq_policy_count=$((freq_policy_count + 1))
+    policy=${f%/scaling_max_freq}
+    policy_min=$(<"$policy/cpuinfo_min_freq")
+    policy_max=$(<"$policy/cpuinfo_max_freq")
+    policy_current=$(<"$f")
+    ((policy_min <= freq_min_khz)) || freq_min_khz=$policy_min
+    ((freq_max_khz != 0 && freq_max_khz <= policy_max)) || freq_max_khz=$policy_max
+    ((max_freq_khz != 0 && max_freq_khz <= policy_current)) || max_freq_khz=$policy_current
+    [[ -w $f ]] || freq_writable=0
+done
+((freq_policy_count > 0)) || freq_writable=0
+freq_min_khz=$(( ((freq_min_khz + 99999) / 100000) * 100000 ))
+freq_max_khz=$(( (freq_max_khz / 100000) * 100000 ))
+((freq_min_khz <= freq_max_khz)) || freq_writable=0
+printf 'freq_min_khz=%s\nfreq_max_khz=%s\nmax_freq_khz=%s\nfreq_writable=%s\n' \
+    "$freq_min_khz" "$freq_max_khz" "$max_freq_khz" "$freq_writable"
 if [[ -r /run/t2-cpu-control/firmware-defaults ]]; then
     defaults_pl1_uw=$(sed -n 's/^pl1_uw=//p' /run/t2-cpu-control/firmware-defaults)
     defaults_pl2_uw=$(sed -n 's/^pl2_uw=//p' /run/t2-cpu-control/firmware-defaults)
     defaults_no_turbo=$(sed -n 's/^no_turbo=//p' /run/t2-cpu-control/firmware-defaults)
     defaults_tcc_offset=$(sed -n 's/^tcc_offset=//p' /run/t2-cpu-control/firmware-defaults)
-    printf 'defaults_pl1_uw=%s\ndefaults_pl2_uw=%s\ndefaults_no_turbo=%s\ndefaults_tcc_offset=%s\n' \
-        "$defaults_pl1_uw" "$defaults_pl2_uw" "${defaults_no_turbo:-0}" "${defaults_tcc_offset:-0}"
+    defaults_max_freq_khz=$(sed -n 's/^max_freq_khz=//p' /run/t2-cpu-control/firmware-defaults)
+    printf 'defaults_pl1_uw=%s\ndefaults_pl2_uw=%s\ndefaults_no_turbo=%s\ndefaults_tcc_offset=%s\ndefaults_max_freq_khz=%s\n' \
+        "$defaults_pl1_uw" "$defaults_pl2_uw" "${defaults_no_turbo:-0}" "${defaults_tcc_offset:-0}" "$defaults_max_freq_khz"
 fi
 printf 'energy_uj=%s\n' "$(<"$zone/energy_uj")"
 printf 'max_energy_uj=%s\n' "$(<"$zone/max_energy_range_uj")"

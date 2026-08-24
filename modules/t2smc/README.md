@@ -180,6 +180,8 @@ Macs include:
 | TGDD   | GPU die (digital)       |
 | TGDF   | GPU die (filtered)      |
 | TGVP   | GPU voltage regulator   |
+| TC0E   | CPU 1 die 1             |
+| TC0F   | CPU 1 die 2             |
 | TC0P   | CPU proximity           |
 | TB0T   | Battery temperature     |
 

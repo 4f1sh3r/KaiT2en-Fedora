@@ -7,6 +7,7 @@ DEFAULTS=$STATE_DIR/firmware-defaults
 PERSISTENT_STATE_DIR=/var/lib/t2-cpu-control
 THERMALD_STATE=$PERSISTENT_STATE_DIR/thermald-state
 NO_TURBO=/sys/devices/system/cpu/intel_pstate/no_turbo
+CPUFREQ=/sys/devices/system/cpu/cpufreq
 
 fail() { printf 't2-cpu-control: %s\n' "$*" >&2; exit 1; }
 zone() {
@@ -25,13 +26,17 @@ constraint() {
     fail "RAPL constraint '$name' is unavailable"
 }
 capture_defaults() {
-    local z long short no_turbo=0 target tcc_offset
+    local z long short no_turbo=0 target tcc_offset max_freq_khz
     mkdir -p "$STATE_DIR"
     if [[ -e $DEFAULTS ]]; then
         if ! grep -q '^tcc_offset=' "$DEFAULTS"; then
             modprobe msr
             target=$((16#$(rdmsr -p 0 0x1a2)))
             printf 'tcc_offset=%s\ntcc_msr=%x\n' "$(((target >> 24) & 0x3f))" "$target" >>"$DEFAULTS"
+        fi
+        if ! grep -q '^max_freq_khz=' "$DEFAULTS"; then
+            max_freq_khz=$(current_max_freq) || max_freq_khz=
+            [[ -z $max_freq_khz ]] || printf 'max_freq_khz=%s\n' "$max_freq_khz" >>"$DEFAULTS"
         fi
         return
     fi
@@ -40,8 +45,9 @@ capture_defaults() {
     modprobe msr
     target=$((16#$(rdmsr -p 0 0x1a2)))
     tcc_offset=$(((target >> 24) & 0x3f))
-    printf 'pl1_uw=%s\npl2_uw=%s\nno_turbo=%s\ntcc_offset=%s\ntcc_msr=%x\n' \
-        "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" "$no_turbo" "$tcc_offset" "$target" >"$DEFAULTS"
+    max_freq_khz=$(current_max_freq) || max_freq_khz=
+    printf 'pl1_uw=%s\npl2_uw=%s\nno_turbo=%s\ntcc_offset=%s\ntcc_msr=%x\nmax_freq_khz=%s\n' \
+        "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" "$no_turbo" "$tcc_offset" "$target" "$max_freq_khz" >"$DEFAULTS"
 }
 write_limits() {
     local pl1=$1 pl2=$2 z long short
@@ -57,6 +63,50 @@ write_no_turbo() {
     [[ -w $NO_TURBO ]] || fail "intel_pstate turbo control is unavailable"
     printf '%s\n' "$disabled" >"$NO_TURBO"
     [[ $(<"$NO_TURBO") == "$disabled" ]] || fail "intel_pstate turbo state verification failed"
+}
+current_max_freq() {
+    local f value= candidate
+    for f in "$CPUFREQ"/policy*/scaling_max_freq; do
+        [[ -r $f ]] || continue
+        candidate=$(<"$f")
+        [[ -n $value && $candidate -ge $value ]] || value=$candidate
+    done
+    [[ -n $value ]] || return 1
+    printf '%s' "$value"
+}
+normalize_max_freq() {
+    local value=$1
+    [[ $value =~ ^[0-9]+$ ]] || fail "maximum CPU frequency must be integer kHz"
+    printf '%s' "$(( ((value + 50000) / 100000) * 100000 ))"
+}
+write_max_freq() {
+    local requested=$1 f minimum maximum readback index=0 policy_count=0
+    local -a paths=() previous=()
+    [[ $requested =~ ^[0-9]+$ ]] || fail "maximum CPU frequency must be integer kHz"
+    ((requested % 100000 == 0)) || fail "maximum CPU frequency must use 100 MHz steps"
+    for f in "$CPUFREQ"/policy*/scaling_max_freq; do
+        [[ -e $f ]] || continue
+        policy_count=$((policy_count + 1))
+        [[ -r $f && -w $f ]] || fail "not all CPU frequency policies are writable"
+        minimum=$(<"${f%/scaling_max_freq}/cpuinfo_min_freq")
+        maximum=$(<"${f%/scaling_max_freq}/cpuinfo_max_freq")
+        ((requested >= minimum && requested <= maximum)) || fail "maximum CPU frequency is outside policy range"
+        paths+=("$f")
+        previous+=("$(<"$f")")
+    done
+    ((policy_count > 0 && ${#paths[@]} == policy_count)) || fail "writable CPU frequency limits are unavailable"
+    for f in "${paths[@]}"; do
+        if ! printf '%s\n' "$requested" >"$f"; then
+            for ((index=0; index<${#paths[@]}; index++)); do
+                printf '%s\n' "${previous[index]}" >"${paths[index]}" 2>/dev/null || true
+            done
+            fail "cannot set maximum CPU frequency"
+        fi
+    done
+    for f in "${paths[@]}"; do
+        readback=$(<"$f")
+        [[ $readback == "$requested" ]] || fail "maximum CPU frequency verification failed"
+    done
 }
 write_tcc_offset() {
     local offset=$1 cpu core value new_value readback
@@ -87,6 +137,20 @@ write_tcc_target() {
     offset=$((tjmax - target_c))
     write_tcc_offset "$offset"
 }
+tcc_writable() {
+    local target platform_info
+    modprobe msr
+    target=$((16#$(rdmsr -p 0 0x1a2))) || return 1
+    platform_info=$((16#$(rdmsr -p 0 0xce))) || return 1
+    (( ((target >> 31) & 1) == 0 && ((platform_info >> 30) & 1) == 1 ))
+}
+current_writable_tcc_target() {
+    if tcc_writable; then
+        current_tcc_target
+    else
+        printf '0'
+    fi
+}
 write_tcc_msr() {
     local value=$1 cpu core readback
     [[ $value =~ ^[0-9a-fA-F]+$ ]] || fail "invalid saved MSR_TEMPERATURE_TARGET value"
@@ -107,9 +171,9 @@ current_tcc_target() {
     printf '%s' "$((tjmax - offset))"
 }
 save_config() {
-    local pl1=$1 pl2=$2 enabled=$3 no_turbo=$4 tcc_target_c=$5
-    printf 'pl1_uw=%s\npl2_uw=%s\nenabled=%s\nno_turbo=%s\ntcc_target_c=%s\n' \
-        "$pl1" "$pl2" "$enabled" "$no_turbo" "$tcc_target_c" >"$CONFIG"
+    local pl1=$1 pl2=$2 enabled=$3 no_turbo=$4 tcc_target_c=$5 max_freq_khz=$6
+    printf 'pl1_uw=%s\npl2_uw=%s\nenabled=%s\nno_turbo=%s\ntcc_target_c=%s\nmax_freq_khz=%s\n' \
+        "$pl1" "$pl2" "$enabled" "$no_turbo" "$tcc_target_c" "$max_freq_khz" >"$CONFIG"
     chmod 0644 "$CONFIG"
 }
 capture_thermald_state() {
@@ -158,20 +222,25 @@ restore_thermald_state() {
     rm -f "$THERMALD_STATE"
 }
 apply_saved() {
-    local pl1_uw= pl2_uw= enabled=0 no_turbo=0 tcc_target_c= z long short active_pl1 active_pl2
+    local pl1_uw= pl2_uw= enabled=0 no_turbo=0 tcc_target_c= max_freq_khz= z long short active_pl1 active_pl2
     capture_defaults
     [[ -r "$CONFIG" ]] || return 0
     # shellcheck disable=SC1090
     source "$CONFIG"
     [[ $enabled == 1 ]] || return 0
+    if [[ -n $max_freq_khz && $max_freq_khz != 0 ]]; then
+        max_freq_khz=$(normalize_max_freq "$max_freq_khz")
+    fi
     write_limits "$pl1_uw" "$pl2_uw"
     write_no_turbo "$no_turbo"
-    [[ -z $tcc_target_c ]] || write_tcc_target "$tcc_target_c"
+    [[ -z $tcc_target_c || $tcc_target_c == 0 ]] || write_tcc_target "$tcc_target_c"
+    [[ -z $max_freq_khz || $max_freq_khz == 0 ]] || write_max_freq "$max_freq_khz"
     z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
     active_pl1=$(<"${long}_power_limit_uw")
     active_pl2=$(<"${short}_power_limit_uw")
-    printf 't2-cpu-control: requested PL1=%s PL2=%s no_turbo=%s TCC=%s; read back PL1=%s PL2=%s no_turbo=%s TCC=%s\n' \
-        "$pl1_uw" "$pl2_uw" "$no_turbo" "${tcc_target_c:-unchanged}" "$active_pl1" "$active_pl2" "$(<"$NO_TURBO")" "$(current_tcc_target)"
+    save_config "$pl1_uw" "$pl2_uw" "$enabled" "$no_turbo" "${tcc_target_c:-0}" "${max_freq_khz:-0}"
+    printf 't2-cpu-control: requested PL1=%s PL2=%s no_turbo=%s TCC=%s max_freq=%s; read back PL1=%s PL2=%s no_turbo=%s TCC=%s max_freq=%s\n' \
+        "$pl1_uw" "$pl2_uw" "$no_turbo" "${tcc_target_c:-unchanged}" "${max_freq_khz:-unchanged}" "$active_pl1" "$active_pl2" "$(<"$NO_TURBO")" "$(current_tcc_target)" "$(current_max_freq)"
 }
 fans_max() {
     local d f
@@ -228,15 +297,16 @@ set_prochot_override() {
 ((EUID == 0)) || fail "root privileges are required"
 case ${1:-} in
     apply)
-        [[ $# == 6 || $# == 7 ]] || fail "usage: $0 apply <pl1_uw> <pl2_uw> <persist:0|1> <no_turbo:0|1> <tcc_target_c> [prochot_override]"
+        [[ $# == 7 || $# == 8 ]] || fail "usage: $0 apply <pl1_uw> <pl2_uw> <persist:0|1> <no_turbo:0|1> <tcc_target_c> <max_freq_khz> [prochot_override]"
         [[ $4 == 0 || $4 == 1 ]] || fail "persistence must be 0 or 1"
         capture_defaults
         take_rapl_ownership "$4"
         write_limits "$2" "$3"
         write_no_turbo "$5"
-        write_tcc_target "$6"
-        [[ $# == 6 ]] || set_prochot_override "$7"
-        save_config "$2" "$3" "$4" "$5" "$6"
+        [[ $6 == 0 ]] || write_tcc_target "$6"
+        [[ $7 == 0 ]] || write_max_freq "$7"
+        [[ $# == 7 ]] || set_prochot_override "$8"
+        save_config "$2" "$3" "$4" "$5" "$6" "$7"
         ;;
     apply-saved) apply_saved ;;
     restore)
@@ -245,16 +315,19 @@ case ${1:-} in
         source "$DEFAULTS"
         write_limits "$pl1_uw" "$pl2_uw"
         write_no_turbo "${no_turbo:-0}"
-        if [[ -n ${tcc_msr:-} ]]; then
-            write_tcc_msr "$tcc_msr"
-        else
-            write_tcc_offset "${tcc_offset:-0}"
+        [[ -z ${max_freq_khz:-} || ${max_freq_khz:-0} == 0 ]] || write_max_freq "$max_freq_khz"
+        if tcc_writable; then
+            if [[ -n ${tcc_msr:-} ]]; then
+                write_tcc_msr "$tcc_msr"
+            else
+                write_tcc_offset "${tcc_offset:-0}"
+            fi
         fi
-        save_config "$pl1_uw" "$pl2_uw" 0 "${no_turbo:-0}" "$(current_tcc_target)"
+        save_config "$pl1_uw" "$pl2_uw" 0 "${no_turbo:-0}" "$(current_writable_tcc_target)" "$(current_max_freq)"
         restore_thermald_state
         ;;
     disable-persistence)
-        save_config 0 0 0 "$(<"$NO_TURBO")" "$(current_tcc_target)"
+        save_config 0 0 0 "$(<"$NO_TURBO")" "$(current_writable_tcc_target)" "$(current_max_freq)"
         restore_thermald_state
         ;;
     enable-persistence)
@@ -262,7 +335,7 @@ case ${1:-} in
         z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
         take_rapl_ownership 1
         save_config "$(<"${long}_power_limit_uw")" "$(<"${short}_power_limit_uw")" 1 \
-            "$(<"$NO_TURBO")" "$(current_tcc_target)"
+            "$(<"$NO_TURBO")" "$(current_writable_tcc_target)" "$(current_max_freq)"
         ;;
     fans-max) fans_max ;;
     fans-restore) fans_restore ;;

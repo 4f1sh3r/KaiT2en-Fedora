@@ -66,13 +66,12 @@ fn cpu_core_label(key: &str) -> Option<String> {
         return None;
     }
 
-    let smc_index = (bytes[2] as char).to_digit(16)? as usize;
-    if smc_index == 0 {
+    let smc_index = (bytes[2] as char).to_digit(10)? as usize;
+    if !(1..=8).contains(&smc_index) {
         return None;
     }
 
-    let core_index = smc_index - 1;
-    Some(format!("CPU Core {core_index}"))
+    Some(format!("CPU Core {smc_index}"))
 }
 
 fn memory_label(key: &str) -> Option<String> {
@@ -115,17 +114,38 @@ fn sensor_label(key: &str) -> String {
 
     match key {
         "TA0V" => "Ambient".into(),
-        "TB0T" => "Battery 1".into(),
-        "TB1T" => "Battery 2".into(),
-        "TB2T" => "Battery 3".into(),
-        "TC0P" => "CPU Proximity".into(),
-        "TC0E" => "CPU Sensor 0E".into(),
-        "TC0F" => "CPU Sensor 0F".into(),
-        "TCGC" => "CPU Graphics Core".into(),
+        "TA0P" => "Airflow 1".into(),
+        "TA1P" => "Airflow 2".into(),
+        "TA0S" => "PCI Slot 1 Pos 1".into(),
+        "TA1S" => "PCI Slot 1 Pos 2".into(),
+        "TA2S" => "PCI Slot 2 Pos 1".into(),
+        "TA3S" => "PCI Slot 2 Pos 2".into(),
+        "TB0T" => "Battery TS_MAX".into(),
+        "TB1T" => "Battery 1".into(),
+        "TB2T" => "Battery 2".into(),
+        "TB3T" => "Battery".into(),
+        "Tb0P" => "BLC Proximity".into(),
+        "TC0P" => "CPU 1 Proximity".into(),
+        "TC0H" => "CPU 1 Heatsink".into(),
+        "TC0D" => "CPU 1 Package".into(),
+        "TC0E" => "CPU 1 Die 1".into(),
+        "TC0F" => "CPU 1 Die 2".into(),
+        "TCAH" => "CPU 1 Heatsink Alt.".into(),
+        "TCAD" => "CPU 1 Package Alt.".into(),
+        "TC1P" => "CPU 2 Proximity".into(),
+        "TC1H" => "CPU 2 Heatsink".into(),
+        "TC1D" => "CPU 2 Package".into(),
+        "TC1E" => "CPU 2 Die 1".into(),
+        "TC1F" => "CPU 2 Die 2".into(),
+        "TCBH" => "CPU 2 Heatsink Alt.".into(),
+        "TCBD" => "CPU 2 Package Alt.".into(),
+        "TCGC" | "TCGc" => "PECI GPU".into(),
         "TCMX" => "CPU Memory".into(),
-        "TCSA" => "CPU System Agent".into(),
-        "TCXC" => "CPU Package".into(),
+        "TCSC" | "TCSc" | "TCSA" => "PECI SA".into(),
+        "TCXC" | "TCXc" => "PECI CPU".into(),
         "TG0P" => "GPU Proximity".into(),
+        "TG0D" | "TG1D" => "GPU Die".into(),
+        "TG0H" | "TG1H" => "GPU Heatsink".into(),
         "TGDD" => "GPU Die digital".into(),
         "TGDF" => "GPU Die analog".into(),
         "TGVP" => "GPU VR".into(),
@@ -137,10 +157,32 @@ fn sensor_label(key: &str) -> String {
         "TH1b" => "Drive 1 Raw B".into(),
         "Tm0P" => "Mainboard Proximity".into(),
         "Tm1P" => "Mainboard Bottom".into(),
+        "TN0D" => "Northbridge Die".into(),
+        "TN0P" => "Northbridge Proximity 1".into(),
+        "TN1P" => "Northbridge Proximity 2".into(),
+        "TN0C" => "MCH Die".into(),
+        "TN0H" => "MCH Heatsink".into(),
+        "TP0D" => "PCH Die".into(),
         "TPCD" => "PCH Die".into(),
+        "TP0P" => "PCH Proximity".into(),
+        "Tp0P" => "Powerboard Proximity".into(),
+        "Tp0C" => "Power Supply 1 Alt.".into(),
+        "Tp1P" => "Power Supply 2".into(),
+        "Tp1C" => "Power Supply 2 Alt.".into(),
+        "Tp2P" => "Power Supply 3".into(),
+        "Tp3P" => "Power Supply 4".into(),
+        "Tp4P" => "Power Supply 5".into(),
+        "Tp5P" => "Power Supply 6".into(),
+        "TL0P" => "LCD Proximity".into(),
+        "TH0P" => "HDD Bay 1".into(),
+        "TH1P" => "HDD Bay 2".into(),
+        "TH2P" => "HDD Bay 3".into(),
+        "TH3P" => "HDD Bay 4".into(),
+        "TO0P" => "Optical Drive".into(),
+        "TS0C" => "Expansion Slots".into(),
         "TTLD" => "Thunderbolt L".into(),
         "TTRD" => "Thunderbolt R".into(),
-        "TW0P" => "WiFi".into(),
+        "TW0P" => "Airport Proximity".into(),
         "TaLC" => "Audio L".into(),
         "TaRC" => "Audio R".into(),
         "Ts0P" => "Palmrest L".into(),
@@ -334,29 +376,37 @@ fn power_label(key: &str) -> String {
     match key {
         "PAPC" => "WiFi".into(),
         "PCPT" => "CPU package total (PECI)".into(),
-        "PCTR" => "CPU total".into(),
-        "PC0C" => "CPU cores".into(),
+        "PCTR" | "PCPL" => "CPU Total".into(),
+        "PC0C" => "CPU Core 1".into(),
+        "PC1C" => "CPU Core 2".into(),
+        "PC2C" => "CPU Core 3".into(),
+        "PC3C" => "CPU Core 4".into(),
+        "PC4C" => "CPU Core 5".into(),
+        "PC5C" => "CPU Core 6".into(),
+        "PC6C" => "CPU Core 7".into(),
+        "PC7C" => "CPU Core 8".into(),
         "PC0c" => "CPU raw package".into(),
         "PC0G" => "CPU integrated GPU".into(),
         "PC0I" => "CPU I/O high-side".into(),
         "PC0M" => "CPU I/O high-side 2".into(),
         "PC0R" => "CPU high-side average".into(),
         "PC0S" => "CPU system agent".into(),
-        "PC1C" => "CPU VCCIO".into(),
-        "PC2C" => "CPU VCCSA (PC2C)".into(),
-        "PC3C" => "CPU DDR".into(),
         "PCAC" => "CPU core".into(),
         "PCAM" => "CPU core (IMON)".into(),
         "PCEC" => "CPU VccEDRAM".into(),
         "PCGC" => "Intel GPU (IMON)".into(),
         "PCGM" => "Intel GPU (IMON) 2".into(),
-        "PCPC" => "CPU package cores (PECI)".into(),
-        "PCPG" => "CPU package graphics (PECI)".into(),
+        "PCPC" => "CPU Cores".into(),
+        "PCPG" => "CPU GFX".into(),
+        "PCPD" => "CPU DRAM".into(),
+        "PC1R" => "CPU Rail".into(),
+        "PC5R" => "CPU S0 Rail".into(),
         "PCSC" => "CPU VCCSA (PCSC)".into(),
         "PD0R" => "DC-In MLB S0 rail".into(),
         "PD5R" => "DC-In MLB S5 rail".into(),
         "PDMR" => "DC-In MLB total".into(),
         "PDTR" => "DC-In total".into(),
+        "PGTR" => "GPU Total".into(),
         "PG0R" => "GPU 0 rail".into(),
         "PG0C" => "GPU".into(),
         "PG1C" => "External GPU 1.8 V".into(),
@@ -367,6 +417,15 @@ fn power_label(key: &str) -> String {
         "PHPC" => "Heatpipe".into(),
         "PLDC" => "LCD panel".into(),
         "PM0C" => "Memory average".into(),
+        "PM0R" => "Memory Rail".into(),
+        "PN0C" => "MCH".into(),
+        "PN1R" => "PCH Rail".into(),
+        "PH02" => "Main 3.3V Rail".into(),
+        "PH05" => "Main 5V Rail".into(),
+        "Pp0R" => "12V Rail".into(),
+        "PD2R" => "Main 12V Rail".into(),
+        "PO0R" => "Misc. Rail".into(),
+        "PBLC" | "PB0R" => "Battery Rail".into(),
         "PM1C" => "DDR".into(),
         "PO5R" => "Other 5 V high-side".into(),
         "PP0R" => "PBus".into(),
@@ -1280,7 +1339,7 @@ mod tests {
         assert_eq!(
             read_smc_power_stats(&hwmon),
             vec![
-                ("CPU cores".into(), "PC0C".into(), "12.35 W".into()),
+                ("CPU Core 1".into(), "PC0C".into(), "12.35 W".into()),
                 ("GPU 0 rail".into(), "PG0R".into(), "2.50 W".into()),
             ]
         );
@@ -1291,6 +1350,11 @@ mod tests {
     #[test]
     fn labels_known_power_keys() {
         assert_eq!(power_label("PCPT"), "CPU package total (PECI)");
+        assert_eq!(power_label("PC0C"), "CPU Core 1");
+        assert_eq!(power_label("PC7C"), "CPU Core 8");
+        assert_eq!(power_label("PCPD"), "CPU DRAM");
+        assert_eq!(power_label("PGTR"), "GPU Total");
+        assert_eq!(power_label("PB0R"), "Battery Rail");
         assert_eq!(power_label("PAPC"), "WiFi");
         assert_eq!(power_label("PG0C"), "GPU");
         assert_eq!(power_label("PLDC"), "LCD panel");
@@ -1305,6 +1369,11 @@ mod tests {
 
     #[test]
     fn labels_documented_mainboard_bottom_sensor() {
+        assert_eq!(sensor_label("TC0E"), "CPU 1 Die 1");
+        assert_eq!(sensor_label("TC0F"), "CPU 1 Die 2");
+        assert_eq!(sensor_label("TC1C"), "CPU Core 1");
+        assert_eq!(sensor_label("TC8C"), "CPU Core 8");
+        assert_eq!(sensor_label("TCBC"), "unknown (TCBC)");
         assert_eq!(sensor_label("Tm1P"), "Mainboard Bottom");
         assert_eq!(sensor_label("TH1a"), "Drive 1 Raw A");
         assert_eq!(sensor_label("TH1b"), "Drive 1 Raw B");

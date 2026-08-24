@@ -7,7 +7,7 @@ use crate::{
 };
 
 const CONTROL_INTERVAL: Duration = Duration::from_secs(2);
-const SYSTEM_LIMIT_HYSTERESIS_C: u8 = 5;
+const SYSTEM_LIMIT_HYSTERESIS_C: u8 = 2;
 const SYSTEM_STABLE_RELEASE_TIME: Duration = Duration::from_secs(20);
 
 pub struct Controller {
@@ -202,18 +202,32 @@ fn interpolate_percent(curve: &[CurvePoint], temp_c: u8) -> u8 {
             return (left.speed_percent as f32 + progress * speed_span).round() as u8;
         }
     }
-    curve.last().map(|point| point.speed_percent).unwrap_or(100)
+    100
 }
 
 #[cfg(test)]
 mod tests {
-    use super::next_threshold_cooling;
+    use super::{interpolate_percent, next_threshold_cooling};
+    use crate::config::CurvePoint;
 
     #[test]
-    fn system_target_has_plus_minus_five_degree_hysteresis() {
-        assert!(next_threshold_cooling(false, Some(50), 50, 40));
-        assert!(next_threshold_cooling(true, Some(45), 50, 40));
-        assert!(next_threshold_cooling(true, Some(41), 50, 40));
-        assert!(!next_threshold_cooling(true, Some(40), 50, 40));
+    fn system_target_has_plus_minus_two_degree_hysteresis() {
+        assert!(next_threshold_cooling(false, Some(47), 47, 43));
+        assert!(next_threshold_cooling(true, Some(45), 47, 43));
+        assert!(next_threshold_cooling(true, Some(44), 47, 43));
+        assert!(!next_threshold_cooling(true, Some(43), 47, 43));
+    }
+
+    #[test]
+    fn temperature_above_last_curve_point_forces_full_speed() {
+        let curve = vec![
+            CurvePoint { temp_c: 0, speed_percent: 0 },
+            CurvePoint { temp_c: 40, speed_percent: 10 },
+            CurvePoint { temp_c: 70, speed_percent: 30 },
+            CurvePoint { temp_c: 90, speed_percent: 50 },
+        ];
+        assert_eq!(interpolate_percent(&curve, 90), 50);
+        assert_eq!(interpolate_percent(&curve, 91), 100);
+        assert_eq!(interpolate_percent(&curve, 100), 100);
     }
 }

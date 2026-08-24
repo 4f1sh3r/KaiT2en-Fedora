@@ -23,12 +23,14 @@ The controller deliberately keeps normal component cooling and retained system h
 
 The editable fan curve follows the hotter of the CPU and GPU. It does not use an average and it does not use unrelated board, storage or enclosure sensors.
 
-- CPU is the Intel package temperature exposed by `coretemp`.
+- CPU is the arithmetic mean of the SMC sensors `TC0E` (CPU 1 Die 1) and `TC0F` (CPU 1 Die 2). If only one is readable, that reading is used.
 - GPU is the highest available reading from GPU Proximity, GPU Die digital, GPU Die analog and GPU Voltage Regulator.
 - If no GPU temperature is available, the curve follows CPU alone. The UI changes its description accordingly.
 - If only a GPU temperature is available, the curve follows GPU alone.
 
 CPU and dGPU are fixed curve inputs and cannot be removed or replaced. An optional third curve sensor can be selected from the other valid monitored sensors. With a third sensor selected, the curve follows the highest value among CPU, dGPU and that sensor. `None` is the default.
+
+Curve points are limited to 100 C. Once the curve temperature rises above the rightmost point, both fans are commanded to 100%, regardless of that point's configured speed.
 
 The optional sensor is drawn as its own line in the curve and temperature graphs. Its controls, the any-sensor protection and the overrun time are grouped under `Advanced settings` to keep the main view focused on normal fan control.
 
@@ -36,20 +38,20 @@ The optional sensor is drawn as its own line in the curve and temperature graphs
 
 ### System temperature and system target
 
-The system temperature is the arithmetic mean of every currently readable positive temperature: CPU, GPU and all available SMC temperature sensors. Zero, negative and unreadable values are ignored. This broad average is intended to reflect heat retained by the logic board, cooling assembly and enclosure without depending on one model-specific case sensor.
+The system temperature is the arithmetic mean of the currently readable positive SMC temperatures, excluding CPU core, CPU die and CPU package sensors. Zero, negative and unreadable values are ignored. This broad average is intended to reflect heat retained by the logic board, cooling assembly and enclosure without overweighting CPU telemetry.
 
 The red vertical wall in the curve editor is the configurable system-temperature target:
 
-- Both fans are forced to 100% when the system average reaches 5 C above the target.
-- Forced cooling remains active until the system average reaches 5 C below the target.
-- For example, a 45 C target engages at 50 C and releases at 40 C.
-- The resulting 10 C hysteresis band prevents rapid fan cycling around the target.
-- The wall can be moved from 30 C to 110 C.
+- Both fans are forced to 100% when the system average reaches 2 C above the target.
+- Forced cooling remains active until the system average reaches 2 C below the target.
+- For example, a 45 C target engages at 47 C and releases at 43 C.
+- The resulting 4 C hysteresis band prevents rapid fan cycling around the target.
+- The wall can be moved from 30 C to 100 C.
 
 Forced system cooling also has a configurable `Overrun time` from 0 to 600 seconds, with a default of 5 seconds. Once engaged, cooling is released only after both conditions are true:
 
 - The configured minimum cooling time has elapsed.
-- The system average has remained at or below `target - 5 C` continuously for 20 seconds.
+- The system average has remained at or below `target - 2 C` continuously for 20 seconds.
 
 If the temperature rises above the lower boundary during that 20-second confirmation window, the window starts over. There is deliberately no minimum off time, so rising temperatures can always engage cooling immediately.
 
@@ -88,7 +90,7 @@ system_cooling_time_s=5
 any_sensor_enabled=false
 any_sensor_temp_c=100
 curve_sensor_key=
-custom_curve=0:0,16:2,38:7,45:18
+custom_curve=0:10,35:14,71:25,93:64
 ```
 
 Curve entries use `temperature:speed-percent` pairs. The active configuration is stored at:

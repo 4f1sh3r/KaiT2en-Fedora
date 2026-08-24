@@ -19,6 +19,11 @@ STATUS = "/usr/local/libexec/t2-cpu-control-status"
 BENCHMARK = "/usr/local/libexec/t2-cpu-kernel-benchmark"
 STATUS_CACHE = "/run/t2-cpu-control/status"
 HISTORY = 180
+FREQUENCY_STEP_MHZ = 100
+
+
+def frequency_step_mhz(value):
+    return round(float(value) / FREQUENCY_STEP_MHZ) * FREQUENCY_STEP_MHZ
 
 
 def palette_css(dark):
@@ -266,22 +271,31 @@ class CpuControl(Adw.Application):
         manual_content.append(grid)
         self.pl1_label = Gtk.Label(xalign=0); self.pl2_label = Gtk.Label(xalign=0)
         self.tcc_label = Gtk.Label(xalign=0)
-        for label in (self.pl1_label, self.pl2_label, self.tcc_label):
+        self.max_freq_label = Gtk.Label(xalign=0)
+        for label in (self.pl1_label, self.pl2_label, self.tcc_label, self.max_freq_label):
             label.set_width_chars(21)
             label.set_max_width_chars(21)
             label.add_css_class("monospace")
         self.pl1 = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 5, 125, 1)
         self.pl2 = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 5, 125, 1)
         self.tcc_target = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 60, 100, 1)
-        for scale in (self.pl1, self.pl2, self.tcc_target): scale.set_hexpand(True); scale.set_draw_value(False)
+        self.max_freq = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, 400, 3500, FREQUENCY_STEP_MHZ
+        )
+        for scale in (self.pl1, self.pl2, self.tcc_target, self.max_freq): scale.set_hexpand(True); scale.set_draw_value(False)
         grid.attach(self.pl1_label, 0, 0, 1, 1); grid.attach(self.pl1, 1, 0, 1, 1)
         grid.attach(self.pl2_label, 0, 1, 1, 1); grid.attach(self.pl2, 1, 1, 1, 1)
         grid.attach(self.tcc_label, 0, 2, 1, 1); grid.attach(self.tcc_target, 1, 2, 1, 1)
+        grid.attach(self.max_freq_label, 0, 3, 1, 1); grid.attach(self.max_freq, 1, 3, 1, 1)
         self.pl1.connect("value-changed", self.limit_changed, "pl1")
         self.pl2.connect("value-changed", self.limit_changed, "pl2")
         self.tcc_target.connect("value-changed", self.limit_changed, "tcc")
+        self.max_freq.connect("value-changed", self.limit_changed, "frequency")
         self.tcc_target.set_tooltip_text(
             "Persistent CPU thermal throttling target. This changes only the TCC activation offset in MSR 0x1A2; the hardware TjMax protection remains active."
+        )
+        self.max_freq.set_tooltip_text(
+            "Maximum CPU frequency applied to every cpufreq policy. The control is disabled when the kernel does not expose writable frequency limits."
         )
 
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -359,10 +373,13 @@ class CpuControl(Adw.Application):
                 self.pl1.set_value(self.pl2.get_value())
             elif which == "pl2" and self.pl2.get_value() < self.pl1.get_value():
                 self.pl2.set_value(self.pl1.get_value())
+            elif which == "frequency":
+                self.max_freq.set_value(frequency_step_mhz(self.max_freq.get_value()))
             self.control_update = False
         self.pl1_label.set_text(f"PL1 sustained  {self.pl1.get_value():3.0f} W")
         self.pl2_label.set_text(f"PL2 burst      {self.pl2.get_value():3.0f} W")
         self.tcc_label.set_text(f"Thermal target {self.tcc_target.get_value():3.0f} °C")
+        self.max_freq_label.set_text(f"Maximum frequency {self.max_freq.get_value():4.0f} MHz")
         if self.controls_initialized and not self.control_update and not self.calibrating:
             self.mark_settings_dirty()
 
@@ -411,7 +428,8 @@ class CpuControl(Adw.Application):
             int(self.pl2.get_value() * 1e6),
             int(self.data.get("persistent") == "1"),
             int(self.no_turbo.get_active()),
-            int(self.tcc_target.get_value()),
+            int(self.tcc_target.get_value()) if self.data.get("tcc_locked") != "1" and self.data.get("tcc_programmable", "1") == "1" else 0,
+            int(self.max_freq.get_value() * 1000) if self.data.get("freq_writable") == "1" else 0,
             int(self.prochot_override.get_active()),
         )
         self.set_settings_sensitive(False)
@@ -431,11 +449,13 @@ class CpuControl(Adw.Application):
             self.set_settings_sensitive(True)
             self.apply_btn.set_sensitive(True)
             return GLib.SOURCE_REMOVE
-        _, _, persistent, no_turbo, tcc_target, prochot_override = settings
+        _, _, persistent, no_turbo, tcc_target, max_freq_khz, prochot_override = settings
         self.thermald_state = "disabled" if persistent else "stopped"
         self.data["no_turbo"] = str(no_turbo)
         self.data["prochot_override"] = str(prochot_override)
-        self.data["tcc_target"] = str(tcc_target)
+        if tcc_target:
+            self.data["tcc_target"] = str(tcc_target)
+        self.data["max_freq_khz"] = str(max_freq_khz)
         self.data["persistent"] = str(persistent)
         self.update_persistence_button()
         self.settings_dirty = False
@@ -443,13 +463,13 @@ class CpuControl(Adw.Application):
         self.apply_btn.set_sensitive(False)
         persistence = "enabled" if persistent else "disabled"
         self.show_notice(
-            f"Settings applied · thermal target {tcc_target} °C · power-limit persistence {persistence}"
+            f"Settings applied · maximum frequency {max_freq_khz // 1000} MHz · power-limit persistence {persistence}"
         )
         return GLib.SOURCE_REMOVE
 
     def set_settings_sensitive(self, sensitive):
         for widget in (
-            self.pl1, self.pl2, self.tcc_target, self.no_turbo,
+            self.pl1, self.pl2, self.tcc_target, self.max_freq, self.no_turbo,
             self.prochot_override, self.restore_btn, self.persistence_btn,
         ):
             widget.set_sensitive(sensitive)
@@ -458,6 +478,7 @@ class CpuControl(Adw.Application):
                 self.data.get("tcc_locked") != "1" and
                 self.data.get("tcc_programmable", "1") == "1"
             )
+            self.max_freq.set_sensitive(self.data.get("freq_writable") == "1")
 
     def update_persistence_button(self):
         persistent = self.data.get("persistent") == "1"
@@ -535,12 +556,14 @@ class CpuControl(Adw.Application):
             self.set_prochot_override(current)
         self.prochot_change_pending = False
 
-    def set_sliders(self, pl1, pl2, tcc_target=None):
+    def set_sliders(self, pl1, pl2, tcc_target=None, max_freq_mhz=None):
         self.control_update = True
         self.pl1.set_value(pl1)
         self.pl2.set_value(pl2)
         if tcc_target is not None:
             self.tcc_target.set_value(tcc_target)
+        if max_freq_mhz is not None:
+            self.max_freq.set_value(frequency_step_mhz(max_freq_mhz))
         self.control_update = False
 
     def cancel_manual_apply(self):
@@ -577,6 +600,7 @@ class CpuControl(Adw.Application):
                 int(data["defaults_pl1_uw"]) / 1e6,
                 int(data["defaults_pl2_uw"]) / 1e6,
                 int(data.get("defaults_tcc_target", data.get("tjmax", 100))),
+                int(data.get("defaults_max_freq_khz", data.get("freq_max_khz", 0))) / 1000,
             )
             self.set_no_turbo(data.get("defaults_no_turbo") == "1")
             self.set_prochot_override(False)
@@ -609,14 +633,20 @@ class CpuControl(Adw.Application):
                 for s in (self.pl1, self.pl2): s.set_range(5, ceiling)
                 tjmax = int(data.get("tjmax", 100))
                 self.tcc_target.set_range(max(60, tjmax - 63), tjmax)
+                freq_min_mhz = int(data.get("freq_min_khz", 0)) / 1000
+                freq_max_mhz = int(data.get("freq_max_khz", 0)) / 1000
+                if freq_min_mhz > 0 and freq_max_mhz >= freq_min_mhz:
+                    self.max_freq.set_range(freq_min_mhz, freq_max_mhz)
                 self.set_sliders(
                     int(data["pl1_uw"])/1e6,
                     int(data["pl2_uw"])/1e6,
                     int(data.get("tcc_target", tjmax)),
+                    int(data.get("max_freq_khz", 0)) / 1000,
                 )
                 self.tcc_target.set_sensitive(
                     data.get("tcc_locked") != "1" and data.get("tcc_programmable", "1") == "1"
                 )
+                self.max_freq.set_sensitive(data.get("freq_writable") == "1")
                 self.set_no_turbo(data.get("no_turbo") == "1")
                 self.update_persistence_button()
                 self.set_prochot_override(False)
@@ -671,12 +701,13 @@ class CpuControl(Adw.Application):
 
     def set_calibration_ui(self, active):
         self.calibrating=active
-        for w in (self.cal_btn,self.pl1,self.pl2,self.tcc_target,self.no_turbo,self.prochot_override,self.persistence_btn): w.set_sensitive(not active)
+        for w in (self.cal_btn,self.pl1,self.pl2,self.tcc_target,self.max_freq,self.no_turbo,self.prochot_override,self.persistence_btn): w.set_sensitive(not active)
         self.apply_btn.set_sensitive(not active and self.settings_dirty)
         if not active and self.data:
             self.tcc_target.set_sensitive(
                 self.data.get("tcc_locked") != "1" and self.data.get("tcc_programmable", "1") == "1"
             )
+            self.max_freq.set_sensitive(self.data.get("freq_writable") == "1")
         self.restore_btn.set_sensitive(
             not active and bool(self.data.get("defaults_pl1_uw")) and bool(self.data.get("defaults_pl2_uw"))
         )
@@ -789,7 +820,8 @@ class CpuControl(Adw.Application):
     def calibrate(self):
         original=(int(self.data["pl1_uw"]),int(self.data["pl2_uw"]),
                   int(self.data.get("persistent") == "1"),int(self.data.get("no_turbo") == "1"),
-                  int(self.data.get("tcc_target", self.data.get("tjmax", 100))))
+                  int(self.data.get("tcc_target", self.data.get("tjmax", 100))) if self.data.get("tcc_locked") != "1" and self.data.get("tcc_programmable", "1") == "1" else 0,
+                  int(self.data.get("max_freq_khz", self.data.get("freq_max_khz", 0))) if self.data.get("freq_writable") == "1" else 0)
         down=max(5,round(int(self.data.get("base_uw",35000000))/1e6))
         ceiling=max(down+10,round(int(self.data.get("ceiling_uw",(down+10)*1000000))/1e6))
         try:
@@ -802,7 +834,7 @@ class CpuControl(Adw.Application):
             last_passing_pl2=None
             for pl2 in candidates:
                 if self.cancel_event.is_set(): break
-                self.run_helper("apply",down*1000000,pl2*1000000,0,0,original[4])
+                self.run_helper("apply",down*1000000,pl2*1000000,0,0,original[4],original[5])
                 GLib.idle_add(self.set_no_turbo,False)
                 prochot=self.run_until_prochot(30,f"Testing {down}/{pl2} W")
                 if self.cancel_event.is_set(): break
@@ -813,7 +845,7 @@ class CpuControl(Adw.Application):
                 selected_pl2=pl2
             if not self.cancel_event.is_set():
                 pl1=down; pl2=selected_pl2
-                self.run_helper("apply",pl1*1000000,pl2*1000000,self.calibration_persist,original[3],original[4])
+                self.run_helper("apply",pl1*1000000,pl2*1000000,self.calibration_persist,original[3],original[4],original[5])
                 GLib.idle_add(self.set_sliders,pl1,pl2)
                 GLib.idle_add(self.set_no_turbo,bool(original[3]))
                 persistence="enabled" if self.calibration_persist else "disabled"

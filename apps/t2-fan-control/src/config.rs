@@ -1,7 +1,7 @@
 use std::{env, fs, path::{Path, PathBuf}};
 
 pub const MIN_SOAK_TEMP_C: u8 = 30;
-pub const MAX_SOAK_TEMP_C: u8 = 110;
+pub const MAX_SOAK_TEMP_C: u8 = 100;
 pub const CURVE_POINT_COUNT: usize = 4;
 const CONFIG_VERSION: u8 = 2;
 
@@ -31,10 +31,10 @@ impl Default for AppConfig {
             any_sensor_temp_c: 100,
             curve_sensor_key: None,
             custom_curve: vec![
-                CurvePoint { temp_c: 0, speed_percent: 0 },
-                CurvePoint { temp_c: 16, speed_percent: 2 },
-                CurvePoint { temp_c: 38, speed_percent: 7 },
-                CurvePoint { temp_c: 45, speed_percent: 18 },
+                CurvePoint { temp_c: 0, speed_percent: 10 },
+                CurvePoint { temp_c: 35, speed_percent: 15 },
+                CurvePoint { temp_c: 70, speed_percent: 25 },
+                CurvePoint { temp_c: 95, speed_percent: 65 },
             ],
         }
     }
@@ -173,5 +173,12 @@ mod tests {
         ];
         normalize_curve(&mut curve);
         assert_eq!(curve[0], CurvePoint { temp_c: 5, speed_percent: 10 });
+    }
+
+    #[test]
+    fn curve_and_system_target_are_limited_to_one_hundred_degrees() {
+        let config = parse_config("config_version=2\nsystem_temp_target_c=110\ncustom_curve=0:0,40:10,90:30,110:50\n").unwrap();
+        assert_eq!(config.soak_temp_c, 100);
+        assert_eq!(config.custom_curve[3].temp_c, 100);
     }
 }

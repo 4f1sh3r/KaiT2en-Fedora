@@ -971,7 +971,7 @@ fn install_curve_hover(
     model: &Rc<RefCell<AppModel>>,
     dragged_point: &Rc<RefCell<Option<CurveDragTarget>>>,
 ) {
-    let tooltip = "System chill is the average-temperature target. Forced cooling starts at target +5 C and releases at target -5 C after the overrun and stability windows. Drag the vertical wall to change it.";
+    let tooltip = "System chill is the average-temperature target. Forced cooling starts at target +2 C and releases at target -2 C after the overrun and stability windows. Drag the vertical wall to change it.";
     let popover = Popover::new();
     popover.set_autohide(false);
     popover.set_has_arrow(true);
@@ -1335,7 +1335,7 @@ fn full_speed_reason(model: &AppModel) -> String {
     let mut reasons = Vec::new();
     if model.snapshot.heat_soak_cooling {
         let phase = match model.snapshot.system_temp_c {
-            Some(temp) if temp >= model.config.soak_temp_c.saturating_add(5) => "limit reached",
+            Some(temp) if temp >= model.config.soak_temp_c.saturating_add(2) => "limit reached",
             _ => "cooldown",
         };
         reasons.push(match model.snapshot.system_temp_c {
@@ -1382,8 +1382,8 @@ fn draw_curve_panel(model: &AppModel, cr: &cairo::Context, width: f64, height: f
 
     let curve = model.curve_points();
     let wall_x = temperature_to_x(plot, model.config.soak_temp_c);
-    let release_x = temperature_to_x(plot, model.config.soak_temp_c.saturating_sub(5));
-    let engage_x = temperature_to_x(plot, model.config.soak_temp_c.saturating_add(5));
+    let release_x = temperature_to_x(plot, model.config.soak_temp_c.saturating_sub(2));
+    let engage_x = temperature_to_x(plot, model.config.soak_temp_c.saturating_add(2));
     cr.set_source_rgba(0.90, 0.28, 0.22, 0.08);
     cr.rectangle(release_x, plot.1, engage_x - release_x, plot.3);
     let _ = cr.fill();
@@ -1614,6 +1614,10 @@ fn draw_curve_line(
         } else {
             cr.line_to(x, y);
         }
+    }
+    if let Some(last) = curve.last() {
+        let (x, _) = curve_to_pos(plot, last);
+        cr.line_to(x, plot.1);
     }
     let _ = cr.stroke();
 }
