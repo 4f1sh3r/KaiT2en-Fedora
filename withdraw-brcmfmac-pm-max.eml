@@ -1,0 +1,23 @@
+From: Alexander Fischer <alexander@fischermail.me>
+Subject: Re: [PATCH wireless-next] wifi: brcmfmac: allow opting into PM_MAX power management
+
+Hello,
+
+I would like to withdraw this patch.
+
+Further testing on BCM4364 showed intermittent latency spikes of about
+50-250 ms with PM_MAX. The connection can work normally for extended
+periods, but the issue is reproducible and disappears after switching
+back to PM_FAST. This invalidates my earlier statement that I had
+observed no latency regression.
+
+Given this trade-off, I no longer think exposing PM_MAX through this new
+module parameter is worthwhile, and I do not plan to send a v2. Please
+drop the patch.
+
+pw-bot: changes-requested
+
+Sorry for the noise, and thanks for your time.
+
+Regards,
+Alexander

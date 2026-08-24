@@ -1,0 +1,31 @@
+From 32e2a5fb1f423ec8cd865a8f11d124aa75ce4f2d Mon Sep 17 00:00:00 2001
+From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Date: Fri, 14 Aug 2026 14:36:17 -0400
+Subject: [PATCH 2/3] thunderbolt: Add device links for Apple machines with
+ Titan Ridge
+
+Add device links for Apple machines with the
+Titan Ridge thunderbolt controller.
+
+Tested-by: Andre Eikmeyer <dev@deq.rocks>
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ drivers/thunderbolt/pci.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/thunderbolt/pci.c b/drivers/thunderbolt/pci.c
+index c3d5a36ab..af3a7a9ba 100644
+--- a/drivers/thunderbolt/pci.c
++++ b/drivers/thunderbolt/pci.c
+@@ -511,6 +511,8 @@ bool tb_pci_add_links(struct tb_nhi *nhi)
+ 	case PCI_DEVICE_ID_INTEL_CACTUS_RIDGE_4C:
+ 	case PCI_DEVICE_ID_INTEL_FALCON_RIDGE_2C_NHI:
+ 	case PCI_DEVICE_ID_INTEL_FALCON_RIDGE_4C_NHI:
++	case PCI_DEVICE_ID_INTEL_TITAN_RIDGE_2C_NHI:
++	case PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_NHI:
+ 		return tb_pci_add_links_discrete(nhi_pdev);
+ 	default:
+ 		return false;
+-- 
+2.43.0
+

@@ -1,0 +1,225 @@
+# Kernel 7.2 build readiness
+
+Branch: `fix/kernel-7.2-build` (branched from `main` @ `ad2d003`).
+
+Goal: find out which modules in this repo fail to build against Linux 7.2 and
+prepare the adjustments before Fedora ships the new kernel.
+
+## Test setup
+
+Fedora 44 only ships 7.1.5 so far, and 7.2 is not released yet (as of
+2026-08-04). The newest build in Koji was **7.2.0-0.rc6.48.fc45**, fetched as a
+`kernel-devel` RPM and unpacked into a scratch dir:
+
+```
+https://kojipkgs.fedoraproject.org/packages/kernel/7.2.0/0.rc6.48.fc45/x86_64/
+  kernel-devel-7.2.0-0.rc6.48.fc45.x86_64.rpm
+```
+
+rc6 is a valid proxy for the final 7.2 API: the merge window closes at rc1, so
+no further API changes land after that. Modules were built out-of-tree with
+`make -C $KDIR M=<module> modules` against both 7.1.5 and 7.2-rc6.
+
+Building against a foreign kernel tree only emits `warning: the compiler
+differs from the one used to build the kernel` and `pahole version differs`
+(Fedora 45 used a slightly newer GCC 16.1.1 build). Both are harmless for a
+compile check.
+
+### Always build a baseline against the *running* kernel too
+
+The first flat build run reported 4 failures, but 3 of them (`t2bce_audio`,
+`t2bce_core`, `t2bce_vhci`) failed **identically on 7.1.5**. Those are not 7.2
+problems at all — they are modpost `"t2bce_core_*" undefined!` errors caused by
+building the t2bce modules in isolation without the other modules'
+`Module.symvers`. Building them in dependency order and threading
+`KBUILD_EXTRA_SYMBOLS` through resolves it:
+
+```
+t2bce_dma -> t2bce_core -> t2bce_audio -> t2bce_vhci
+```
+
+Lesson: without a same-kernel baseline these three would have been chased as
+fake 7.2 regressions.
+
+## Actual 7.2 breakage: 2 modules
+
+Everything else (`hid_t2magicmouse`, `t2bce_core`, `t2bce_dma`, `t2bce_vhci`,
+`t2gmux`, `t2mfi_fastcharge`, `t2smc`, `t2smp`, `t2thunderbolt`, `t2touchbar`)
+builds against 7.2-rc6 unchanged.
+
+### 1. `t2bdrm` — `struct drm_atomic_state` renamed to `struct drm_atomic_commit`
+
+7.2 renames the type; `drm_atomic_state` no longer exists in
+`include/drm/drm_atomic.h`. The accessors and the plane helper hooks all take
+`struct drm_atomic_commit *` now:
+
+```
+drm_atomic_get_new_plane_state(const struct drm_atomic_commit *state, ...)
+drm_atomic_get_old_plane_state(const struct drm_atomic_commit *state, ...)
+drm_atomic_get_new_crtc_state(const struct drm_atomic_commit *state, ...)
+.atomic_check / .atomic_update / .atomic_disable
+```
+
+The header comment explains the rationale: the struct always described a whole
+commit (old + new state), never a single object's state, so the old name was
+misleading.
+
+Fix: a guarded alias below the drm includes, so the driver body can use the
+mainline 7.2 spelling on both kernels:
+
+```c
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 2, 0)
+#define drm_atomic_commit drm_atomic_state
+#endif
+```
+
+**The placement matters.** It has to sit *after* the `#include <drm/...>`
+block, because on pre-7.2 kernels `drm_atomic_commit()` is also a *function*
+and the macro would rewrite its declaration. t2bdrm never calls it (it only
+uses `drm_atomic_helper_*`), so shadowing it for the rest of the file is safe —
+but anyone adding a `drm_atomic_commit()` call to this file later must know
+this.
+
+**Nothing in the repo records this.** The project owner asked for no comment at
+all, and the commit is a bare subject line, so this document is the only place
+the constraint survives. If the alias ever gets "tidied up" to the top of the
+include block, the pre-7.2 build breaks in a way that looks unrelated to the
+move — and there will be no hint in the code as to why.
+
+Same for the audio hunk: why `memcpy` rather than `strscpy`, and the off-by-one
+it quietly fixes, are documented here and nowhere else.
+
+#### Mainline did more than the rename — deliberately not adopted here
+
+Diffing against mainline `appletbdrm.c` @ `v7.2-rc6` shows an unrelated
+refactor landed at the same time: the damage-iteration and request/frame size
+computation moved out of `atomic_check` into a new
+`appletbdrm_primary_plane_helper_begin_fb_access()` hook, and
+`DRM_GEM_SHADOW_PLANE_HELPER_FUNCS` was replaced by explicit
+`.begin_fb_access` / `.end_fb_access` entries.
+
+That refactor is **not** needed to build on 7.2, and it touches exactly the
+code that `fix/t2bdrm-bounded-requests` (commit `47e3573`) rewrites. Adopting
+it here would have collided head-on with that branch, so this branch stays
+minimal. Revisit when the two branches are reconciled.
+
+### 2. `t2bce_audio` — `strncpy()` removed from the kernel
+
+7.2 drops the `strncpy()` declaration from `include/linux/string.h` entirely
+(the long-running deprecation finally completed). `strcpy()` still exists, so
+the other three call sites in `audio.c`/`pcm.c` are unaffected — only
+`audio.c:444` broke:
+
+```
+audio.c:444:5: error: implicit declaration of function 'strncpy'
+```
+
+`strscpy()` is **not** the right replacement here. `uid` is a length-delimited
+buffer from the device reply that is not necessarily NUL-terminated, and
+`strscpy()` stops at a NUL — it would truncate. `memcpy()` plus an explicit
+terminator is the faithful equivalent:
+
+```c
+memcpy(sdev->uid, uid, uid_len);
+sdev->uid[uid_len] = '\0';
+```
+
+#### This also fixed a latent off-by-one
+
+The old code terminated at `sdev->uid[uid_len + 1]`, one byte too far.
+`sdev->uid` is `char uid[T2AUDIO_DEVICE_MAX_UID_LEN + 1]` and `uid_len` is
+bounds-checked with `uid_len > T2AUDIO_DEVICE_MAX_UID_LEN` → fail, so a
+maximum-length uid wrote index `MAX + 1` — one past the end of the array. It
+went unnoticed because `sdev` is `kzalloc()`ed, so the byte at `[uid_len]` was
+already zero and the string still came out correctly terminated.
+
+## Result
+
+Both kernels build all 12 modules with **zero warnings** (beyond the expected
+cross-kernel compiler/pahole notes). The changes are backwards compatible:
+on 7.1.5 the t2bdrm alias expands straight back to `drm_atomic_state`, so that
+module is semantically unchanged there.
+
+## Verified against final 7.2 (2026-08-17)
+
+Linux 7.2 is released; mainline `master` is at `8d3ae5928 Linux 7.2`. The branch
+was rebased from its old base `ad2d003` onto current `main` (`02809fa`) and
+rebased **cleanly**, even though `main` had touched both files in the meantime
+(`f9c1143` t2bdrm kzalloc→kvfree, `f1b26d2` audio UID NUL-termination). Both
+hunks are still required and still correct.
+
+rc6 turned out to be a faithful proxy: nothing new broke between rc6 and final.
+
+### The two failures reproduced for real, not just predicted
+
+Building the *unpatched* `/usr/src` trees against final 7.2 via DKMS fails with
+exactly the two documented errors:
+
+```
+t2bdrm.c:488: error: passing argument 1 of 'drm_atomic_get_new_plane_state'
+              from incompatible pointer type
+t2bdrm.c:489, :501, :647  (same, old/new plane + crtc state)
+audio.c:445:  error: implicit declaration of function 'strncpy'
+```
+
+With the branch applied, both build with zero warnings against **both** 7.1.8
+and 7.2. The other ten modules build unchanged against 7.2 straight from
+`/usr/src` — no DKMS failures at all.
+
+### No version guard for the audio fix — deliberate
+
+The t2bdrm rename needs the `LINUX_VERSION_CODE < KERNEL_VERSION(7, 2, 0)`
+alias because the struct genuinely has two names. `t2bce_audio` must not get
+one: `memcpy()` plus an explicit terminator is the correct code on *every*
+kernel version, and guarding it would keep the old off-by-one terminator write
+at `sdev->uid[uid_len + 1]` alive on pre-7.2 kernels. A guard there would
+preserve a bug, not compatibility.
+
+### The fix has to land on the scatter-gather branch too
+
+The t2bdrm actually installed in `/usr/src` (and therefore actually running) is
+**not** `main`'s — it is the version from `fix/t2bce-t2bdrm-scatter-gather`. So
+the fix was cherry-picked onto that branch as well. The only conflict is one
+include line (`linux/version.h` vs the SG branch's `linux/vmalloc.h`; keep both,
+alphabetical). All three plane-helper signatures and audio.c apply cleanly.
+The SG branch with the fix also builds clean against 7.1.8 and 7.2.
+
+### `/usr/src` DKMS trees look like they match no branch — they do match
+
+Comparing `/usr/src/t2bce_core-0.06` etc. against branch contents reports a
+difference that is *not* a source difference: DKMS drops extra helper
+directories (`t2bce_dma/`, `t2bce_core/`) into those trees for cross-module
+headers. Exclude those before concluding that someone has uncommitted local
+changes. `t2bce_core`, `t2bce_vhci` and `t2bdrm` in `/usr/src` are byte-identical
+to the SG branch; only `t2bce_audio/audio.c` differs, and only by this fix.
+
+### Both fixes confirmed on real hardware, not only as a compile check
+
+On 2026-08-17 the machine actually booted a self-built mainline `7.2.0-tblinks`
+(built for the Thunderbolt device-link patch test, see
+`THUNDERBOLT-APPLE-LINKS-LEARNINGS.md`), with the patched modules installed via
+per-kernel DKMS. Both work:
+
+```
+[drm] Initialized t2bdrm 1.0.0 for 5-6:2.1 on minor 0   -> card0-USB-1 present
+t2bce_audio: module initialized                          -> "Apple T2 Audio" card 1
+```
+
+So the `drm_atomic_commit` alias is not merely compile-correct — the plane
+helpers are invoked with the renamed type and the Touch Bar comes up. All twelve
+modules load on 7.2.
+
+## Status
+
+`fix/kernel-7.2-build` is pushed to the fork (`origin`, commit `30c2ef4`) and is
+ready for a PR against `kaiT2en/KaiT2en-Fedora`. The SG branch keeps the same fix
+as a local cherry-pick (`e194e4b`), unpushed.
+
+Both commit messages originally carried a `Co-Authored-By:` trailer, which
+CLAUDE.md forbids — check for it before pushing anything, `git commit --amend`
+after the fact means a force-push once the branch is public.
+
+## Not done yet
+
+- Re-verify once Fedora ships 7.2 — Fedora carries extra patches on top of
+  mainline.
