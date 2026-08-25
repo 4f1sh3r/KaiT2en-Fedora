@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Power Tune
+Comment=Tune PCIe ASPM and system power-saving settings
+Exec=/usr/local/bin/t2-power-tune
+TryExec=/usr/local/bin/t2-power-tune
+Icon=org.t2powertune.gtk
+Terminal=false
+Categories=System;
+StartupNotify=false

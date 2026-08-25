@@ -1,0 +1,391 @@
+#!/usr/bin/env python3
+import datetime, json, os, re, subprocess, sys, tempfile
+
+SERVICE = "/etc/systemd/system/kait2en-power-tune.service"
+LEGACY_CONFIG = "/etc/t2-power-tune.json"
+RUNTIME_DIR = "/run/t2-power-tune"
+RUNTIME_STATE = f"{RUNTIME_DIR}/items.json"
+DEBUG_LOG = f"{RUNTIME_DIR}/debug.jsonl"
+PCI_RE = re.compile(r"^0000:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$")
+
+def fail(message):
+    print(f"t2-power-tune: {message}", file=sys.stderr); raise SystemExit(1)
+def run(*args):
+    return subprocess.run(args, text=True, capture_output=True, check=False)
+def read(path):
+    with open(path, encoding="ascii", errors="replace") as source: return source.read().strip()
+def debug(event, **fields):
+    try:
+        os.makedirs(RUNTIME_DIR, mode=0o755, exist_ok=True)
+        if os.path.exists(DEBUG_LOG) and os.path.getsize(DEBUG_LOG) > 1024 * 1024:
+            os.replace(DEBUG_LOG, DEBUG_LOG + ".previous")
+        record = {"time":datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(),
+                  "pid":os.getpid(), "event":event, **fields}
+        with open(DEBUG_LOG, "a", encoding="utf-8") as output:
+            output.write(json.dumps(record, sort_keys=True) + "\n")
+        os.chmod(DEBUG_LOG, 0o644)
+    except OSError:
+        pass
+def description(device):
+    value = run("lspci", "-D", "-s", device).stdout.strip()
+    return value.split(maxsplit=1)[1] if " " in value else "PCI device"
+def optional(path):
+    try: return read(path)
+    except OSError: return ""
+def runtime_label(path):
+    device_dir = os.path.dirname(os.path.dirname(path))
+    name = os.path.basename(device_dir)
+    if path.startswith("/sys/bus/pci/"):
+        return description(name)
+    product = optional(os.path.join(device_dir, "product"))
+    return product or "Unnamed USB device"
+def tunable_label(path):
+    if path == "/sys/module/snd_hda_intel/parameters/power_save":
+        return "Intel HDA audio power saving"
+    if path == "/proc/sys/kernel/nmi_watchdog":
+        return "NMI watchdog"
+    if path == "/proc/sys/vm/dirty_writeback_centisecs":
+        return "Dirty writeback interval"
+    match = re.fullmatch(r"/sys/class/net/([^/]+)/device/power/wakeup", path)
+    if match:
+        return f"{match.group(1)} device wakeup"
+    return runtime_label(path)
+def tunable_group(path):
+    return "runtime" if re.fullmatch(r"/sys/bus/(usb|pci)/devices/[^/]+/power/control", path) else "other"
+def latency_constraints():
+    constraints = []
+    debug("ltr_read_begin")
+    try:
+        with open("/sys/kernel/debug/pmc_core/ltr_show", encoding="ascii") as source:
+            for line in source:
+                match = re.match(
+                    r"^(\d+)\s+PMC(\d+):([^\s]+).*?LTR: RAW: 0x([0-9a-fA-F]+).*?"
+                    r"Non-Snoop\(ns\):\s*(\d+).*?Snoop\(ns\):\s*(\d+).*?LTR_IGNORE:\s*([01])",
+                    line,
+                )
+                if not match: continue
+                index, pmc, name, raw, nonsnoop, snoop, ignored = match.groups()
+                if name in ("CURRENT_PLATFORM", "AGGREGATED_SYSTEM"): continue
+                nonsnoop, snoop = int(nonsnoop), int(snoop)
+                active = [value for value in (nonsnoop, snoop) if value]
+                visible = ignored == "1" or bool(active)
+                reason = "ignored" if ignored == "1" else ("active" if active else "inactive")
+                debug("ltr_entry", index=int(index), pmc=int(pmc), name=name,
+                      raw="0x" + raw.lower(), nonsnoop_ns=nonsnoop, snoop_ns=snoop,
+                      ignored=ignored == "1", visible=visible, reason=reason)
+                if not visible: continue
+                constraints.append({"source":"pmc", "label":name.replace("_", " ").title(), "name":name,
+                                    "index":int(index), "pmc":int(pmc),
+                                    "raw":raw.lower(), "snoop_ns":snoop,
+                                    "nonsnoop_ns":nonsnoop,
+                                    "ignored":ignored == "1"})
+    except OSError as error:
+        debug("ltr_read_error", error=str(error))
+    debug("ltr_read_end", visible=len(constraints))
+    return constraints
+def ltr_state(ident):
+    match_id = re.fullmatch(r"PMC(\d+):([A-Z0-9_]+)", ident)
+    if not match_id: return None
+    try:
+        with open("/sys/kernel/debug/pmc_core/ltr_show", encoding="ascii") as source:
+            for line in source:
+                match = re.match(
+                    r"^(\d+)\s+PMC(\d+):([^\s]+).*?Non-Snoop\(ns\):\s*(\d+).*?"
+                    r"Snoop\(ns\):\s*(\d+).*?LTR_IGNORE:\s*([01])", line)
+                if match and match.group(2)==match_id.group(1) and match.group(3)==match_id.group(2):
+                    if match.group(3) in ("CURRENT_PLATFORM", "AGGREGATED_SYSTEM"): return None
+                    return int(match.group(1)), int(match.group(6)), int(match.group(5)), int(match.group(4))
+    except OSError:
+        pass
+    return None
+def resolve_ltr(ident):
+    state = ltr_state(ident)
+    return state[:2] if state else None
+def set_ltr(ident, value):
+    debug("ltr_set_begin", id=ident, requested=value)
+    entry = ltr_state(ident)
+    if entry is None:
+        debug("ltr_set_error", id=ident, error="source unavailable")
+        fail(f"LTR source is unavailable: {ident}")
+    index, current, snoop, nonsnoop = entry
+    debug("ltr_set_observed", id=ident, index=index, ignored=bool(current),
+          snoop_ns=snoop, nonsnoop_ns=nonsnoop)
+    if current == value:
+        debug("ltr_set_end", id=ident, index=index, changed=False)
+        return index, False, snoop, nonsnoop
+    path = "/sys/kernel/debug/pmc_core/ltr_ignore" if value else "/sys/kernel/debug/pmc_core/ltr_restore"
+    try:
+        with open(path, "w", encoding="ascii") as output: output.write(f"{index}\n")
+    except OSError as error:
+        debug("ltr_set_error", id=ident, index=index, error=str(error))
+        fail(f"cannot update {ident}: {error}")
+    verified = resolve_ltr(ident)
+    if verified is None or verified[1] != value:
+        debug("ltr_set_error", id=ident, index=index, error="verification failed",
+              verified=None if verified is None else bool(verified[1]))
+        fail(f"LTR verification failed: {ident}")
+    debug("ltr_set_end", id=ident, index=index, changed=True, ignored=bool(verified[1]))
+    return index, True, snoop, nonsnoop
+def load_service_items():
+    starts, stops = {}, {}
+    try:
+        lines = open(SERVICE, encoding="utf-8").read().splitlines()
+    except OSError:
+        return []
+    for line in lines:
+        start = line.startswith("ExecStart=")
+        stop = line.startswith("ExecStop=")
+        if not start and not stop: continue
+        target = starts if start else stops
+        match = re.search(r"setpci -s (0000:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]) CAP_EXP\+10\.w=([0-3]):0003", line)
+        if match:
+            target[("aspm", match.group(1))] = match.group(2)
+            continue
+        match = re.search(r"printf '%%s\\n' '([^']+)' > '([^']+)'", line)
+        if match:
+            target[("tunable", match.group(2))] = match.group(1)
+            continue
+        match = re.search(r"t2-power-tune-helper ltr-set '([^']+)' ([01])", line)
+        if match:
+            target[("ltr", match.group(1))] = match.group(2)
+            continue
+    items = []
+    for key, target in starts.items():
+        if key not in stops: continue
+        items.append({"kind":key[0], "id":key[1], "original":stops[key],
+                      "target":target, "enabled":True})
+    return items
+def load_runtime_items():
+    try:
+        with open(RUNTIME_STATE, encoding="utf-8") as source:
+            return True, json.load(source)
+    except FileNotFoundError:
+        return False, []
+    except (OSError, ValueError):
+        return True, []
+def save_runtime_items(items):
+    os.makedirs(RUNTIME_DIR, mode=0o755, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".items.", dir=RUNTIME_DIR, text=True)
+    try:
+        data = [{"kind":x[0], "id":x[1], "original":x[2], "target":x[3],
+                 "enabled":x[4]} for x in items]
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(data, output)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, RUNTIME_STATE)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
+
+def scan():
+    if os.geteuid(): fail("scan must run as root")
+    debug("scan_begin", argv=sys.argv)
+    items = []
+    aspm_candidates = 0
+    for line in run("lspci", "-D").stdout.splitlines():
+        device = line.split(maxsplit=1)[0]
+        if not PCI_RE.fullmatch(device) or run("setpci", "-s", device, "CAP_EXP+0.w").returncode: continue
+        cap = run("setpci", "-s", device, "CAP_EXP+0c.L").stdout.strip()
+        ctl = run("setpci", "-s", device, "CAP_EXP+10.w").stdout.strip()
+        if not re.fullmatch(r"[0-9a-fA-F]+", cap) or not re.fullmatch(r"[0-9a-fA-F]+", ctl): continue
+        supported, current = (int(cap, 16) >> 10) & 3, int(ctl, 16) & 3
+        debug("aspm_scan", id=device, capability=cap, control=ctl,
+              supported=supported, current=current, candidate=bool(supported & ~current & 3))
+        if supported & ~current & 3:
+            aspm_candidates += 1
+            items.append({"kind":"aspm", "id":device, "label":description(device),
+                          "current":str(current), "target":str(supported),
+                          "supported":supported})
+    tunables = [("/sys/module/snd_hda_intel/parameters/power_save", "1",
+                 "Intel HDA audio power saving", "other"),
+                ("/proc/sys/kernel/nmi_watchdog", "0", "NMI watchdog", "other"),
+                ("/proc/sys/vm/dirty_writeback_centisecs", "1500",
+                 "Dirty writeback interval", "other")]
+    for base in ("/sys/bus/usb/devices", "/sys/bus/pci/devices"):
+        try: names = sorted(os.listdir(base))
+        except OSError: names = []
+        for name in names:
+            path = os.path.join(base, name, "power/control")
+            tunables.append((path, "auto", runtime_label(path), "runtime"))
+    try: interfaces = sorted(os.listdir("/sys/class/net"))
+    except OSError: interfaces = []
+    for interface in interfaces:
+        path = f"/sys/class/net/{interface}/device/power/wakeup"
+        tunables.append((path, "disabled", tunable_label(path), "other"))
+    for path, target, label, group in tunables:
+        if os.path.isfile(path) and os.access(path, os.R_OK | os.W_OK):
+            current = read(path)
+            if current != target:
+                items.append({"kind":"tunable", "id":path, "label":label,
+                              "current":current, "target":target, "group":group})
+    constraints = latency_constraints()
+    for constraint in constraints:
+        if constraint["source"] == "pmc":
+            items.append({"kind":"ltr", "id":f'PMC{constraint["pmc"]}:{constraint["name"]}',
+                          "label":constraint["label"], "current":"0", "target":"1",
+                          "selected":constraint["ignored"], "group":"ltr",
+                          "snoop_ns":constraint["snoop_ns"], "nonsnoop_ns":constraint["nonsnoop_ns"]})
+    # Keep service-managed entries visible so they can be unchecked after a restart.
+    runtime_exists, saved_data = load_runtime_items()
+    try:
+        source = saved_data if runtime_exists else load_service_items()
+        # Drop entries created by the removed experimental L1SS feature while
+        # retaining every other runtime or persistent selection.
+        saved = validate([item for item in source
+                          if isinstance(item, dict) and item.get("kind") != "l1ss"])
+    except (ValueError, TypeError, SystemExit):
+        saved = []
+    remembered = {(x[0], x[1]): x for x in saved}
+    present = {(x["kind"], x["id"]) for x in items}
+    for item in items:
+        old = remembered.get((item["kind"], item["id"]))
+        item["selected"] = old[4] if old else False
+        if old:
+            item["current"] = old[2]
+            item["target"] = old[3]
+    for kind, ident, original, target, enabled in saved:
+        if (kind, ident) in present: continue
+        # LTR rows are derived from the current PMC state. Do not resurrect
+        # inactive rows from a runtime cache written by an older scan.
+        if kind == "ltr": continue
+        if kind == "aspm":
+            label = description(ident)
+            cap = run("setpci", "-s", ident, "CAP_EXP+0c.L").stdout.strip()
+            supported = (int(cap, 16) >> 10) & 3 if re.fullmatch(r"[0-9a-fA-F]+", cap or "") else int(target)
+        elif kind == "tunable": label = tunable_label(ident)
+        else: label = runtime_label(ident)
+        items.append({"kind":kind,"id":ident,"label":label,"current":original,
+                      "target":target,"selected":enabled,
+                      "group":kind if kind == "ltr" else tunable_group(ident)})
+        if kind == "aspm": items[-1]["supported"] = supported
+    debug("scan_end", rows=len(items), ltr_rows=sum(item["kind"] == "ltr" for item in items),
+          aspm_rows=sum(item["kind"] == "aspm" for item in items),
+          aspm_live_candidates=aspm_candidates,
+          tunable_rows=sum(item["kind"] == "tunable" for item in items))
+    print(json.dumps({"items":items, "constraints":[]}))
+
+def validate(raw):
+    if not isinstance(raw, list) or len(raw) > 2048: fail("invalid item list")
+    clean = []
+    for item in raw:
+        if not isinstance(item, dict) or set(item) != {"kind","id","original","target","enabled"}: fail("invalid item")
+        kind, ident = item["kind"], item["id"]
+        original, target, enabled = str(item["original"]), str(item["target"]), item["enabled"]
+        if type(enabled) is not bool: fail("invalid selection")
+        if kind == "aspm":
+            if not PCI_RE.fullmatch(ident) or original not in ("0","1","2","3") or target not in ("0","1","2","3"): fail("invalid ASPM item")
+            cap = run("setpci", "-s", ident, "CAP_EXP+0c.L").stdout.strip()
+            if not re.fullmatch(r"[0-9a-fA-F]+", cap or "") or int(target) & ~((int(cap,16)>>10)&3): fail("unsupported ASPM target")
+        elif kind == "tunable":
+            fixed = {"/sys/module/snd_hda_intel/parameters/power_save":"1",
+                     "/proc/sys/kernel/nmi_watchdog":"0",
+                     "/proc/sys/vm/dirty_writeback_centisecs":"1500"}
+            runtime = re.fullmatch(r"/sys/bus/(usb|pci)/devices/[^/]+/power/control", ident)
+            wakeup = re.fullmatch(r"/sys/class/net/[^/]+/device/power/wakeup", ident)
+            allowed = ident in fixed or runtime or wakeup
+            expected = fixed.get(ident, "disabled" if wakeup else "auto")
+            if ident in fixed: valid_original = re.fullmatch(r"[0-9]+", original)
+            elif wakeup: valid_original = original in ("enabled", "disabled")
+            else: valid_original = original in ("auto", "on")
+            if not allowed or target != expected or not valid_original: fail("invalid tunable item")
+        elif kind == "ltr":
+            if original != "0" or target != "1" or resolve_ltr(ident) is None: fail("invalid LTR item")
+        else: fail("invalid item kind")
+        clean.append((kind, ident, original, target, enabled))
+    return clean
+
+def command(item, start):
+    kind, ident, original, target, _enabled = item; value = target if start else original
+    if kind == "aspm": return f"/usr/bin/setpci -s {ident} CAP_EXP+10.w={int(value):x}:0003"
+    if kind == "ltr": return f"/usr/local/libexec/t2-power-tune-helper ltr-set '{ident}' {value}"
+    # systemd expands percent specifiers even inside ExecStart shell strings.
+    return f"/usr/bin/printf '%%s\\n' '{value}' > '{ident}'"
+
+def apply(items):
+    errors=[]; changed=[]
+    debug("apply_begin", items=len(items), selected=sum(item[4] for item in items))
+    for kind, ident, original, target, enabled in items:
+        value=target if enabled else original
+        if kind == "aspm":
+            before=run("setpci","-s",ident,"CAP_EXP+10.w").stdout.strip()
+            debug("aspm_apply_begin", id=ident, before=before, requested=value, selected=enabled)
+            if re.fullmatch(r"[0-9a-fA-F]+",before or "") and int(before,16)&3 == int(value):
+                debug("aspm_apply_end", id=ident, changed=False, verified=before)
+                continue
+            result=run("setpci","-s",ident,f"CAP_EXP+10.w={int(value):x}:0003")
+            verify=run("setpci","-s",ident,"CAP_EXP+10.w").stdout.strip()
+            valid = not result.returncode and re.fullmatch(r"[0-9a-fA-F]+",verify or "") and int(verify,16)&3 == int(value)
+            debug("aspm_apply_end", id=ident, changed=bool(valid), verified=verify,
+                  returncode=result.returncode, stderr=result.stderr.strip())
+            if not valid: errors.append(ident)
+            else: changed.append({"kind":"aspm","id":ident,"location":"CAP_EXP+10.w","value":value})
+        elif kind == "ltr":
+            index, did_change, _snoop, _nonsnoop = set_ltr(ident, int(value))
+            if did_change: changed.append({"kind":"ltr", "id":ident, "location":f"LTR index {index}",
+                                           "value":value})
+        else:
+            try:
+                before = read(ident)
+                debug("tunable_apply_begin", id=ident, before=before, requested=value, selected=enabled)
+                if before==value:
+                    debug("tunable_apply_end", id=ident, changed=False, verified=before)
+                    continue
+                with open(ident,"w",encoding="ascii") as output: output.write(value+"\n")
+                verified = read(ident)
+                debug("tunable_apply_end", id=ident, changed=verified==value, verified=verified)
+                if verified!=value: errors.append(ident)
+                else: changed.append({"kind":"tunable","id":ident,"location":ident,"value":value})
+            except OSError as error:
+                debug("tunable_apply_error", id=ident, error=str(error))
+                errors.append(ident)
+    if errors:
+        debug("apply_error", errors=errors)
+        fail("could not verify: "+", ".join(errors))
+    for kind, ident, _original, target, enabled in items:
+        if kind != "aspm": continue
+        control = run("setpci", "-s", ident, "CAP_EXP+10.w").stdout.strip()
+        actual = int(control, 16) & 3 if re.fullmatch(r"[0-9a-fA-F]+", control or "") else None
+        expected = int(target) if enabled else int(_original)
+        debug("aspm_apply_postcheck", id=ident, control=control, actual=actual,
+              expected=expected, matches=actual == expected)
+    save_runtime_items(items)
+    debug("apply_end", changed=len(changed))
+    print(json.dumps(changed))
+
+def persist(items):
+    selected=[item for item in items if item[4]]
+    if not selected:
+        run("systemctl","disable","--now","kait2en-power-tune.service")
+        if os.path.exists(SERVICE): os.unlink(SERVICE)
+        if os.path.exists(LEGACY_CONFIG): os.unlink(LEGACY_CONFIG)
+        run("systemctl","daemon-reload")
+        save_runtime_items(items)
+        return
+    lines=["[Unit]","Description=KaiT2en power tuning","After=multi-user.target"]
+    if any(item[0]=="ltr" for item in selected):
+        lines += ["RequiresMountsFor=/sys/kernel/debug","After=sys-kernel-debug.mount"]
+    lines += ["","[Service]","Type=oneshot","RemainAfterExit=yes"]
+    lines += [f'ExecStart=/bin/sh -c "{command(x,True)}"' for x in selected]
+    lines += [f'ExecStop=/bin/sh -c "{command(x,False)}"' for x in reversed(selected)]
+    lines += ["","[Install]","WantedBy=multi-user.target",""]
+    fd,tmp=tempfile.mkstemp(prefix=".kait2en-power-tune.",dir="/etc/systemd/system",text=True)
+    try:
+        with os.fdopen(fd,"w",encoding="utf-8") as output: output.write("\n".join(lines))
+        os.chmod(tmp,0o644); os.replace(tmp,SERVICE)
+    finally:
+        if os.path.exists(tmp): os.unlink(tmp)
+    if os.path.exists(LEGACY_CONFIG): os.unlink(LEGACY_CONFIG)
+    for args in (("daemon-reload",),("enable","kait2en-power-tune.service")):
+        result=run("systemctl",*args)
+        if result.returncode: fail(result.stderr.strip())
+    save_runtime_items(items)
+
+if len(sys.argv)==4 and sys.argv[1]=="ltr-set":
+    if os.geteuid(): fail("ltr-set must run as root")
+    if sys.argv[3] not in ("0","1"): fail("LTR value must be 0 or 1")
+    set_ltr(sys.argv[2], int(sys.argv[3]))
+elif len(sys.argv)!=2 or sys.argv[1] not in ("scan","apply","persist"): fail("usage: helper scan|apply|persist|ltr-set")
+elif sys.argv[1]=="scan": scan()
+else:
+    try: items=validate(json.loads(sys.stdin.read()))
+    except (ValueError,TypeError) as error: fail(f"invalid input: {error}")
+    apply(items) if sys.argv[1]=="apply" else persist(items)
