@@ -1,14 +1,11 @@
 # Apple T2 Audio DSP
 
-PipeWire/WirePlumber DSP graphs and FIR files for Apple T2 audio.
+PipeWire/WirePlumber DSP graphs and FIR files for Apple T2 Macs using t2bce_audio as a driver on KaiT2en Fedora.
 
 The profiles in `firs/` are installed by `scripts/fedora/install-dsp.sh`.
-Most FIR files originate from lemmyg's `t2-apple-audio-dsp`; the MacBook Pro
-15,1 FIRs were generated from UMIK-1 measurements of that model by deqrocks.
-The MacBook Air 8,1, 8,2 and 9,1 profiles use J313 FIRs from Asahi Linux's
-[`asahi-audio`](https://github.com/AsahiLinux/asahi-audio) project. The MacBook
-Pro 15,4, 16,2 and 16,3 profiles use its J293/J493 FIRs. The corresponding MIT
-license is included with each profile.
+FIR files originate from lemmyg's `t2-apple-audio-dsp`, Asahi Linux's
+[`asahi-audio`](https://github.com/AsahiLinux/asahi-audio) project and our own measurements.
+The corresponding MIT license is included with each profile.
 
 Supported profiles:
 
