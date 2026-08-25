@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -40,7 +40,16 @@ fn palette_css(dark: bool) -> String {
              box-shadow: none;
          }}
          .smc-panel > border {{ border: none; }}
-         .boxed-list row {{ background: {box_bg}; color: {window_fg}; }}"
+         .boxed-list row {{ background: {box_bg}; color: {window_fg}; }}
+         .overview-value {{ font-size: 1em; font-weight: 600; }}
+         .overview-status {{ font-size: 0.95em; }}
+         scale.overview-meter,
+         progressbar.overview-meter {{ min-height: 24px; }}
+         scale.overview-meter trough,
+         progressbar.overview-meter trough {{ min-height: 10px; border-radius: 5px; }}
+         progressbar.overview-meter trough {{ margin-top: 6px; }}
+         progressbar.overview-meter progress {{ min-height: 10px; border-radius: 5px; }}
+         scale.overview-meter slider {{ min-width: 18px; min-height: 18px; }}"
     )
 }
 
@@ -325,6 +334,141 @@ fn read_rtc_datetime(rtc: &Path) -> Option<String> {
     let time = fs::read_to_string(rtc.join("time")).ok()?;
 
     Some(format!("{} {}", date.trim(), time.trim()))
+}
+
+#[derive(Clone, Debug, Default)]
+struct BatteryOverview {
+    capacity_percent: Option<u8>,
+    current_ua: Option<i64>,
+    charge_now_uah: Option<i64>,
+    charge_full_uah: Option<i64>,
+    adapter_power_uw: Option<i64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BatteryFlow {
+    Charging,
+    Discharging,
+    Holding,
+}
+
+#[derive(Default)]
+struct BatteryCurrentAverage {
+    flow: Option<BatteryFlow>,
+    adapter_online: Option<bool>,
+    samples: VecDeque<i64>,
+}
+
+impl BatteryCurrentAverage {
+    fn update(&mut self, battery: &BatteryOverview) -> Option<i64> {
+        const MIN_MEANINGFUL_CURRENT_UA: i64 = 50_000;
+        const MIN_SAMPLES: usize = 5;
+        const MAX_SAMPLES: usize = 30;
+        let current = battery.current_ua.unwrap_or(0);
+        let adapter_online = battery.adapter_power_uw.is_some_and(|power| power > 0);
+        let flow = if current >= MIN_MEANINGFUL_CURRENT_UA {
+            BatteryFlow::Charging
+        } else if current <= -MIN_MEANINGFUL_CURRENT_UA {
+            BatteryFlow::Discharging
+        } else {
+            BatteryFlow::Holding
+        };
+        if self.flow != Some(flow) || self.adapter_online != Some(adapter_online) {
+            self.flow = Some(flow);
+            self.adapter_online = Some(adapter_online);
+            self.samples.clear();
+        }
+        if flow == BatteryFlow::Holding {
+            return Some(0);
+        }
+        self.samples.push_back(current);
+        if self.samples.len() > MAX_SAMPLES {
+            self.samples.pop_front();
+        }
+        (self.samples.len() >= MIN_SAMPLES).then(|| {
+            self.samples.iter().sum::<i64>() / self.samples.len() as i64
+        })
+    }
+}
+
+fn read_battery_overview(hwmon: &Path) -> BatteryOverview {
+    BatteryOverview {
+        capacity_percent: read_i64(&hwmon.join("smc_battery_capacity_percent"))
+            .and_then(|value| u8::try_from(value.clamp(0, 100)).ok()),
+        current_ua: read_i64(&hwmon.join("smc_battery_current_ua")),
+        charge_now_uah: read_i64(&hwmon.join("smc_battery_charge_now_uah")),
+        charge_full_uah: read_i64(&hwmon.join("smc_battery_charge_full_uah")),
+        adapter_power_uw: read_i64(&hwmon.join("smc_adapter_power_uw")),
+    }
+}
+
+fn format_battery_minutes(minutes: u64, suffix: &str) -> String {
+    let hours = minutes / 60;
+    let minutes = minutes % 60;
+    if hours > 0 {
+        format!("{hours} h {minutes:02} min {suffix}")
+    } else {
+        format!("{minutes} min {suffix}")
+    }
+}
+
+fn battery_time_text(battery: &BatteryOverview, averaged_current_ua: Option<i64>) -> String {
+    const MIN_MEANINGFUL_CURRENT_UA: i64 = 50_000;
+    let Some(capacity) = battery.capacity_percent else {
+        return "Battery data unavailable".into();
+    };
+    let raw_current = battery.current_ua.unwrap_or(0);
+    if raw_current.unsigned_abs() >= MIN_MEANINGFUL_CURRENT_UA as u64
+        && averaged_current_ua.is_none()
+    {
+        return "Estimating…".into();
+    }
+    let current = averaged_current_ua.unwrap_or(0);
+    let adapter_online = battery.adapter_power_uw.is_some_and(|power| power > 0);
+
+    if current <= -MIN_MEANINGFUL_CURRENT_UA {
+        if let Some(charge) = battery.charge_now_uah.filter(|charge| *charge > 0) {
+            let minutes = ((charge as f64 / current.unsigned_abs() as f64) * 60.0).round() as u64;
+            return format_battery_minutes(minutes, "remaining");
+        }
+    } else if current >= MIN_MEANINGFUL_CURRENT_UA {
+        if let (Some(now), Some(full)) = (battery.charge_now_uah, battery.charge_full_uah) {
+            let remaining = full.saturating_sub(now);
+            let minutes = ((remaining as f64 / current as f64) * 60.0).round() as u64;
+            return format_battery_minutes(minutes, "until full");
+        }
+    }
+
+    if adapter_online {
+        if capacity >= 99 {
+            "Fully charged".into()
+        } else {
+            format!("Holding at {capacity}%")
+        }
+    } else {
+        "Battery idle".into()
+    }
+}
+
+fn update_battery_overview(
+    progress: &gtk4::ProgressBar,
+    value_label: &gtk4::Label,
+    time_label: &gtk4::Label,
+    battery: &BatteryOverview,
+    current_average: &mut BatteryCurrentAverage,
+) {
+    match battery.capacity_percent {
+        Some(capacity) => {
+            progress.set_fraction(capacity as f64 / 100.0);
+            value_label.set_text(&format!("{capacity}%"));
+        }
+        None => {
+            progress.set_fraction(0.0);
+            value_label.set_text("--%");
+        }
+    }
+    let averaged_current = current_average.update(battery);
+    time_label.set_text(&battery_time_text(battery, averaged_current));
 }
 
 fn read_sensors(hwmon: &Path) -> Vec<(String, String, Option<i64>)> {
@@ -935,6 +1079,10 @@ fn main() {
         // Header bar
         let header = adw::HeaderBar::new();
         header.set_title_widget(Some(&gtk4::Label::new(Some("SMC Control"))));
+        let rtc_value = gtk4::Label::new(Some("SMC RTC: --"));
+        rtc_value.set_halign(gtk4::Align::End);
+        rtc_value.add_css_class("numeric");
+        header.pack_end(&rtc_value);
 
         let status = gtk4::Label::new(None);
         status.set_halign(gtk4::Align::Start);
@@ -942,12 +1090,6 @@ fn main() {
         status.add_css_class("dim-label");
 
         // Charge limit
-        let charge_box = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
-        charge_box.set_margin_top(14);
-        charge_box.set_margin_bottom(14);
-        charge_box.set_margin_start(14);
-        charge_box.set_margin_end(14);
-
         let charge_header = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
         let charge_title = gtk4::Label::new(Some("Battery charge limit"));
         charge_title.set_halign(gtk4::Align::Start);
@@ -956,56 +1098,41 @@ fn main() {
         charge_title.add_css_class("heading");
         let charge_value = gtk4::Label::new(Some("--%"));
         charge_value.add_css_class("numeric");
+        charge_value.add_css_class("overview-value");
         charge_header.append(&charge_title);
         charge_header.append(&charge_value);
 
         let slider = gtk4::Scale::with_range(gtk4::Orientation::Horizontal, 50.0, 100.0, 1.0);
-        slider.set_draw_value(true);
-        slider.set_value_pos(gtk4::PositionType::Bottom);
+        slider.set_draw_value(false);
         slider.set_hexpand(true);
-        slider.add_mark(50.0, gtk4::PositionType::Bottom, Some("50"));
-        slider.add_mark(80.0, gtk4::PositionType::Bottom, Some("80"));
-        slider.add_mark(100.0, gtk4::PositionType::Bottom, Some("100"));
+        slider.set_valign(gtk4::Align::Center);
+        slider.add_css_class("overview-meter");
         slider.set_sensitive(false);
 
-        charge_box.append(&charge_header);
-        charge_box.append(&slider);
-        charge_box.append(&status);
+        // Battery state and remaining-time estimate
+        let battery_title = gtk4::Label::new(Some("Battery"));
+        battery_title.set_halign(gtk4::Align::Start);
+        battery_title.set_xalign(0.0);
+        battery_title.set_hexpand(true);
+        battery_title.add_css_class("heading");
+        let battery_value = gtk4::Label::new(Some("--%"));
+        battery_value.add_css_class("numeric");
+        battery_value.add_css_class("overview-value");
+        let battery_header = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+        battery_header.append(&battery_title);
+        battery_header.append(&battery_value);
 
-        let charge_frame = gtk4::Frame::new(None);
-        charge_frame.add_css_class("smc-panel");
-        charge_frame.set_child(Some(&charge_box));
-
-        // SMC RTC
-        let rtc_box = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
-        rtc_box.set_margin_top(14);
-        rtc_box.set_margin_bottom(14);
-        rtc_box.set_margin_start(14);
-        rtc_box.set_margin_end(14);
-
-        let rtc_header = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
-        let rtc_title = gtk4::Label::new(Some("SMC RTC"));
-        rtc_title.set_halign(gtk4::Align::Start);
-        rtc_title.set_xalign(0.0);
-        rtc_title.set_hexpand(true);
-        rtc_title.add_css_class("heading");
-        let rtc_value = gtk4::Label::new(Some("--"));
-        rtc_value.set_halign(gtk4::Align::End);
-        rtc_value.add_css_class("numeric");
-        rtc_header.append(&rtc_title);
-        rtc_header.append(&rtc_value);
-
-        let rtc_status = gtk4::Label::new(None);
-        rtc_status.set_halign(gtk4::Align::Start);
-        rtc_status.set_xalign(0.0);
-        rtc_status.add_css_class("dim-label");
-
-        rtc_box.append(&rtc_header);
-        rtc_box.append(&rtc_status);
-
-        let rtc_frame = gtk4::Frame::new(None);
-        rtc_frame.add_css_class("smc-panel");
-        rtc_frame.set_child(Some(&rtc_box));
+        let battery_progress = gtk4::ProgressBar::new();
+        battery_progress.set_show_text(false);
+        battery_progress.set_hexpand(true);
+        battery_progress.set_valign(gtk4::Align::Center);
+        battery_progress.add_css_class("overview-meter");
+        let battery_time = gtk4::Label::new(Some("Battery data unavailable"));
+        battery_time.set_halign(gtk4::Align::Start);
+        battery_time.set_xalign(0.0);
+        battery_time.add_css_class("dim-label");
+        battery_time.add_css_class("overview-status");
+        status.add_css_class("overview-status");
 
         // Battery and adapter telemetry
         let power_title = gtk4::Label::new(Some("Power telemetry"));
@@ -1053,10 +1180,23 @@ fn main() {
         sensor_panel.append(&scroll);
 
         // Layout
-        let overview = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
-        overview.set_homogeneous(true);
-        overview.append(&charge_frame);
-        overview.append(&rtc_frame);
+        let overview = gtk4::Grid::new();
+        overview.set_column_spacing(18);
+        overview.set_row_spacing(8);
+        overview.set_column_homogeneous(true);
+        overview.set_margin_top(14);
+        overview.set_margin_bottom(14);
+        overview.set_margin_start(14);
+        overview.set_margin_end(14);
+        overview.attach(&battery_header, 0, 0, 1, 1);
+        overview.attach(&charge_header, 1, 0, 1, 1);
+        overview.attach(&battery_progress, 0, 1, 1, 1);
+        overview.attach(&slider, 1, 1, 1, 1);
+        overview.attach(&battery_time, 0, 2, 1, 1);
+        overview.attach(&status, 1, 2, 1, 1);
+        let overview_frame = gtk4::Frame::new(None);
+        overview_frame.add_css_class("smc-panel");
+        overview_frame.set_child(Some(&overview));
 
         let telemetry = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
         telemetry.set_homogeneous(true);
@@ -1071,7 +1211,7 @@ fn main() {
         vbox.set_margin_bottom(12);
         vbox.set_margin_start(12);
         vbox.set_margin_end(12);
-        vbox.append(&overview);
+        vbox.append(&overview_frame);
         vbox.append(&telemetry);
 
         let root = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
@@ -1082,11 +1222,12 @@ fn main() {
 
         let window = adw::ApplicationWindow::new(app);
         window.set_title(Some("SMC Control"));
-        window.set_default_size(1200, 760);
+        window.set_default_size(800, 760);
         window.set_content(Some(&root));
 
         let updating_slider = Rc::new(RefCell::new(false));
         let last_committed = Rc::new(RefCell::new(None));
+        let battery_current_average = Rc::new(RefCell::new(BatteryCurrentAverage::default()));
         if let Some(ref h) = *hwmon.borrow() {
             initialize_charge_limit(
                 h,
@@ -1096,19 +1237,25 @@ fn main() {
                 &updating_slider,
                 &last_committed,
             );
+            update_battery_overview(
+                &battery_progress,
+                &battery_value,
+                &battery_time,
+                &read_battery_overview(h),
+                &mut battery_current_average.borrow_mut(),
+            );
         } else {
             set_status(&status, "Searching for t2smc...", false);
         }
 
         if let Some(ref r) = *rtc.borrow() {
             if let Some(time) = read_rtc_datetime(r) {
-                rtc_value.set_text(&time);
-                set_status(&rtc_status, &format!("Device: {}", r.display()), false);
+                rtc_value.set_text(&format!("SMC RTC: {time}"));
             } else {
-                set_status(&rtc_status, "Cannot read SMC RTC", true);
+                rtc_value.set_text("SMC RTC: unavailable");
             }
         } else {
-            set_status(&rtc_status, "Searching for SMC RTC...", false);
+            rtc_value.set_text("SMC RTC: searching…");
         }
 
         let value_for_slider = charge_value.clone();
@@ -1194,7 +1341,10 @@ fn main() {
         let power_list_poll = power_list.clone();
         let rtc_poll = rtc.clone();
         let rtc_value_poll = rtc_value.clone();
-        let rtc_status_poll = rtc_status.clone();
+        let battery_progress_poll = battery_progress.clone();
+        let battery_value_poll = battery_value.clone();
+        let battery_time_poll = battery_time.clone();
+        let battery_current_average_poll = battery_current_average.clone();
         timeout_add_local(std::time::Duration::from_secs(1), move || {
             let current_hwmon = hw2.borrow().clone();
             if let Some(h) = current_hwmon {
@@ -1202,6 +1352,13 @@ fn main() {
                 refresh_value_rows(&power_list_poll, &power_rows_poll, &power);
                 let sensors = read_sensors(&h);
                 refresh_sensor_rows(&sensor_list, &sensor_rows_poll, &sensors);
+                update_battery_overview(
+                    &battery_progress_poll,
+                    &battery_value_poll,
+                    &battery_time_poll,
+                    &read_battery_overview(&h),
+                    &mut battery_current_average_poll.borrow_mut(),
+                );
             } else if let Some(h) = find_hwmon() {
                 initialize_charge_limit(
                     &h,
@@ -1218,16 +1375,14 @@ fn main() {
             if let Some(r) = current_rtc {
                 match read_rtc_datetime(&r) {
                     Some(time) => {
-                        rtc_value_poll.set_text(&time);
-                        set_status(&rtc_status_poll, &format!("Device: {}", r.display()), false);
+                        rtc_value_poll.set_text(&format!("SMC RTC: {time}"));
                     }
-                    None => set_status(&rtc_status_poll, "Cannot read SMC RTC", true),
+                    None => rtc_value_poll.set_text("SMC RTC: unavailable"),
                 }
             } else if let Some(r) = find_t2smc_rtc() {
                 if let Some(time) = read_rtc_datetime(&r) {
-                    rtc_value_poll.set_text(&time);
+                    rtc_value_poll.set_text(&format!("SMC RTC: {time}"));
                 }
-                set_status(&rtc_status_poll, &format!("Device: {}", r.display()), false);
                 *rtc_poll.borrow_mut() = Some(r);
             }
             glib::ControlFlow::Continue
@@ -1380,6 +1535,55 @@ mod tests {
         assert_eq!(sensor_label("Th1H"), "Right Fin Stack");
         assert_eq!(sensor_label("Th2H"), "Left Fin Stack");
         assert_eq!(sensor_label("TF0S"), "unknown (TF0S)");
+    }
+
+    #[test]
+    fn calculates_battery_discharge_and_charge_time() {
+        let discharging = BatteryOverview {
+            capacity_percent: Some(80),
+            current_ua: Some(-1_000_000),
+            charge_now_uah: Some(3_000_000),
+            charge_full_uah: Some(4_000_000),
+            adapter_power_uw: Some(0),
+        };
+        assert_eq!(battery_time_text(&discharging, Some(-1_000_000)), "3 h 00 min remaining");
+
+        let charging = BatteryOverview {
+            current_ua: Some(1_000_000),
+            adapter_power_uw: Some(20_000_000),
+            ..discharging
+        };
+        assert_eq!(battery_time_text(&charging, Some(1_000_000)), "1 h 00 min until full");
+    }
+
+    #[test]
+    fn describes_battery_holding_at_charge_limit() {
+        let battery = BatteryOverview {
+            capacity_percent: Some(80),
+            current_ua: Some(0),
+            charge_now_uah: Some(3_000_000),
+            charge_full_uah: Some(4_000_000),
+            adapter_power_uw: Some(7_000_000),
+        };
+        assert_eq!(battery_time_text(&battery, Some(0)), "Holding at 80%");
+    }
+
+    #[test]
+    fn averages_current_after_five_samples_and_resets_on_power_change() {
+        let mut average = BatteryCurrentAverage::default();
+        let mut battery = BatteryOverview {
+            capacity_percent: Some(80),
+            current_ua: Some(-1_000_000),
+            charge_now_uah: Some(3_000_000),
+            charge_full_uah: Some(4_000_000),
+            adapter_power_uw: Some(0),
+        };
+        for _ in 0..4 {
+            assert_eq!(average.update(&battery), None);
+        }
+        assert_eq!(average.update(&battery), Some(-1_000_000));
+        battery.adapter_power_uw = Some(10_000_000);
+        assert_eq!(average.update(&battery), None);
     }
 
     #[test]
