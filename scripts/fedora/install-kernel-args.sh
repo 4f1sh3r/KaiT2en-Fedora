@@ -22,23 +22,6 @@ has_intel_pci_device() {
 	return 1
 }
 
-has_macbook_dgpu() {
-	local class model path vendor
-
-	[[ -r /sys/class/dmi/id/product_name ]] || return 1
-	read -r model </sys/class/dmi/id/product_name
-	[[ "$model" == MacBookPro* ]] || return 1
-
-	for path in /sys/bus/pci/devices/*; do
-		[[ -r "$path/vendor" && -r "$path/class" ]] || continue
-		read -r vendor <"$path/vendor"
-		read -r class <"$path/class"
-		[[ "$vendor" == 0x1002 && "$class" == 0x03* ]] && return 0
-	done
-
-	return 1
-}
-
 repair_empty_grub_cmdline() {
 	local arg cmdline escaped
 	local -a args kept_args=()
@@ -95,6 +78,7 @@ REMOVE_ARGS=(
 )
 
 ADD_ARGS=(
+	"i915.enable_guc=2"
 	"intel_iommu=on"
 	"iommu=pt"
 	"pm_async=off"
@@ -122,11 +106,6 @@ BLACKLIST_MODULES=(
 )
 MODULE_BLACKLIST="module_blacklist=$(IFS=,; printf '%s' "${BLACKLIST_MODULES[*]}")"
 SILENT_BLACKLIST_CONF="/etc/modprobe.d/kait2en-silent-blacklist.conf"
-
-if has_macbook_dgpu; then
-	info "MacBook Pro with AMD dGPU detected; enabling GuC and HuC firmware"
-	ADD_ARGS+=("i915.enable_guc=2")
-fi
 
 ADD_ARGS+=("$INITCALL_BLACKLIST" "$MODULE_BLACKLIST")
 

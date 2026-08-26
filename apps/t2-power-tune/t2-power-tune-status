@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Report package C-state residency over consecutive one-second intervals."""
+import json
+import os
+import re
+import sys
+import time
+
+SOURCE = "/sys/kernel/debug/pmc_core/package_cstate_show"
+INTERVAL = 1
+
+if len(sys.argv) != 2 or not sys.argv[1].isdigit():
+    raise SystemExit("usage: t2-power-tune-status PARENT_PID")
+PARENT_PID = int(sys.argv[1])
+
+
+def parent_alive():
+    try:
+        os.kill(PARENT_PID, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def snapshot():
+    values = {}
+    with open(SOURCE, encoding="ascii") as source:
+        for line in source:
+            match = re.search(r"\bC(\d+)\s*:\s*(\d+)\s*$", line)
+            if match:
+                values[f"C{match.group(1)}"] = int(match.group(2))
+    if not values:
+        raise RuntimeError("package C-state counters are unavailable")
+    return values
+
+
+try:
+    previous = snapshot()
+    while parent_alive():
+        time.sleep(INTERVAL)
+        if not parent_alive():
+            break
+        current = snapshot()
+        deltas = {name: max(0, current.get(name, 0) - previous.get(name, 0))
+                  for name in current}
+        previous = current
+        total = sum(deltas.values())
+        package = {name: value * 100 / total for name, value in deltas.items()} if total else {}
+        print(json.dumps({"package": package}), flush=True)
+except (OSError, ValueError, RuntimeError) as error:
+    raise SystemExit(str(error)) from None

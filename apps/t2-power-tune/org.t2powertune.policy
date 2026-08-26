@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig><vendor>KaiT2en</vendor><vendor_url>https://kait2en.github.io/</vendor_url>
+<action id="org.t2powertune.configure"><description>Configure PCIe ASPM and power-saving tunables</description><message>Authentication is required to change system power tuning</message><defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults><annotate key="org.freedesktop.policykit.exec.path">/usr/local/libexec/t2-power-tune-helper</annotate></action>
+<action id="org.t2powertune.status"><description>Read CPU C-state residency counters</description><message>Authentication is required to read package C-state counters</message><defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>yes</allow_active></defaults><annotate key="org.freedesktop.policykit.exec.path">/usr/local/libexec/t2-power-tune-status</annotate></action>
+</policyconfig>

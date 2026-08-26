@@ -7,11 +7,19 @@ TREE_FILE=$CACHE_ROOT/tree
 
 prepare() {
     local source_rpm source_name source_version source_release source_url
-    local archive sources kernel_tarball redhat_patch kernel_tree trace_header
+    local archive sources kernel_tarball redhat_patch kernel_tree trace_header build_tree
 
     if [[ -r "$TREE_FILE" ]] && kernel_tree=$(<"$TREE_FILE") &&
        [[ -f "$kernel_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c" ]]; then
-        echo "Kernel source cache ready"
+       echo "Kernel source cache ready"
+       return
+    fi
+
+    build_tree=$(readlink -f "/lib/modules/$KVER/build" 2>/dev/null || true)
+    if [[ -n $build_tree && -f "$build_tree/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c" ]]; then
+        mkdir -p "$CACHE_ROOT"
+        printf '%s\n' "$build_tree" >"$TREE_FILE"
+        echo "Kernel build tree ready"
         return
     fi
 
@@ -66,13 +74,18 @@ prepare() {
 }
 
 run_build() {
-    local kernel_tree module_tree
+    local kernel_tree module_tree build_tree
     prepare
     kernel_tree=$(<"$TREE_FILE")
     module_tree=$kernel_tree/drivers/gpu/drm/amd/amdgpu
+    build_tree=$(readlink -f "/lib/modules/$KVER/build" 2>/dev/null || true)
+    [[ -n $build_tree && -d $build_tree ]] || {
+        echo "Kernel build tree is unavailable at /lib/modules/$KVER/build" >&2
+        exit 1
+    }
     while true; do
-        make -s -C "/usr/src/kernels/$KVER" M="$module_tree" clean
-        make -s -j"$(nproc)" -C "/usr/src/kernels/$KVER" M="$module_tree" modules
+        make -s -C "$build_tree" M="$module_tree" clean
+        make -s -j"$(nproc)" -C "$build_tree" M="$module_tree" modules
     done
 }
 

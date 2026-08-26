@@ -9,7 +9,6 @@ replace the in-tree `thunderbolt` driver. Titan Ridge controllers are matched
 through their PCIe switch topology. Ice Lake controllers use Apple's `TRP*`
 ACPI root-port names and are limited to the two Ice Lake NHI PCI IDs.
 
-On Titan Ridge systems the module keeps only the xHCI downstream ports out of
-D3. The xHCI controllers may runtime suspend. This preserves fast system
-resume while allowing the controllers themselves to enter D3hot. PM ordering
-links remain active for the other Thunderbolt hotplug ports and NHIs.
+The module does not override PCI D3 policy. Titan Ridge xHCI controllers and
+their downstream ports remain under the PCI core's runtime-PM policy. PM
+ordering links cover the Thunderbolt hotplug ports and NHIs.
