@@ -99,13 +99,14 @@ initcall_blacklist=cmos_init,magicmouse_driver_init
 module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux
 ```
 
-On MacBook Pro models where PCI discovery finds an AMD display device, the
-installer additionally enables GuC submission and HuC firmware loading for the
-Intel GPU:
+On every T2 Mac, the installer enables HuC firmware loading for the Intel GPU:
 
 ```text
 i915.enable_guc=2
 ```
+
+The value is a bitmask: `2` selects. HuC is
+used by Intel media workloads, including HEVC operations.
 
 KAIT2EN does not install a custom kernel or a separate GRUB configuration file.
 
@@ -203,16 +204,18 @@ outcome of the Bluetooth step is recorded in the installed system at:
 
 ## Desktop applications
 
-`t2-fan-control`, `t2-smc-control`, and `t2-power-explorer` are built from the
-checkout and installed system-wide under `/usr/local`. The MacBookPro15,1 gets
-`t2-hybrid-gpu-control`; other MacBook Pro models with Intel and AMD display
-devices get `t2-dgpu-control`.
+`t2-fan-control`, `t2-smc-control`, `t2-power-explorer`, `t2-cpu-control`, and
+`t2-power-tune` are installed system-wide under `/usr/local`. The
+MacBookPro15,1 gets `t2-hybrid-gpu-control`; other MacBook Pro models with Intel
+and AMD display devices get `t2-dgpu-control`.
 
 | Application | Installed files |
 | --- | --- |
 | T2 Fan Control | `/usr/local/bin/t2-fancontrol-gtk`, `/usr/local/share/applications/org.t2fancontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2fancontrol.gtk.svg`, `/usr/local/lib/systemd/system/t2-fancontrol.service` |
 | T2 SMC Control | `/usr/local/bin/t2-smc-control`, `/usr/local/share/applications/org.t2smccontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2smccontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-t2-smc-charge-limit.service` |
 | T2 Power Explorer | `/usr/local/bin/t2-power-explorer`, `/usr/local/libexec/t2-power-explorer-status`, `/usr/local/share/applications/org.t2powerexplorer.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2powerexplorer.gtk.svg`, `/usr/share/polkit-1/actions/org.t2powerexplorer.policy` |
+| T2 CPU Control | `/usr/local/bin/t2-cpu-control`, `/usr/local/libexec/t2-cpu-control-helper`, `/usr/local/libexec/t2-cpu-control-status`, `/usr/local/libexec/t2-cpu-kernel-benchmark`, `/usr/local/lib/systemd/system/t2-cpu-control.service`, `/usr/local/lib/systemd/system-sleep/t2-cpu-control`, `/usr/local/share/applications/org.t2cpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2cpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2cpucontrol.policy` |
+| T2 Power Tune | `/usr/local/bin/t2-power-tune`, `/usr/local/libexec/t2-power-tune-helper`, `/usr/local/libexec/t2-power-tune-status`, `/usr/local/share/applications/org.t2powertune.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2powertune.gtk.svg`, `/usr/share/polkit-1/actions/org.t2powertune.policy` |
 | T2 Hybrid GPU Control | `/usr/local/bin/t2-hybrid-gpu-control`, `/usr/local/libexec/t2-hybrid-gpu-control-helper`, `/usr/local/libexec/t2-hybrid-gpu-control-status`, `/usr/local/share/applications/org.t2hybridgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2hybridgpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.status.policy` |
 | T2 GPU Control | `/usr/local/bin/t2-dgpu-control`, `/usr/local/libexec/t2-dgpu-control-helper`, `/usr/local/libexec/t2-dgpu-control-status`, `/usr/local/share/applications/org.t2dgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2dgpucontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-dgpu-off.service`, `/usr/local/lib/systemd/system/kait2en-dgpu-suspend.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile-resume.service`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.status.policy` |
 
@@ -223,6 +226,12 @@ T2 Hybrid GPU Control does not install system services. T2 GPU Control enables
 its units only when the corresponding options are applied in the app. Both
 privileged helpers validate the GPU layout and accept only the fixed operations
 exposed by their UI.
+
+T2 Power Tune reads package C-state residency and exposes PCIe ASPM, runtime
+power management, LTR ignore, and additional power tunables. The optional
+`/etc/systemd/system/kait2en-power-tune.service` is created by the app only when
+the user chooses persistent settings. Its runtime selection cache is stored at
+`/run/t2-power-tune/items.json` and disappears on reboot.
 
 `react-drm` is installed for the desktop user only when the DMI product name is
 one of `MacBookPro15,1`, `MacBookPro15,2`, `MacBookPro15,3`, `MacBookPro15,4`,

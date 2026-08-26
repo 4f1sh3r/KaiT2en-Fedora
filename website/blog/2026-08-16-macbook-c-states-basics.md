@@ -244,10 +244,10 @@ We can see it wants to see at least 90112ns for LTR1.2
 Set snoop manually:
 
 ```sh
-# Set snoop Latency to 102.400 ns(Scale 2, Value 100 -> 0x0864)
+# Set snoop Latency to 102.400 us(Scale 2, Value 100 -> 0x0864)
 sudo setpci -s 03:00.0 ECAP_LTR+0x04.w=0x0864
 
-# No-Snoop Latency auf 102.400 ns setzen
+# No-Snoop Latency to 102.400 us
 sudo setpci -s 03:00.0 ECAP_LTR+0x06.w=0x0864
 ```
 
