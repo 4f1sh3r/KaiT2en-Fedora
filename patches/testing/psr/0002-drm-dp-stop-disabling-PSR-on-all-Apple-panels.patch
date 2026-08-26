@@ -1,0 +1,35 @@
+From cde018d44765a08a7d5c4e38120d68e4afdca52d Mon Sep 17 00:00:00 2001
+From: Alexander Fischer <alexander.fischer@kait2en.org>
+Date: Wed, 26 Aug 2026 17:56:54 +0200
+Subject: [PATCH 2/3] drm/dp: stop disabling PSR on all Apple panels
+
+Commit 1035f4a65f58 ("drm/i915: Disable PSR in Apple panels") disabled PSR
+on every Apple eDP panel, with the note that "i915 yet don't support PSR in
+Apple panels, so lets keep it disabled while we work on that". Nothing came
+back to it since.
+
+With the vendor handshake added in the previous patch, PSR works on these
+panels. Drop the entry, they are handled by the i915 DPCD quirk now.
+
+The Apple entry carrying DP_DPCD_QUIRK_CAN_DO_MAX_LINK_RATE_3_24_GBPS is
+not affected, drm_dp_get_quirks() accumulates the quirks of all matching
+entries rather than stopping at the first one.
+
+Signed-off-by: Alexander Fischer <alexander.fischer@kait2en.org>
+---
+ drivers/gpu/drm/display/drm_dp_helper.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/display/drm_dp_helper.c b/drivers/gpu/drm/display/drm_dp_helper.c
+index 51e7134..2ef8161 100644
+--- a/drivers/gpu/drm/display/drm_dp_helper.c
++++ b/drivers/gpu/drm/display/drm_dp_helper.c
+@@ -2540,8 +2540,6 @@ static const struct dpcd_quirk dpcd_quirk_list[] = {
+ 	{ OUI(0x00, 0x22, 0xb9), DEVICE_ID_ANY, true, BIT(DP_DPCD_QUIRK_CONSTANT_N) },
+ 	/* LG LP140WF6-SPM1 eDP panel */
+ 	{ OUI(0x00, 0x22, 0xb9), DEVICE_ID('s', 'i', 'v', 'a', 'r', 'T'), false, BIT(DP_DPCD_QUIRK_CONSTANT_N) },
+-	/* Apple panels need some additional handling to support PSR */
+-	{ OUI(0x00, 0x10, 0xfa), DEVICE_ID_ANY, false, BIT(DP_DPCD_QUIRK_NO_PSR) },
+ 	/* CH7511 seems to leave SINK_COUNT zeroed */
+ 	{ OUI(0x00, 0x00, 0x00), DEVICE_ID('C', 'H', '7', '5', '1', '1'), false, BIT(DP_DPCD_QUIRK_NO_SINK_COUNT) },
+ 	/* Synaptics DP1.4 MST hubs can support DSC without virtual DPCD */

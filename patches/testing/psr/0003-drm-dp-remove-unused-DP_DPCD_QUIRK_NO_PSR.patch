@@ -1,0 +1,50 @@
+From 3ec459fa36375bb10333dbb1c032319a83e4a119 Mon Sep 17 00:00:00 2001
+From: Alexander Fischer <alexander.fischer@kait2en.org>
+Date: Wed, 26 Aug 2026 17:56:54 +0200
+Subject: [PATCH 3/3] drm/dp: remove unused DP_DPCD_QUIRK_NO_PSR
+
+The quirk lost its last user when the Apple entry was dropped from
+dpcd_quirk_list, and i915 was the only driver ever checking it. Remove
+both the definition and the check.
+
+Signed-off-by: Alexander Fischer <alexander.fischer@kait2en.org>
+---
+ drivers/gpu/drm/i915/display/intel_psr.c | 6 ------
+ include/drm/display/drm_dp_helper.h      | 7 -------
+ 2 files changed, 13 deletions(-)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
+index 9f847ca..9b25f03 100644
+--- a/drivers/gpu/drm/i915/display/intel_psr.c
++++ b/drivers/gpu/drm/i915/display/intel_psr.c
+@@ -682,12 +682,6 @@ static void _psr_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *co
+ 	drm_dbg_kms(display->drm, "eDP panel supports PSR version %x\n",
+ 		    connector->dp.psr_caps.dpcd[0]);
+ 
+-	if (drm_dp_has_quirk(&intel_dp->desc, DP_DPCD_QUIRK_NO_PSR)) {
+-		drm_dbg_kms(display->drm,
+-			    "PSR support not currently available for this panel\n");
+-		return;
+-	}
+-
+ 	if (!(intel_dp->edp_dpcd[1] & DP_EDP_SET_POWER_CAP)) {
+ 		drm_dbg_kms(display->drm,
+ 			    "Panel lacks power state control, PSR cannot be enabled\n");
+diff --git a/include/drm/display/drm_dp_helper.h b/include/drm/display/drm_dp_helper.h
+index 1d0acd5..e2300fa 100644
+--- a/include/drm/display/drm_dp_helper.h
++++ b/include/drm/display/drm_dp_helper.h
+@@ -817,13 +817,6 @@ enum drm_dp_quirk {
+ 	 * to 16 bits. So will give a constant value (0x8000) for compatability.
+ 	 */
+ 	DP_DPCD_QUIRK_CONSTANT_N,
+-	/**
+-	 * @DP_DPCD_QUIRK_NO_PSR:
+-	 *
+-	 * The device does not support PSR even if reports that it supports or
+-	 * driver still need to implement proper handling for such device.
+-	 */
+-	DP_DPCD_QUIRK_NO_PSR,
+ 	/**
+ 	 * @DP_DPCD_QUIRK_NO_SINK_COUNT:
+ 	 *
