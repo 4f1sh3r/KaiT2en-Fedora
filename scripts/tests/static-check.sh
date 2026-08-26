@@ -26,6 +26,7 @@ shell_files=(
 	scripts/fedora/lib.sh
 	scripts/macos/download-fedora-iso.sh
 	scripts/macos/prepare-fedora-installer.sh
+	scripts/copr/make-kernel-srpm.sh
 	scripts/tests/edition-catalog.sh
 	scripts/tests/iso-download.sh
 	scripts/tests/install-launcher.sh
