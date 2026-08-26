@@ -1,0 +1,31 @@
+<!-- kait2en-copr -->
+COPR test kernel built successfully.
+
+- Experiment: `@EXPERIMENT@`
+- Build: @BUILD_URL@
+- COPR: `@COPR_PROJECT@`
+- Kernel NVR: `@NVR@`
+- Kernel release: `@KVER@`
+
+Install:
+
+```bash
+sudo dnf copr enable @COPR_PROJECT@
+sudo dnf install kernel-@NVR@ kernel-devel-@NVR@
+sudo reboot
+```
+
+Remove:
+
+```bash
+sudo dnf remove kernel-@NVR@ kernel-devel-@NVR@
+sudo dnf copr disable @COPR_PROJECT@
+```
+
+Warnings:
+
+- If it does not boot, select the Fedora kernel in GRUB's advanced menu or use
+  `kait2en-rescue` from the live USB.
+- On T2 Macs with an AMD dGPU, `install-gpu-runtime-pm.sh` cannot obtain this
+  COPR kernel's SRPM from Koji. Its AMDGPU runtime-PM patches are therefore
+  absent.
