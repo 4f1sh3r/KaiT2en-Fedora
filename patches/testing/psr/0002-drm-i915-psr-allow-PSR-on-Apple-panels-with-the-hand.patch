@@ -1,0 +1,39 @@
+From a5c699f92dc65239c97e8b729a215a8acdf0e79f Mon Sep 17 00:00:00 2001
+From: Alexander Fischer <alexander.fischer@kait2en.org>
+Date: Fri, 28 Aug 2026 00:37:22 +0200
+Subject: [PATCH 2/2] drm/i915/psr: allow PSR on Apple panels with the
+ handshake quirk
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Commit 1035f4a65f58 ("drm/i915: Disable PSR in Apple panels") disabled PSR
+until i915 gained the needed panel handling.
+
+The previous patch adds that handling. Skip the DP_DPCD_QUIRK_NO_PSR check
+on panels that have the new quirk. Every other Apple panel keeps it.
+
+Signed-off-by: Alexander Fischer <alexander.fischer@kait2en.org>
+Tested-by: André Eikmeyer <andre.eikmeyer@kait2en.org>
+Tested-by: Yossef Osman <yossef.osman@proton.me>
+---
+ drivers/gpu/drm/i915/display/intel_psr.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
+index 9f847ca..d3a62b5 100644
+--- a/drivers/gpu/drm/i915/display/intel_psr.c
++++ b/drivers/gpu/drm/i915/display/intel_psr.c
+@@ -682,7 +682,8 @@ static void _psr_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *co
+ 	drm_dbg_kms(display->drm, "eDP panel supports PSR version %x\n",
+ 		    connector->dp.psr_caps.dpcd[0]);
+ 
+-	if (drm_dp_has_quirk(&intel_dp->desc, DP_DPCD_QUIRK_NO_PSR)) {
++	if (drm_dp_has_quirk(&intel_dp->desc, DP_DPCD_QUIRK_NO_PSR) &&
++	    !intel_has_dpcd_quirk(intel_dp, QUIRK_APPLE_PSR_HANDSHAKE)) {
+ 		drm_dbg_kms(display->drm,
+ 			    "PSR support not currently available for this panel\n");
+ 		return;
+-- 
+2.55.0
+
