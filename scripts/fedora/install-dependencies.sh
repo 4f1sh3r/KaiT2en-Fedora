@@ -9,6 +9,17 @@ require_command dnf
 
 KVER="$(kernel_release)"
 
+if [[ "$KVER" == *.fc*.x86_64 ]]; then
+	development_package=("kernel-devel-$KVER")
+else
+	build_link="/lib/modules/$KVER/build"
+	[[ -f "$build_link/Makefile" ]] ||
+		fail "custom kernel build tree is unavailable at $build_link"
+	build_tree=$(readlink -f "$build_link")
+	info "using custom kernel build tree $build_tree"
+	development_package=()
+fi
+
 info "installing Fedora build and runtime dependencies for $KVER"
 dnf install -y \
 	acpica-tools \
@@ -19,7 +30,7 @@ dnf install -y \
 	make \
 	python3 \
 	pkgconf-pkg-config \
-	kernel-devel-"$KVER" \
+	"${development_package[@]}" \
 	kernel-headers \
 	elfutils-libelf-devel \
 	dracut \
