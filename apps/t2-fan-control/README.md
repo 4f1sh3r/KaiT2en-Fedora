@@ -23,7 +23,7 @@ The controller deliberately keeps normal component cooling and retained system h
 
 The editable fan curve follows the hotter of the CPU and GPU. It does not use an average and it does not use unrelated board, storage or enclosure sensors.
 
-- CPU is the arithmetic mean of the SMC sensors `TC0E` (CPU 1 Die 1) and `TC0F` (CPU 1 Die 2). If only one is readable, that reading is used.
+- CPU is the arithmetic mean of the SMC sensors `TC0E` (CPU 1 Diode Virtual) and `TC0F` (CPU 1 Diode Filtered). If only one is readable, that reading is used.
 - GPU is the highest available reading from GPU Proximity, GPU Die digital, GPU Die analog and GPU Voltage Regulator.
 - If no GPU temperature is available, the curve follows CPU alone. The UI changes its description accordingly.
 - If only a GPU temperature is available, the curve follows GPU alone.
@@ -75,7 +75,7 @@ Fan percentages are relative to each fan's reported minimum and maximum RPM. The
 
 ### Monitoring values
 
-`Hottest sensor` is informational and is independent of the fan-curve input. It reports the highest positive reading among all monitored sensors using a human-readable name, for example `PCH Die · 78 C`. The fan details show how many valid temperature sensors are currently being monitored.
+`Hottest sensor` is informational and is independent of the fan-curve input. It reports the highest positive reading among all monitored sensors using a human-readable name, for example `PCH Diode · 78 C`. The fan details show how many valid temperature sensors are currently being monitored.
 
 ## Default configuration
 
