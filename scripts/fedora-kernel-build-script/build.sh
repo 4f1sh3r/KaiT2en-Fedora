@@ -3,14 +3,21 @@ set -euo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 PATCH_DIR=$ROOT/patches
-BUILD_ROOT=$ROOT/build
+BUILD_ROOT=${KERNEL_BUILD_ROOT:-$ROOT/build}
 LOCALVERSION=-patched
 CONFIG_FILE=
 KERNEL_RELEASE=
 JOBS=$(nproc)
 CLEAN=0
 LOCAL_INSTALL=0
+DEFER_INSTALL=0
 T2_CONFIG=0
+PREPARE_ONLY=0
+LOCALMODCONFIG=0
+ALLOW_NO_PATCHES=0
+BUILD_CONFIG_SCHEMA=4
+ENABLE_CONFIGS=()
+HAS_AMD_DGPU=0
 
 usage() {
 	cat <<EOF
@@ -24,7 +31,12 @@ Options:
   --localversion SUFFIX  Set a unique suffix (default: -patched)
   --jobs NUMBER          Parallel build jobs (default: $JOBS)
   --local-install        Build and install directly instead of creating RPMs
+  --defer-install        Build local targets without installing them
   --t2-config            Disable drivers not used by Apple T2 Macs
+  --localmodconfig       Reduce the configuration to currently loaded modules
+  --allow-no-patches     Permit an empty patch folder (configuration preview)
+  --enable-config NAME   Enable an additional Kconfig symbol (repeatable)
+  --prepare-only         Download, patch and configure without building
   --clean                Remove this version's existing build first
 EOF
 	exit 2
@@ -61,8 +73,29 @@ while [[ $# -gt 0 ]]; do
 		LOCAL_INSTALL=1
 		shift
 		;;
+	--defer-install)
+		DEFER_INSTALL=1
+		shift
+		;;
 	--t2-config)
 		T2_CONFIG=1
+		shift
+		;;
+	--localmodconfig)
+		LOCALMODCONFIG=1
+		shift
+		;;
+	--allow-no-patches)
+		ALLOW_NO_PATCHES=1
+		shift
+		;;
+	--enable-config)
+		[[ $# -ge 2 && $2 =~ ^[A-Z0-9_]+$ ]] || usage
+		ENABLE_CONFIGS+=("$2")
+		shift 2
+		;;
+	--prepare-only)
+		PREPARE_ONLY=1
 		shift
 		;;
 	--clean)
@@ -72,6 +105,13 @@ while [[ $# -gt 0 ]]; do
 	*) usage ;;
 	esac
 done
+
+# T2 MacBook Pros with a discrete GPU use AMD graphics.  Keep this detection
+# independent of loaded modules: localmodconfig may run while the dGPU is off.
+if command -v lspci >/dev/null 2>&1 &&
+		lspci -Dn 2>/dev/null | grep -Eqi ' (0300|0302): 1002:'; then
+	HAS_AMD_DGPU=1
+fi
 
 [[ -d $PATCH_DIR ]] || {
 	printf 'Patch directory does not exist: %s\n' "$PATCH_DIR" >&2
@@ -84,12 +124,22 @@ PATCH_DIR=$(cd -- "$PATCH_DIR" && pwd -P)
 	exit 2
 }
 
-for command in cpio curl find gcc git install make nproc patch rpm2cpio sed sha256sum sort tar uname xz; do
+for command in cpio curl find gcc git install make nproc patch rpm2cpio sed sha256sum sort tar uname xz yes; do
 	command -v "$command" >/dev/null || {
 		printf 'Missing command: %s\n' "$command" >&2
 		exit 1
 	}
 done
+if ((LOCAL_INSTALL && !DEFER_INSTALL)); then
+	command -v pkexec >/dev/null || {
+		printf 'Missing command: pkexec\n' >&2
+		exit 1
+	}
+	[[ -x /usr/local/libexec/t2-kernel-builder-cleanup ]] || {
+		printf 'Kernel installation helper is not installed.\n' >&2
+		exit 1
+	}
+fi
 
 select_kernel_release() {
 	local fedora_release version release choice
@@ -156,13 +206,18 @@ esac
 VERSION=${PACKAGE_RELEASE%%-*}
 RELEASE=${PACKAGE_RELEASE#*-}
 [[ -n $VERSION && -n $RELEASE && $VERSION != "$RELEASE" ]] || usage
+KERNEL_LOCALVERSION=-${RELEASE}.x86_64${LOCALVERSION}
 
 SRPM=kernel-$VERSION-$RELEASE.src.rpm
 URL=https://kojipkgs.fedoraproject.org/packages/kernel/$VERSION/$RELEASE/src/$SRPM
 WORK=$BUILD_ROOT/$KERNEL_RELEASE
 
 if ((CLEAN)); then
-	rm -rf -- "$WORK"
+	# Keep the verified SRPM and its extracted source payload. Recreate only the
+	# derived patched/configured kernel tree when build inputs changed.
+	rm -rf -- "$WORK/kernel"
+	rm -f -- "$WORK/.prepared" "$WORK/input-hash" "$WORK/kernel-tree" \
+		"$WORK/built-kernel-tree" "$WORK/built-kernel-release"
 fi
 
 mkdir -p "$WORK/download" "$WORK/sources" "$WORK/kernel"
@@ -170,22 +225,30 @@ mkdir -p "$WORK/download" "$WORK/sources" "$WORK/kernel"
 shopt -s nullglob
 PATCHES=("$PATCH_DIR"/*.patch)
 shopt -u nullglob
-if ((${#PATCHES[@]} == 0)); then
+if ((${#PATCHES[@]} == 0 && !ALLOW_NO_PATCHES)); then
 	printf 'No patches found in %s\n' "$PATCH_DIR" >&2
 	exit 1
 fi
 
-INPUT_HASH=$(
-	printf '%s\0%s\0' "$KERNEL_RELEASE" "$LOCALVERSION"
+INPUT_HASH=$({
+	printf '%s\0%s\0' "$KERNEL_RELEASE" "$KERNEL_LOCALVERSION"
+	printf 'build-config-schema=%s\0' "$BUILD_CONFIG_SCHEMA"
+	printf 'patch-count=%s\0' "${#PATCHES[@]}"
 	if ((T2_CONFIG)); then
 		printf 't2-config\0'
+		printf 'amd-dgpu=%s\0' "$HAS_AMD_DGPU"
 	fi
-	sha256sum "${PATCHES[@]}"
+	if ((LOCALMODCONFIG)); then
+		printf 'localmodconfig\0'
+	fi
+	printf 'enable-config=%s\0' "${ENABLE_CONFIGS[@]}"
+	if ((${#PATCHES[@]})); then
+		sha256sum "${PATCHES[@]}"
+	fi
 	if [[ -n $CONFIG_FILE ]]; then
 		sha256sum "$CONFIG_FILE"
 	fi
-)
-INPUT_HASH=$(printf '%s' "$INPUT_HASH" | sha256sum | awk '{print $1}')
+} | sha256sum | awk '{print $1}')
 
 if [[ -f $WORK/input-hash && $(<"$WORK/input-hash") != "$INPUT_HASH" ]]; then
 	printf 'Build inputs changed. Re-run with --clean.\n' >&2
@@ -219,7 +282,9 @@ if [[ ! -f $WORK/.prepared ]]; then
 	TREE=$(find "$WORK/kernel" -mindepth 1 -maxdepth 1 -type d -name 'linux-*' -print -quit)
 	[[ -n $TREE ]]
 	git -C "$TREE" init -q
-	git -C "$TREE" apply "$REDHAT_PATCH"
+	# Fedora's generated downstream patch can contain intentional trailing
+	# whitespace. Keep diagnostics enabled for user-supplied patches below.
+	git -C "$TREE" apply --whitespace=nowarn "$REDHAT_PATCH"
 	install -m 0644 "$WORK/sources/Makefile.rhelver" "$TREE/Makefile.rhelver"
 	for patch_file in "${PATCHES[@]}"; do
 		printf 'Applying %s\n' "${patch_file##*/}"
@@ -233,14 +298,14 @@ if [[ ! -f $WORK/.prepared ]]; then
 	fi
 
 	"$TREE/scripts/config" --file "$TREE/.config" \
-		--set-str LOCALVERSION "$LOCALVERSION" \
+		--set-str LOCALVERSION "$KERNEL_LOCALVERSION" \
 		--disable LOCALVERSION_AUTO \
 		--set-str SYSTEM_TRUSTED_KEYS '' \
 		--set-str SYSTEM_REVOCATION_KEYS ''
 
-		if ((T2_CONFIG)); then
+	if ((T2_CONFIG)); then
 		"$TREE/scripts/config" --file "$TREE/.config" --disable \
-			DRM_NOUVEAU --disable DRM_RADEON --disable DRM_XE \
+			DRM_AMDGPU --disable DRM_NOUVEAU --disable DRM_RADEON --disable DRM_XE \
 			--disable CHROME_PLATFORMS --disable SURFACE_PLATFORMS \
 			--disable ACER_WMI --disable ASUS_WMI --disable ASUS_NB_WMI \
 			--disable DELL_LAPTOP --disable DELL_WMI \
@@ -270,6 +335,44 @@ if [[ ! -f $WORK/.prepared ]]; then
 			--disable PATA_ALI --disable PATA_VIA --disable PATA_SIS \
 			--disable PATA_AMD --disable PATA_ATIIXP --disable PATA_JMICRON
 	fi
+	if ((LOCALMODCONFIG)); then
+		printf '[kait2en-progress] phase=localmodconfig\n'
+		# Fedora's localmodconfig invokes oldconfig and otherwise waits forever
+		# for answers when new symbols remain after module streamlining.
+		set +o pipefail
+		yes '' | make -C "$TREE" localmodconfig
+		localmod_status=${PIPESTATUS[1]}
+		set -o pipefail
+		((localmod_status == 0)) || exit "$localmod_status"
+	fi
+	if ((T2_CONFIG)); then
+		# t2hid is needed for the internal keyboard/trackpad even on models
+		# without a Touch Bar.  The shared t2touchbar DKMS build also links its
+		# keyboard module, which requires sparse-keymap symbols from the kernel.
+		# USB4 must also survive localmodconfig: pcie_ports=compat can keep the
+		# in-tree Thunderbolt driver unloaded while the profile is captured.
+		"$TREE/scripts/config" --file "$TREE/.config" \
+			--enable INPUT_SPARSEKMAP \
+			--enable HOTPLUG_PCI \
+			--enable HOTPLUG_PCI_PCIE
+
+		if ((HAS_AMD_DGPU)); then
+			# t2gmux replaces apple_gmux at runtime, but builds against helpers
+			# exposed by apple-gmux.h only when CONFIG_APPLE_GMUX is configured.
+			"$TREE/scripts/config" --file "$TREE/.config" \
+				--enable BACKLIGHT_CLASS_DEVICE \
+				--enable VGA_SWITCHEROO \
+				--module APPLE_GMUX
+		fi
+	fi
+	for symbol in "${ENABLE_CONFIGS[@]}"; do
+		"$TREE/scripts/config" --file "$TREE/.config" --enable "$symbol"
+	done
+	if ((T2_CONFIG)); then
+		# Keep the normal in-tree Thunderbolt driver modular.  This comes after
+		# GUI overrides so the T2 profile cannot accidentally turn it built-in.
+		"$TREE/scripts/config" --file "$TREE/.config" --module USB4
+	fi
 	make -C "$TREE" olddefconfig
 	printf '%s\n' "$TREE" >"$WORK/kernel-tree"
 	printf '%s\n' "$INPUT_HASH" >"$WORK/input-hash"
@@ -277,29 +380,41 @@ if [[ ! -f $WORK/.prepared ]]; then
 fi
 
 TREE=$(<"$WORK/kernel-tree")
+
+if ((PREPARE_ONLY)); then
+	printf 'Prepared kernel tree: %s\n' "$TREE"
+	printf 'Prepared kernel release: %s\n' "$(make -s -C "$TREE" kernelrelease)"
+	exit 0
+fi
 install -m 0644 "$WORK/sources/Makefile.rhelver" "$TREE/Makefile.rhelver"
-printf 'Building %s%s with %s jobs\n' "$VERSION" "$LOCALVERSION" "$JOBS"
+printf 'Building %s%s with %s jobs\n' "$VERSION" "$KERNEL_LOCALVERSION" "$JOBS"
 
 if ((LOCAL_INSTALL)); then
-	sudo -v
-	(
-		while sleep 60; do
-			sudo -n -v || exit
-		done
-	) &
-	SUDO_KEEPALIVE_PID=$!
-	trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true; wait "$SUDO_KEEPALIVE_PID" 2>/dev/null || true' EXIT
+	BUILD_TARGETS=(bzImage modules)
+	BUILD_OPTIONS=()
+else
+	BUILD_TARGETS=(binrpm-pkg)
+	BUILD_OPTIONS=(RPMOPTS=--nodeps)
+fi
 
-	make -C "$TREE" -j"$JOBS" bzImage modules
+if ((LOCAL_INSTALL)); then
+	make -C "$TREE" -j"$JOBS" "${BUILD_TARGETS[@]}"
 	KERNELRELEASE=$(make -s -C "$TREE" kernelrelease)
+	if ((DEFER_INSTALL)); then
+		printf '%s\n' "$TREE" >"$WORK/built-kernel-tree"
+		printf '%s\n' "$KERNELRELEASE" >"$WORK/built-kernel-release"
+		printf 'Built kernel tree: %s\n' "$TREE"
+		printf 'Built kernel release: %s\n' "$KERNELRELEASE"
+		exit 0
+	fi
+	printf '[kait2en-progress] phase=installing\n'
 	printf 'Installing %s locally\n' "$KERNELRELEASE"
-	sudo make -C "$TREE" INSTALL_MOD_STRIP=1 modules_install
-	sudo make -C "$TREE" install
+	pkexec /usr/local/libexec/t2-kernel-builder-cleanup install-kernel "$TREE" "$KERNELRELEASE"
 	printf '\nInstalled kernel release: %s\n' "$KERNELRELEASE"
 	exit 0
 fi
 
-make -C "$TREE" -j"$JOBS" RPMOPTS=--nodeps binrpm-pkg
+make -C "$TREE" -j"$JOBS" "${BUILD_OPTIONS[@]}" "${BUILD_TARGETS[@]}"
 
 printf '\nBuilt RPMs:\n'
 find "$TREE/rpmbuild/RPMS" -type f -name '*.rpm' -print | sort

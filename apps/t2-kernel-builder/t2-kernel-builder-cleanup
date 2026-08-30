@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+import glob
+import os
+import pathlib
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+
+def fail(message):
+    print(f"t2-kernel-builder-cleanup: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+if os.geteuid() != 0: fail("must run as root")
+
+if len(sys.argv) == 4 and sys.argv[1] == "install-kernel":
+    tree = pathlib.Path(sys.argv[2]).resolve()
+    release = sys.argv[3]
+    if not re.fullmatch(r"[A-Za-z0-9._+-]+", release): fail("invalid kernel release")
+    try:
+        caller_uid = int(os.environ["PKEXEC_UID"])
+        caller_home = pathlib.Path(pwd.getpwuid(caller_uid).pw_dir).resolve()
+        tree.relative_to(caller_home)
+    except (KeyError, ValueError, OSError):
+        fail("cannot identify the calling user")
+    if not tree.is_dir() or not (tree / "Makefile").is_file(): fail("invalid kernel source tree")
+    if tree.stat().st_uid != caller_uid: fail("kernel source tree is not owned by the calling user")
+    actual = subprocess.run(["make", "-s", "-C", str(tree), "kernelrelease"],
+                            text=True, capture_output=True)
+    if actual.returncode or actual.stdout.strip() != release: fail("kernel release validation failed")
+    subprocess.run(["make", "-C", str(tree), "INSTALL_MOD_STRIP=1", "modules_install"], check=True)
+    subprocess.run(["make", "-C", str(tree), "install"], check=True)
+    raise SystemExit(0)
+
+if len(sys.argv) != 3 or sys.argv[1] != "remove-kernel": fail("invalid arguments")
+release = sys.argv[2]
+if not re.fullmatch(r"[A-Za-z0-9._+-]+", release): fail("invalid kernel release")
+if release == os.uname().release: fail("refusing to remove the running kernel")
+if "rescue" in release.lower(): fail("refusing to remove a rescue kernel")
+
+module_dir = f"/lib/modules/{release}"
+if not os.path.isdir(module_dir): fail(f"kernel is not installed: {release}")
+
+query = subprocess.run(["rpm", "-q", "--whatprovides", f"kernel-core-uname-r = {release}"],
+                       text=True, capture_output=True)
+if query.returncode == 0:
+    package = query.stdout.splitlines()[0].strip()
+    if not package.startswith("kernel-core-"): fail(f"unexpected package provider: {package}")
+    raise SystemExit(subprocess.run(["dnf", "remove", "-y", package]).returncode)
+
+shutil.rmtree(module_dir)
+for pattern in (f"/boot/vmlinuz-{release}", f"/boot/initramfs-{release}.img",
+                f"/boot/System.map-{release}", f"/boot/config-{release}",
+                f"/boot/loader/entries/*{release}*.conf"):
+    for path in glob.glob(pattern):
+        if os.path.isfile(path) or os.path.islink(path): os.unlink(path)
+subprocess.run(["depmod", "-a"], check=False)
+subprocess.run(["grub2-mkconfig", "-o", "/boot/grub2/grub.cfg"], check=False)
