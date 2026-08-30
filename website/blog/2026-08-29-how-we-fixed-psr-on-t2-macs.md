@@ -24,7 +24,7 @@ I did some research and found an old driver commit: [`1035f4a65f58`](https://git
 
 Eight years later, that restriction was still there, so I simply removed it and tried again. :)
 
-The panel reported PSR support and the Intel driver enabled the standard PSR register. Unfortunately, the panel never actually captured the current frame. The result was blinking and flickering. Sometimes the display stayed black for a moment before recovering.
+The panel reported PSR support and the Intel driver enabled the standard PSR register. Unfortunately, the panel never actually captured the current frame. The result was blinking and flickering. Sometimes the display stayed black for a moment before recovering. Or, as @deqrocks discovered even earlier than me: "it turned my bedroom into a 90ies discotheque."
 
 Clearly, something was missing. Apple always "thinks differently."
 
