@@ -15,7 +15,8 @@ usage() {
 Usage: $0 --buildid SUFFIX [options]
 
 Options:
-  --kernel-release NVR.arch  Fedora kernel release (default: latest in repos)
+  --kernel-release RELEASE   Fedora kernel series (for example 7.2) or exact
+                             NVR.arch (default: latest in Fedora repos)
   --buildid SUFFIX           Unique suffix after .kait2en (required)
   --patch-dir DIRECTORY      Experiment directory containing patches (required)
   --out DIRECTORY            Output directory (default: ./out)
@@ -74,7 +75,7 @@ if ((!full_config)); then
 	}
 fi
 
-for command in awk dnf find grep install mktemp rpm rpmbuild sed sort; do
+for command in awk curl dnf find grep install mktemp rpm rpmbuild sed sort; do
 	command -v "$command" >/dev/null || {
 		printf 'Missing command: %s\n' "$command" >&2
 		exit 1
@@ -92,20 +93,69 @@ mkdir -p "$download_dir" \
 	"$topdir/BUILD" "$topdir/BUILDROOT" "$topdir/RPMS" \
 	"$topdir/SOURCES" "$topdir/SPECS" "$topdir/SRPMS"
 
-kernel_query=kernel
-if [[ -n $kernel_release ]]; then
-	case $kernel_release in
-	*.x86_64) kernel_query=kernel-${kernel_release%.x86_64} ;;
-	*)
-		printf 'Expected NVR.arch such as 7.1.9-200.fc44.x86_64: %s\n' \
+koji_base_url=https://kojipkgs.fedoraproject.org/packages/kernel
+if [[ -z $kernel_release ]]; then
+	printf '%s\n' 'Downloading latest Fedora kernel source package from repositories'
+	dnf download --source --destdir "$download_dir" \
+		--disablerepo='*' --enablerepo=fedora --enablerepo=updates kernel
+elif [[ $kernel_release =~ ^[0-9]+\.[0-9]+$ ]]; then
+	fedora_release=$(rpm -E '%fedora')
+	[[ $fedora_release =~ ^[0-9]+$ ]] || {
+		printf 'Could not determine the Fedora release: %s\n' \
+			"$fedora_release" >&2
+		exit 1
+	}
+	series_pattern=${kernel_release//./\\.}
+	mapfile -t versions < <(
+		curl -fsSL "$koji_base_url/" |
+			sed -n 's/.*href="\([0-9][^"]*\)\/".*/\1/p' |
+			grep -E "^${series_pattern}\\.[0-9]+$" |
+			LC_ALL=C sort -Vr
+	)
+	((${#versions[@]} > 0)) || {
+		printf 'No Fedora kernel versions found for series %s in Koji.\n' \
 			"$kernel_release" >&2
-		exit 2
-		;;
-	esac
+		exit 1
+	}
+
+	selected_version=
+	selected_release=
+	for version in "${versions[@]}"; do
+		mapfile -t releases < <(
+			curl -fsSL "$koji_base_url/$version/" |
+				sed -n 's/.*href="\([^"]*\.fc[0-9][0-9]*\)\/".*/\1/p' |
+				grep -E "\\.fc${fedora_release}$" |
+				LC_ALL=C sort -Vr
+		)
+		if ((${#releases[@]} > 0)); then
+			selected_version=$version
+			selected_release=${releases[0]}
+			break
+		fi
+	done
+	[[ -n $selected_release ]] || {
+		printf 'No Fedora %s kernel build found for series %s in Koji.\n' \
+			"$fedora_release" "$kernel_release" >&2
+		exit 1
+	}
+	kernel_release=$selected_version-$selected_release.x86_64
+elif [[ ! $kernel_release =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z][0-9A-Za-z._+~]*\.fc[0-9]+\.x86_64$ ]]; then
+	printf 'Expected a series such as 7.2 or exact NVR.arch such as %s: %s\n' \
+		'7.2.0-200.fc44.x86_64' "$kernel_release" >&2
+	exit 2
 fi
 
-printf 'Downloading Fedora source package for %s\n' "$kernel_query"
-dnf download --source --destdir "$download_dir" "$kernel_query"
+if [[ -n $kernel_release ]]; then
+	package_release=${kernel_release%.x86_64}
+	version=${package_release%%-*}
+	release=${package_release#*-}
+	source_rpm_name=kernel-$version-$release.src.rpm
+	source_url=$koji_base_url/$version/$release/src/$source_rpm_name
+	printf 'Downloading Fedora kernel source package %s\n' "$kernel_release"
+	curl --fail --location --retry 5 --retry-all-errors --retry-delay 5 \
+		--output "$download_dir/$source_rpm_name" "$source_url"
+fi
+
 mapfile -t srpms < <(find "$download_dir" -maxdepth 1 -type f \
 	-name 'kernel-*.src.rpm' -print | sort -V)
 [[ ${#srpms[@]} -eq 1 ]] || {
@@ -114,6 +164,15 @@ mapfile -t srpms < <(find "$download_dir" -maxdepth 1 -type f \
 	exit 1
 }
 source_rpm=${srpms[0]}
+base_version=$(rpm -qp --qf '%{VERSION}' "$source_rpm")
+base_release=$(rpm -qp --qf '%{RELEASE}' "$source_rpm")
+base_kver=$base_version-$base_release.x86_64
+if [[ -n $kernel_release && $base_kver != "$kernel_release" ]]; then
+	printf 'Downloaded kernel release %s does not match requested release %s.\n' \
+		"$base_kver" "$kernel_release" >&2
+	exit 1
+fi
+printf 'Selected Fedora kernel base: %s\n' "$base_kver"
 
 rpm -i --nodeps --define "_topdir $topdir" "$source_rpm"
 spec=$topdir/SPECS/kernel.spec
@@ -242,12 +301,14 @@ kver=$(rpm -qp --qf '%{VERSION}-%{RELEASE}.x86_64' "$output_srpm")
 
 printf 'srpm=%s\n' "$output_srpm"
 printf 'srpm_name=%s\n' "${output_srpm##*/}"
+printf 'base_kver=%s\n' "$base_kver"
 printf 'nvr=%s\n' "$nvr"
 printf 'kver=%s\n' "$kver"
 if [[ -n ${GITHUB_OUTPUT:-} ]]; then
 	{
 		printf 'srpm=%s\n' "$output_srpm"
 		printf 'srpm_name=%s\n' "${output_srpm##*/}"
+		printf 'base_kver=%s\n' "$base_kver"
 		printf 'nvr=%s\n' "$nvr"
 		printf 'kver=%s\n' "$kver"
 	} >>"$GITHUB_OUTPUT"
