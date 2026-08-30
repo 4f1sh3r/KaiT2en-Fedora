@@ -22,5 +22,5 @@ suspend/resume.
 On dual-GPU machines the internal panel must be driven by the Intel GPU; see
 `howto/06-configuring-gpus.md`.
 
-This test-build copy is rebased on Linux v7.1.10. The submission copy is based
-on drm-tip and has the same commit message and code changes.
+The test build uses the drm-tip-based submission copy unchanged. It also
+applies cleanly to Fedora's patched Linux 7.2.2 source tree.
