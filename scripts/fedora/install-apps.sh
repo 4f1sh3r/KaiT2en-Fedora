@@ -134,10 +134,10 @@ install_gpu_control() {
 }
 
 install_react_drm() {
-	local target_user target_home target_uid target_group src dst
+	local target_user target_home target_uid target_group src dst backup_dir relative
 	local installed_node_packages=() package daemon unit group groups
 	local missing_groups=()
-	local service_dir service_file temporary_file workdir_q start_q detach_q
+	local service_dir service_file temporary_file env_q workdir_q start_q detach_q
 	local app_dir launcher_file launcher_tmp
 	local desktop extension_uuid extension_src extension_dst
 	if ! has_t2_touchbar_model; then
@@ -160,7 +160,7 @@ install_react_drm() {
 
 	src="$REPO_ROOT/apps/react-drm"
 	dst="$target_home/react-drm"
-	for package in package.json package-lock.json system/99-react-drm.rules system/react-drm.service system/react-drm-tb-detach; do
+	for package in package.json package-lock.json .env.example.kait2en system/99-react-drm-kait2en.rules system/react-drm.service system/react-drm-tb-detach; do
 		[[ -r "$src/$package" ]] || fail "react-drm deployment file is missing: $package"
 	done
 	extension_uuid="window-monitor-pro@muhammed.hussien2030.gmail.com"
@@ -221,8 +221,12 @@ install_react_drm() {
 	info "removing conflicting Touch Bar daemons"
 	for daemon in "${REACT_DRM_CONFLICT_DAEMONS[@]}"; do
 		unit="${daemon}.service"
-		systemctl disable --now "$unit" >/dev/null 2>&1 || true
-		run_as_target systemctl --user disable --now "$unit" >/dev/null 2>&1 || true
+		if systemctl cat "$unit" >/dev/null 2>&1; then
+			systemctl disable --now "$unit"
+		fi
+		if run_as_target systemctl --user cat "$unit" >/dev/null 2>&1; then
+			run_as_target systemctl --user disable --now "$unit"
+		fi
 		if rpm -q "$daemon" >/dev/null 2>&1; then
 			dnf remove -y "$daemon"
 		fi
@@ -245,12 +249,25 @@ install_react_drm() {
 
 	info "installing react-drm udev rules"
 	install -d -o root -g root -m 0755 /etc/udev/rules.d
-	install -o root -g root -m 0644 "$src/system/99-react-drm.rules" /etc/udev/rules.d/99-react-drm.rules
+	rm -f /etc/udev/rules.d/99-react-drm-uinput.rules
+	install -o root -g root -m 0644 \
+		"$src/system/99-react-drm-kait2en.rules" \
+		/etc/udev/rules.d/99-react-drm.rules
 	udevadm control --reload
 	udevadm trigger --action=add --subsystem-match=usb --subsystem-match=backlight
 	udevadm trigger --action=add --subsystem-match=misc --sysname-match=uinput
 
 	info "copying react-drm source to $dst"
+	backup_dir=$(mktemp -d /tmp/react-drm-user-data.XXXXXX)
+	for relative in \
+		.env \
+		linux-touchbar-control-center/config.ts \
+		linux-touchbar-control-center/custom-layer.json
+	do
+		if [[ -f "$dst/$relative" ]]; then
+			install -D -m 0644 "$dst/$relative" "$backup_dir/$relative"
+		fi
+	done
 	rm -rf "$dst"
 	install -d -o "$target_user" -g "$target_group" -m 0755 "$dst"
 	tar -C "$src" \
@@ -259,6 +276,20 @@ install_react_drm() {
 		--exclude='dist' \
 		--exclude='linux-touchbar-control-center/dist' \
 		-cf - . | tar -C "$dst" -xf -
+	if [[ -f "$backup_dir/.env" ]]; then
+		install -m 0644 "$backup_dir/.env" "$dst/.env"
+	else
+		install -m 0644 "$src/.env.example.kait2en" "$dst/.env"
+	fi
+	for relative in \
+		linux-touchbar-control-center/config.ts \
+		linux-touchbar-control-center/custom-layer.json
+	do
+		if [[ -f "$backup_dir/$relative" ]]; then
+			install -D -m 0644 "$backup_dir/$relative" "$dst/$relative"
+		fi
+	done
+	rm -rf "$backup_dir"
 	chown -R "$target_user:$target_group" "$dst"
 
 	info "building react-drm"
@@ -283,6 +314,7 @@ install_react_drm() {
 
 	service_dir="$target_home/.config/systemd/user"
 	service_file="$service_dir/react-drm.service"
+	env_q=$(systemd_escape_path "$dst/.env")
 	workdir_q=$(systemd_escape_path "$dst/linux-touchbar-control-center")
 	start_q=$(systemd_escape_path "$dst/linux-touchbar-control-center/dist/index.js")
 	detach_q=$(systemd_escape_path "$dst/system/react-drm-tb-detach")
@@ -290,7 +322,8 @@ install_react_drm() {
 	info "installing react-drm user service"
 	install -d -o "$target_user" -g "$target_group" -m 0755 "$service_dir"
 	temporary_file=$(mktemp --suffix=.service /tmp/react-drm-kait2en.XXXXXX)
-	if ! awk -v workdir="$workdir_q" -v start="$start_q" -v detach="$detach_q" '
+	if ! awk -v envfile="$env_q" -v workdir="$workdir_q" -v start="$start_q" -v detach="$detach_q" '
+		/^EnvironmentFile=/ { print "EnvironmentFile=-" envfile; next }
 		/^WorkingDirectory=/ { print "WorkingDirectory=" workdir; next }
 		/^ExecStart=/ { print "ExecStart=node " start; next }
 		/^ExecStopPost=/ { print "ExecStopPost=-" detach; next }
@@ -306,10 +339,15 @@ install_react_drm() {
 	if run_as_target systemctl --user is-active --quiet react-drm.service; then
 		run_as_target systemctl --user stop react-drm.service
 	fi
-	run_as_target systemctl --user enable --now react-drm.service
-	sleep 2
-	run_as_target systemctl --user is-active --quiet react-drm.service ||
-		fail "react-drm failed to remain active; inspect it with 'journalctl --user -u react-drm.service -b'"
+	if [[ ${#missing_groups[@]} -gt 0 ]]; then
+		run_as_target systemctl --user enable react-drm.service
+		info "react-drm will start after $target_user logs out and back in"
+	else
+		run_as_target systemctl --user enable --now react-drm.service
+		sleep 2
+		run_as_target systemctl --user is-active --quiet react-drm.service ||
+			fail "react-drm failed to remain active; inspect it with 'journalctl --user -u react-drm.service -b'"
+	fi
 }
 
 if [[ "$install_mode" == all ]]; then

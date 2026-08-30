@@ -5,6 +5,7 @@ import { FaChevronLeft } from 'react-icons/fa6';
 import { MdVolumeUp, MdWbSunny } from 'react-icons/md';
 import { CiWavePulse1 } from 'react-icons/ci';
 import { BsWindowDock } from 'react-icons/bs';
+import { FaGrip } from 'react-icons/fa6';
 import { useActiveWindow } from '@/lib/hooks/useActiveWindow';
 import { useMediaPlayers } from '@/lib/hooks/useMediaPlayers';
 import { mediaMprisListPinnedAtom } from '@/store/mediaMprisList';
@@ -14,6 +15,7 @@ import { audioTrackAnchorAtom, ANCHOR_TRACK_W } from '@/store/audioTrackAnchor';
 import type { LayerConfig, LayoutChildren } from '@/lib/routes/loadRoutes';
 import { DEFAULT_CHILD_NAME } from '@/lib/routes/loadRoutes';
 import { go } from '@/lib/routes/router-registry';
+import { CUSTOM_LAYER } from '@/lib/utils/configLoader';
 
 // How splitted itself transitions within the root layer host.
 export const layerConfig: LayerConfig = {
@@ -231,12 +233,22 @@ export default function SplittedLayout({ width, height, children, path }: {
         key: 'media',
         icon: <EqualizerIcon playing={mediaPlaying} />,
         width: 120,
-        color: isMediaMprisListPinned ? '#333' : '#444444',
-        activeColor: isMediaMprisListPinned ? '#444' : '#555555',
+        color: isMediaMprisListPinned ? '#262626' : '#373737',
+        activeColor: isMediaMprisListPinned ? '#363636' : '#474747',
         // Just toggle the pin — the navigation effect below reacts to the
         // change and drives the left panel (no manual go() here, which would
         // fire the fade twice).
         onClick: () => setIsMediaMprisListPinned(p => !p),
+      });
+    }
+    if (CUSTOM_LAYER.showButton) {
+      base.push({
+        key: 'customlayer',
+        icon: <FaGrip style={{ width: ICON_SIZE, height: ICON_SIZE }} fill="#cccccc" stroke="none" />,
+        width: 50,
+        color: '#373737',
+        activeColor: '#474747',
+        onClick: () => go('custom-layer', 'slide-up'),
       });
     }
 

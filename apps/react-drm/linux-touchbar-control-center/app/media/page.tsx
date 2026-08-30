@@ -74,8 +74,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('BrightnessDown')}
       >
@@ -84,8 +84,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('BrightnessUp')}
       >
@@ -96,8 +96,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('MicMute')}
       >
@@ -108,8 +108,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('Search')}
       >
@@ -120,8 +120,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
       <Box style={{flexGrow:2 , gap:6}}   >
 
       <Button
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('IllumDown')}
       >
@@ -129,8 +129,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
       </Button>
 
       <Button
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('IllumUp')}
       >
@@ -142,8 +142,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('PreviousSong')}
       >
@@ -152,8 +152,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('PlayPause')}
       >
@@ -162,8 +162,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('NextSong')}
       >
@@ -175,8 +175,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('Mute')}
       >
@@ -185,8 +185,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('VolumeDown')}
       >
@@ -195,8 +195,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('VolumeUp')}
       >
@@ -208,8 +208,8 @@ export default function MediaScreen({ width, height }: { width: number; height: 
 
       <Button
        
-             color="#444444"
-          activeColor="#555555"
+             color="#373737"
+          activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={() => run('AllApplications')}
       >

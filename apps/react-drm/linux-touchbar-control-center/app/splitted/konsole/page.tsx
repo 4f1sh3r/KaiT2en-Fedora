@@ -29,7 +29,7 @@ export default function KonsolePanel({ width, height }: { width: number; height:
   function Btn({ onClick, children, accent }: { onClick: () => void; children: React.ReactNode; accent?: string }) {
     return (
       <Button
-        color="#444444"
+        color="#373737"
         activeColor={accent ?? GREEN}
         style={{ height, alignItems: 'center', justifyContent: 'center', borderRadius: 10, flex: 1 }}
         onClick={onClick}

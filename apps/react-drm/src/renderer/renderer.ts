@@ -12,17 +12,11 @@ import { LayoutContext } from '../scene/layout-context';
 import { DisplaySizeContext, NativeDrawContext } from '../scene/display-context';
 import type { NativeDraw } from '../scene/display-context';
 import { TouchReader, getTouchDevicePath } from '../native/input';
-import {
-  KeyboardReader,
-  findKeyboardDevices,
-  findPointerDevices,
-  findLidDevice,
-  readLidClosed,
-} from '../native/keyboard';
+import { KeyboardReader, findKeyboardDevices, findPointerDevices, findLidDevice, readLidClosed } from '../native/keyboard';
 import type { SceneNode, RootContainer } from '../scene/types';
 import type { LayoutBox } from '../scene/layout';
 import type { Display } from '../native/binding';
-import { TOUCHBAR_BACKLIGHT_NAMES, DISPLAY_BACKLIGHT_NAMES } from '../native/hardware';
+import { TB_BACKLIGHT_NAMES, DISPLAY_BACKLIGHT_NAMES } from '../native/hardware';
 import { createLogger } from '../logger';
 
 const log = createLogger('renderer');
@@ -344,7 +338,10 @@ function watchKeyboard(onActivity: () => void): () => void {
 }
 
 // Lid: EV_SW + SW_LID — value 1 = closed, 0 = open. Single-device, wrapped to the
-// array contract the helper expects.
+// array contract the helper expects. The lid switch (unlike the keyboard) never
+// *fires* an event for the state that exists at startup — it only reports
+// transitions — so the initial lid state is read once via readLidClosed() and
+// pushed as the baseline before changes are watched.
 function watchLid(onLid: (closed: boolean) => void): () => void {
   let lastState: boolean | undefined;
   let stateReadWarningShown = false;
@@ -385,11 +382,16 @@ function watchLid(onLid: (closed: boolean) => void): () => void {
 // ── Backlight control ─────────────────────────────────────────────────────────
 // Controls the Touch Bar backlight via sysfs so the "off" state actually turns
 // the panel off and wake from off reliably restores it.
+// TB_BACKLIGHT_NAMES / DISPLAY_BACKLIGHT_NAMES come from native/hardware.ts —
+// the per-distro profile (t2linux upstream, or a fork's names via env).
 
-const TB_BACKLIGHT_NAMES  = TOUCHBAR_BACKLIGHT_NAMES;
-const DISP_BACKLIGHT_NAMES = DISPLAY_BACKLIGHT_NAMES;
+// After resume the appletb_backlight HID interface re-binds late; re-apply and
+// verify the level on this cadence until the panel confirms it (or the window
+// expires — past that, the self-healing write() fixes it on the next wake/dim).
+const SETTLE_INTERVAL_MS = 1000;
+const SETTLE_WINDOW_MS   = 20_000;
 
-function findBacklightDir(candidates: readonly string[]): string | null {
+function findBacklightDir(candidates: string[]): string | null {
   try {
     const base = '/sys/class/backlight';
     const names = fs.readdirSync(base);
@@ -414,19 +416,20 @@ class Backlight {
   private dispMax:  number;
   private lidClosed = false;
   private activeHwLevel = 2; // raw level currently written while active
+  private settleTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.tbDir   = findBacklightDir(TB_BACKLIGHT_NAMES);
     this.tbFile  = this.tbDir ? `${this.tbDir}/brightness` : null;
     this.tbMax   = this.tbDir ? readInt(`${this.tbDir}/max_brightness`) : 0;
-    const dispDir = findBacklightDir(DISP_BACKLIGHT_NAMES);
+    const dispDir = findBacklightDir(DISPLAY_BACKLIGHT_NAMES);
     this.dispFile = dispDir ? `${dispDir}/brightness` : null;
     this.dispMax  = dispDir ? readInt(`${dispDir}/max_brightness`) : 0;
   }
 
-  // Re-resolve the Touch Bar backlight node after the USB path has resumed.
-  // The node normally remains bound across stateful S3, but may be replaced
-  // when recovery causes the Touch Bar device to re-enumerate.
+  // Re-resolve the Touch Bar backlight node. After S3 resume the
+  // appletb_backlight HID interface re-binds a beat after the appletbdrm card
+  // attachTouchBar() waits for, so the cached path can be null or stale.
   private resolveTb(): void {
     this.tbDir  = findBacklightDir(TB_BACKLIGHT_NAMES);
     this.tbFile = this.tbDir ? `${this.tbDir}/brightness` : null;
@@ -483,20 +486,50 @@ class Backlight {
   }
 
   /**
-   * Re-resolve the backlight sysfs paths after resume. The nodes normally
-   * remain stable, but recovery may replace them while the DRM display is
-   * reopened.
+   * Re-resolve the backlight sysfs paths after the device re-enumerated
+   * (e.g. after S3 suspend/resume).  The DRM card re-uses DrmDisplay.reopen();
+   * the backlight needs the same treatment so the cached tbFile/dispFile paths
+   * don't point at a stale or not-yet-available node.
    */
   reopen(): void {
     this.resolveTb();
 
-    const dispDir = findBacklightDir(DISP_BACKLIGHT_NAMES);
+    const dispDir = findBacklightDir(DISPLAY_BACKLIGHT_NAMES);
     this.dispFile = dispDir ? `${dispDir}/brightness` : null;
     this.dispMax  = dispDir ? readInt(`${dispDir}/max_brightness`) : 0;
 
     this.activeHwLevel = 2; // reset tracking — hardware state is unknown after re-enumeration
   }
 
+  /**
+   * Apply the active level after resume and keep re-applying until the panel
+   * confirms it. The appletb_backlight node may still be absent (write no-ops)
+   * or get reset to its probe default (level 1 = "50%") as the HID interface
+   * re-enumerates during attachTouchBar()'s config reprobes. A single on() in
+   * resume() therefore races the re-bind and can leave the backlight stuck at
+   * the default. Verify against actual_brightness and retry on a short schedule.
+   */
+  onVerified(adaptive: boolean, level: 0 | 1 | 2): void {
+    this.stopSettle();
+    const deadline = Date.now() + SETTLE_WINDOW_MS;
+    const apply = (): void => {
+      this.on(adaptive, level);
+      const actual = this.tbDir ? readInt(`${this.tbDir}/actual_brightness`) : -1;
+      const settled = !!this.tbFile && actual === this.activeHwLevel;
+      // Stop once the panel confirms the level, or after the window expires.
+      // Past the window the self-healing write() is the safety net: the next
+      // wake()/dim() re-resolves the node and lands the write anyway.
+      if (settled || Date.now() > deadline) this.stopSettle();
+    };
+    apply();
+    if (!this.settleTimer) this.settleTimer = setInterval(apply, SETTLE_INTERVAL_MS);
+  }
+
+  private stopSettle(): void {
+    if (this.settleTimer) { clearInterval(this.settleTimer); this.settleTimer = null; }
+  }
+
+  stop(): void { this.stopSettle(); }
 }
 
 // ── Pixel shift (AMOLED burn-in protection) ───────────────────────────────────
@@ -935,6 +968,8 @@ export function render(
     if (touchRetryTimer) { clearTimeout(touchRetryTimer); touchRetryTimer = null; } // cancel any in-flight touch retry
     if (ownKeyboardWatch) stopKeyboard();
     else options.keyboardReader?.suspend(); // release the caller's kbd fd too — don't hold it across teardown
+    backlight.stop(); // cancel any in-flight resume settle loop
+    backlight.off();
     display.close(); // device disappears during suspend — drop the fd cleanly
     log.info('suspended (display closed)');
   }
@@ -951,7 +986,7 @@ export function render(
     if (ownKeyboardWatch) stopKeyboard = watchKeyboard(wake);
     else options.keyboardReader?.resume(); // re-open the caller's kbd fd closed in suspend()
     startTouch(); // re-open the touch fd against the re-enumerated node
-    backlight.on(adaptive, activeLevel);
+    backlight.onVerified(adaptive, activeLevel); // retry until the panel confirms — HID backlight re-binds late
     startIdleTimers();
     renderCurrent(true); // display was closed during suspend — force a repaint past the dedup cache
     log.info('resumed');
@@ -968,6 +1003,7 @@ export function render(
       stopPointer();
       stopKeyboard();
       stopTouch();
+      backlight.stop(); // cancel any in-flight resume settle loop
       if (touchRetryTimer) { clearTimeout(touchRetryTimer); touchRetryTimer = null; } // cancel any in-flight touch retry
     },
     update: doUpdate,

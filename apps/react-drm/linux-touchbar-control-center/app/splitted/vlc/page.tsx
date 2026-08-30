@@ -67,8 +67,8 @@ export default function VlcPanel({ width, height }: { width: number; height: num
       <Button
         width={PLAY_W}
         height={height}
-        color="#444444"
-        activeColor="#555555"
+        color="#373737"
+        activeColor="#474747"
         onClick={playPause}
         style={{ alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
       >
