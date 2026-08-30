@@ -11,6 +11,10 @@ on:
         description: Experiment directory name below patches/testing
         required: true
         type: string
+      kernel_release:
+        description: Optional Fedora kernel series or exact NVR.arch
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -48,6 +52,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_EXPERIMENT: ${{ inputs.experiment }}
+          MANUAL_KERNEL_RELEASE: ${{ inputs.kernel_release }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -Eeuo pipefail
@@ -86,10 +91,34 @@ jobs:
             exit 1
           fi
 
+          kernel_release=$MANUAL_KERNEL_RELEASE
+          kernel_release_file=$experiment_dir/kernel-release
+          if [[ -z $kernel_release && -e $kernel_release_file ]]; then
+            [[ -f $kernel_release_file && -s $kernel_release_file ]] || {
+              printf '%s must be a non-empty regular file\n' \
+                "$kernel_release_file" >&2
+              exit 1
+            }
+            mapfile -t kernel_release_lines <"$kernel_release_file"
+            ((${#kernel_release_lines[@]} == 1)) || {
+              printf '%s must contain exactly one line\n' \
+                "$kernel_release_file" >&2
+              exit 1
+            }
+            kernel_release=${kernel_release_lines[0]}
+          fi
+          if [[ -n $kernel_release ]] && \
+              [[ ! $kernel_release =~ ^[0-9]+\.[0-9]+$ ]] && \
+              [[ ! $kernel_release =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z][0-9A-Za-z._+~]*\.fc[0-9]+\.x86_64$ ]]; then
+            printf 'Invalid kernel release: %s\n' "$kernel_release" >&2
+            exit 1
+          fi
+
           suffix=${experiment//-/_}.g${SOURCE_SHA::7}
           {
             echo "name=$experiment"
             echo "directory=$experiment_dir"
+            echo "kernel_release=$kernel_release"
             echo "suffix=$suffix"
           } >>"$GITHUB_OUTPUT"
 
@@ -99,6 +128,7 @@ jobs:
         env:
           BUILD_SUFFIX: ${{ steps.experiment.outputs.suffix }}
           EXPERIMENT_DIR: ${{ steps.experiment.outputs.directory }}
+          KERNEL_RELEASE: ${{ steps.experiment.outputs.kernel_release }}
         run: |
           set -Eeuo pipefail
           mkdir -p out
@@ -109,9 +139,14 @@ jobs:
             fedora:44 \
             bash -euo pipefail -c '
               dnf -y install dnf5-plugins rpm-build
+              kernel_args=()
+              if [[ -n $3 ]]; then
+                kernel_args=(--kernel-release "$3")
+              fi
               bash /repo/scripts/copr/make-kernel-srpm.sh \
-                --buildid "$1" --patch-dir "/repo/$2" --out /out
-            ' bash "$BUILD_SUFFIX" "$EXPERIMENT_DIR"
+                --buildid "$1" --patch-dir "/repo/$2" --out /out \
+                "${kernel_args[@]}"
+            ' bash "$BUILD_SUFFIX" "$EXPERIMENT_DIR" "$KERNEL_RELEASE"
           cat out/github-output >>"$GITHUB_OUTPUT"
           test -s "out/$(sed -n 's/^srpm_name=//p' out/github-output)"
 
@@ -178,6 +213,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_URL: ${{ steps.submit.outputs.build_url }}
+          BASE_KVER: ${{ steps.srpm.outputs.base_kver }}
           EXPERIMENT: ${{ steps.experiment.outputs.name }}
           NVR: ${{ steps.srpm.outputs.nvr }}
           KVER: ${{ steps.srpm.outputs.kver }}
@@ -190,6 +226,7 @@ jobs:
             echo 'COPR test kernel build started.'
             echo
             echo "- Experiment: \`$EXPERIMENT\`"
+            echo "- Fedora kernel base: \`$BASE_KVER\`"
             echo "- Build: $BUILD_URL"
             echo "- COPR: \`$COPR_PROJECT\`"
             echo "- Kernel NVR: \`$NVR\`"
@@ -271,6 +308,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_URL: ${{ steps.wait.outputs.build_url }}
+          BASE_KVER: ${{ steps.srpm.outputs.base_kver }}
           EXPERIMENT: ${{ steps.experiment.outputs.name }}
           NVR: ${{ steps.srpm.outputs.nvr }}
           KVER: ${{ steps.srpm.outputs.kver }}
@@ -279,6 +317,7 @@ jobs:
           set -Eeuo pipefail
           comment=/tmp/kernel-copr-comment.md
           sed \
+            -e "s|@BASE_KVER@|$BASE_KVER|g" \
             -e "s|@EXPERIMENT@|$EXPERIMENT|g" \
             -e "s|@COPR_PROJECT@|$COPR_PROJECT|g" \
             -e "s|@NVR@|$NVR|g" \
@@ -303,6 +342,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_URL: ${{ steps.wait.outputs.build_url || steps.submit.outputs.build_url }}
+          BASE_KVER: ${{ steps.srpm.outputs.base_kver }}
           EXPERIMENT: ${{ steps.experiment.outputs.name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
@@ -313,6 +353,7 @@ jobs:
             echo 'COPR test kernel build failed.'
             echo
             echo "- Experiment: \`$EXPERIMENT\`"
+            echo "- Fedora kernel base: \`$BASE_KVER\`"
             echo "- Build and builder-live.log: $BUILD_URL"
           } >"$comment"
           cat "$comment" >>"$GITHUB_STEP_SUMMARY"

@@ -2,6 +2,7 @@
 COPR test kernel built successfully.
 
 - Experiment: `@EXPERIMENT@`
+- Fedora kernel base: `@BASE_KVER@`
 - Build: @BUILD_URL@
 - COPR: `@COPR_PROJECT@`
 - Kernel NVR: `@NVR@`
