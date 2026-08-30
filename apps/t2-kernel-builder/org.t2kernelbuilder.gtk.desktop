@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=T2 Kernel Builder
+Comment=Build minimal Fedora kernels for Apple T2 Macs
+Exec=/usr/local/bin/t2-kernel-builder
+TryExec=/usr/local/bin/t2-kernel-builder
+Icon=org.t2kernelbuilder.gtk
+Type=Application
+Categories=System;Development;
+Keywords=kernel;T2;Fedora;build;
+StartupNotify=false

@@ -44,6 +44,10 @@
     "thunderbolterella": {
       "message_id": "1538215984756822090",
       "hash": "6f88e02b47a47eaebf9935e1bb7ea83f4ea7e1881f32b79d045c3d7cc2d2ed69"
+    },
+    "how-we-fixed-psr-on-t2-macs": {
+      "message_id": "1543379943415619758",
+      "hash": "3a713bf6f37f3f0edfce8223463cdbe5e24071b54619c0bef6c0c1f6fb4b895d"
     }
   }
 }

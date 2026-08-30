@@ -319,6 +319,7 @@ if [[ "$install_mode" == all ]]; then
 	install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
 	install_gpu_control
 	"$REPO_ROOT/apps/t2-cpu-control/install.sh"
+	"$REPO_ROOT/apps/t2-kernel-builder/install.sh"
 	"$REPO_ROOT/apps/t2-power-tune/install.sh"
 fi
 install_react_drm

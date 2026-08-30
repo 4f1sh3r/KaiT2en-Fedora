@@ -17,8 +17,10 @@ SECTION_HELP={
         "LTR tells the platform how long a device can tolerate delayed service. A strict requirement can keep the package in a shallower C-state.\n\nIgnore does not rewrite the device's Snoop or No-snoop latency. It only tells the PMC not to use that source as a constraint. This can improve residency, but may cause timeouts, audio dropouts or unstable I/O. Apply one source at a time and verify the device afterwards."),
     "Runtime power management":("Runtime power management",
         "Runtime PM lets the kernel suspend an idle device on runtime. A checked device is changed from on to auto after Apply.\n\nSome drivers cannot resume every device reliably. Symptoms include failed probe, missing Wi-Fi or Bluetooth, and PCIe errors after suspend. In particular, leave BCM4377 runtime PM disabled unless suspend and resume have been tested successfully."),
+    "Wake sources":("Wake sources",
+        "Enabled USB wake sources and Wake-on-LAN can prevent the platform from reaching deeper package C-states. A checked source is changed from enabled to disabled after Apply.\n\nDisabling a source also prevents that device from waking the computer. Test suspend and resume before making the selection persistent."),
     "Other power tunables":("Other power tunables",
-        "These controls reduce periodic wakeups or disable wake sources. They are independent of PCIe ASPM and device runtime PM.\n\nChanges can affect diagnostics, writeback timing and wake behaviour. Apply them individually when troubleshooting, and verify suspend, resume and normal operation before making them persistent."),
+        "These controls reduce periodic wakeups and are independent of PCIe ASPM, device runtime PM and wake-source settings.\n\nChanges can affect diagnostics and writeback timing. Apply them individually when troubleshooting, and verify suspend, resume and normal operation before making them persistent."),
 }
 
 CSTATE_HELP={
@@ -70,6 +72,7 @@ class PowerTune(Adw.Application):
         self.aspm_box=self.section(body,"PCIe ASPM candidates")
         self.constraint_box=self.section(body,"LTR requirements")
         self.tunable_box=self.section(body,"Runtime power management")
+        self.wakeup_box=self.section(body,"Wake sources")
         self.other_box=self.section(body,"Other power tunables")
         footer=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6); footer.add_css_class("sticky-bar"); footer.add_css_class("sticky-bottom")
         actions=Gtk.Box(spacing=8); self.apply_btn=Gtk.Button(label="Apply selected changes"); self.apply_btn.add_css_class("suggested-action")
@@ -83,9 +86,9 @@ class PowerTune(Adw.Application):
         self.rescan_btn.set_tooltip_text("Read the current hardware state again")
         footer.append(actions)
         status=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,spacing=10)
+        self.notice=Gtk.Label(xalign=0,wrap=True,hexpand=True); self.notice.add_css_class("dim-label"); status.append(self.notice)
         donate=Gtk.LinkButton(uri="https://donate.stripe.com/eVq14n8a7agh2lQdqq14400",label="Fund my bugs")
         donate.add_css_class("dim-label"); status.append(donate)
-        self.notice=Gtk.Label(xalign=0,wrap=True,hexpand=True); self.notice.add_css_class("dim-label"); status.append(self.notice)
         version=Gtk.Label(label=f"v{APP_VERSION}"); version.add_css_class("dim-label"); status.append(version)
         footer.append(status)
         root.append(footer); self.win.set_content(root)
@@ -146,14 +149,14 @@ class PowerTune(Adw.Application):
         def item_group(item):
             if item["kind"]=="aspm":return 0
             if item["kind"]=="ltr":return 1
-            return 3 if item.get("group")=="other" else 2
+            return {"runtime":2,"wakeup":3,"other":4}.get(item.get("group"),4)
         self.items.sort(key=lambda item:(item_group(item),item["label"].casefold()))
         self.rows=[]
-        for box in (self.aspm_box,self.constraint_box,self.tunable_box,self.other_box):
+        for box in (self.aspm_box,self.constraint_box,self.tunable_box,self.wakeup_box,self.other_box):
             while (child:=box.get_first_child()):box.remove(child)
         for item in self.items:
             row=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,spacing=10)
-            labels=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=2,hexpand=True); title=Gtk.Label(label=item["label"],xalign=0,wrap=True)
+            labels=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=2,hexpand=True,valign=Gtk.Align.CENTER); title=Gtk.Label(label=item["label"],xalign=0,wrap=True)
             labels.append(title)
             if item["kind"]=="aspm":
                 desired=int(item["target"] if item.get("selected",False) else item["current"])
@@ -165,10 +168,13 @@ class PowerTune(Adw.Application):
                 row.append(labels); row.append(choices)
                 control={"kind":"aspm","l0s":l0s,"l1":l1}
             else:
-                check=Gtk.CheckButton(active=item.get("selected",False))
+                check=Gtk.CheckButton(active=item.get("selected",False),valign=Gtk.Align.CENTER)
                 row.append(check); row.append(labels)
                 control={"kind":"check","check":check}
-            target=self.aspm_box if item["kind"]=="aspm" else (self.constraint_box if item["kind"]=="ltr" else (self.other_box if item.get("group")=="other" else self.tunable_box))
+            target=(self.aspm_box if item["kind"]=="aspm" else
+                    self.constraint_box if item["kind"]=="ltr" else
+                    self.wakeup_box if item.get("group")=="wakeup" else
+                    self.other_box if item.get("group")=="other" else self.tunable_box)
             target.append(row); self.rows.append(control)
         if not any(i["kind"]=="aspm" for i in self.items):self.aspm_box.append(Gtk.Label(label="No additional ASPM states found.",xalign=0))
         for constraint in sorted(constraints,key=lambda item:item["label"].casefold()):
@@ -181,7 +187,8 @@ class PowerTune(Adw.Application):
             detail=Gtk.Label(label=" · ".join(values),xalign=0,wrap=True); detail.add_css_class("dim-label"); labels.append(detail)
             self.constraint_box.append(labels)
         if not constraints and not any(i["kind"]=="ltr" for i in self.items):self.constraint_box.append(Gtk.Label(label="No active LTR requirements found.",xalign=0))
-        if not any(i["kind"]=="tunable" and i.get("group")!="other" for i in self.items):self.tunable_box.append(Gtk.Label(label="Runtime PM is already allowed for every discovered device.",xalign=0))
+        if not any(i["kind"]=="tunable" and i.get("group")=="runtime" for i in self.items):self.tunable_box.append(Gtk.Label(label="Runtime PM is already allowed for every discovered device.",xalign=0))
+        if not any(i.get("group")=="wakeup" for i in self.items):self.wakeup_box.append(Gtk.Label(label="No active wake sources found.",xalign=0))
         if not any(i.get("group")=="other" for i in self.items):self.other_box.append(Gtk.Label(label="No additional inactive tunables found.",xalign=0))
         self.notice.set_text(f"{len(self.items)} configurable item(s) found.")
         return False

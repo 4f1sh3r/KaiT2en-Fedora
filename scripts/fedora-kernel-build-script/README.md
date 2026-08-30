@@ -41,14 +41,12 @@ available build for each of the ten newest kernel versions found on Fedora
 Koji interactively:
 
 ```bash
-sudo -v
 ./build.sh --t2-config --local-install --localversion -your-custom-kernel-suffix-here
 ```
 
 Building and installing directly on the target machine example:
 
 ```bash
-sudo -v 
 ./build.sh 7.1.7-200.fc44.x86_64 \
   --patch-dir /path/to/patch-series \
   --config ./configs/7.1.config \
@@ -56,6 +54,10 @@ sudo -v
   --local-install \
   --localversion -your-custom-kernel-suffix-here
 ```
+
+With `--local-install`, compilation runs as the desktop user. The GUI adds
+`--defer-install`, then offers installation as a separate PolicyKit-authorized
+action after the build has completed.
 
 Optional parameters:
 

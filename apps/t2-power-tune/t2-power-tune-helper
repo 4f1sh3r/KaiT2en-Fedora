@@ -49,8 +49,12 @@ def tunable_label(path):
     match = re.fullmatch(r"/sys/class/net/([^/]+)/device/power/wakeup", path)
     if match:
         return f"{match.group(1)} device wakeup"
+    match = re.fullmatch(r"/sys/bus/usb/devices/([^/]+)/power/wakeup", path)
+    if match:
+        return f"USB device {match.group(1)} wakeup"
     return runtime_label(path)
 def tunable_group(path):
+    if path.endswith("/power/wakeup"): return "wakeup"
     return "runtime" if re.fullmatch(r"/sys/bus/(usb|pci)/devices/[^/]+/power/control", path) else "other"
 def latency_constraints():
     constraints = []
@@ -206,12 +210,19 @@ def scan():
         for name in names:
             path = os.path.join(base, name, "power/control")
             tunables.append((path, "auto", runtime_label(path), "runtime"))
+            if base == "/sys/bus/usb/devices":
+                wakeup = os.path.join(base, name, "power/wakeup")
+                tunables.append((wakeup, "disabled", tunable_label(wakeup), "wakeup"))
     try: interfaces = sorted(os.listdir("/sys/class/net"))
     except OSError: interfaces = []
     for interface in interfaces:
         path = f"/sys/class/net/{interface}/device/power/wakeup"
-        tunables.append((path, "disabled", tunable_label(path), "other"))
+        tunables.append((path, "disabled", tunable_label(path), "wakeup"))
+    seen_tunables = set()
     for path, target, label, group in tunables:
+        canonical = os.path.realpath(path)
+        if canonical in seen_tunables: continue
+        seen_tunables.add(canonical)
         if os.path.isfile(path) and os.access(path, os.R_OK | os.W_OK):
             current = read(path)
             if current != target:
@@ -228,10 +239,14 @@ def scan():
     runtime_exists, saved_data = load_runtime_items()
     try:
         source = saved_data if runtime_exists else load_service_items()
-        # Drop entries created by the removed experimental L1SS feature while
-        # retaining every other runtime or persistent selection.
-        saved = validate([item for item in source
-                          if isinstance(item, dict) and item.get("kind") != "l1ss"])
+        filtered_source = [item for item in source
+                           if isinstance(item, dict)
+                           and item.get("kind") != "l1ss"
+                           and not re.fullmatch(r"/sys/bus/pci/devices/[^/]+/power/wakeup",
+                                                str(item.get("id", "")))]
+        saved = validate(filtered_source)
+        if runtime_exists and len(filtered_source) != len(source):
+            save_runtime_items(saved)
     except (ValueError, TypeError, SystemExit):
         saved = []
     remembered = {(x[0], x[1]): x for x in saved}
@@ -280,7 +295,8 @@ def validate(raw):
                      "/proc/sys/kernel/nmi_watchdog":"0",
                      "/proc/sys/vm/dirty_writeback_centisecs":"1500"}
             runtime = re.fullmatch(r"/sys/bus/(usb|pci)/devices/[^/]+/power/control", ident)
-            wakeup = re.fullmatch(r"/sys/class/net/[^/]+/device/power/wakeup", ident)
+            wakeup = (re.fullmatch(r"/sys/class/net/[^/]+/device/power/wakeup", ident)
+                      or re.fullmatch(r"/sys/bus/usb/devices/[^/]+/power/wakeup", ident))
             allowed = ident in fixed or runtime or wakeup
             expected = fixed.get(ident, "disabled" if wakeup else "auto")
             if ident in fixed: valid_original = re.fullmatch(r"[0-9]+", original)
