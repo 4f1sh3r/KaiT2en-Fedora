@@ -2,7 +2,7 @@
 /*
  * t2smc - Minimal SMC driver for T2 Macs
  *
- * Copyright (C) 2026 André Eikmeyer <andre.eikmeyer@gmail.com>
+ * Copyright (C) 2026 André Eikmeyer <andre.eikmeyer@kait2en.org>
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -1573,7 +1573,7 @@ static struct platform_driver t2smc_driver = {
 
 module_platform_driver(t2smc_driver);
 
-MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@gmail.com>");
+MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@kait2en.org");
 MODULE_DESCRIPTION("T2 Mac SMC driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(T2SMC_VERSION);
