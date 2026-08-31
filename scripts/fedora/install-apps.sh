@@ -281,6 +281,15 @@ install_react_drm() {
 	else
 		install -m 0644 "$src/.env.example.kait2en" "$dst/.env"
 	fi
+	# The first unified KaiT2en profile named only apple-panel-bl.  That hid
+	# t2gmux's gmux_backlight as soon as react-drm started loading .env.  Migrate
+	# only that exact shipped default and preserve every customized candidate
+	# list unchanged.
+	if grep -Fxq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl' "$dst/.env"; then
+		sed -i \
+			's/^REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl$/REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl,gmux_backlight,intel_backlight,acpi_video0/' \
+			"$dst/.env"
+	fi
 	for relative in \
 		linux-touchbar-control-center/config.ts \
 		linux-touchbar-control-center/custom-layer.json

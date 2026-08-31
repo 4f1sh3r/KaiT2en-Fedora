@@ -89,6 +89,10 @@ grep -Fq 't2-kernel-builder installation failed; continuing because it is option
 	scripts/fedora/install-apps.sh
 grep -Fq 't2-kernel-builder bundle is incomplete' \
 	apps/t2-kernel-builder/install.sh
+grep -Fq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl,gmux_backlight,intel_backlight,acpi_video0' \
+	apps/react-drm/.env.example.kait2en
+grep -Fq "grep -Fxq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl'" \
+	scripts/fedora/install-apps.sh
 for symbol in MFD_MACSMC_CORE MACSMC_ACPI SENSORS_MACSMC_HWMON \
 		MACSMC_LIGHT MACSMC_ACCEL LEDS_MACSMC INPUT_MACSMC_CHAMSHELL \
 		RTC_DRV_MACSMC MACSMC_POWER; do
