@@ -13,6 +13,7 @@ hardware-supported VP9 profile to avoid unnecessary CPU load.
 Run the installer from the KAIT2EN repository:
 
 ```bash
+cd /usr/local/src/KaiT2en-Fedora
 sudo bash ./scripts/fedora/install-hardware-video-decoding.sh
 ```
 
