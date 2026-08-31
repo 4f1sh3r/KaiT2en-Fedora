@@ -19,9 +19,9 @@ rm -rf /usr/local/libexec/t2-kernel-builder/patches
 install -m 0755 "$APP_DIR/t2-kernel-builder.py" /usr/local/bin/t2-kernel-builder
 install -m 0755 "$APP_DIR/t2-kernel-builder-cleanup" /usr/local/libexec/t2-kernel-builder-cleanup
 install -m 0644 "$APP_DIR/org.t2kernelbuilder.gtk.policy" /usr/local/share/polkit-1/actions/
-install -m 0755 "$APP_DIR/../../scripts/fedora-kernel-build-script/build.sh" \
+install -m 0755 "$APP_DIR/engine/build.sh" \
 	/usr/local/libexec/t2-kernel-builder/build.sh
-find "$APP_DIR/../../scripts/fedora-kernel-build-script/configs" -maxdepth 1 -type f \
+find "$APP_DIR/engine/configs" -maxdepth 1 -type f \
 	-name '*.config' -exec install -m 0644 '{}' /usr/local/libexec/t2-kernel-builder/configs/ \;
 install -m 0644 "$APP_DIR/org.t2kernelbuilder.gtk.desktop" /usr/local/share/applications/
 install -m 0644 "$APP_DIR/org.t2kernelbuilder.gtk.svg" /usr/local/share/icons/hicolor/scalable/apps/

@@ -18,7 +18,7 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk
 APP_ID = "org.t2kernelbuilder.gtk"
 APP_VERSION = "0.01"
 HERE = Path(__file__).resolve().parent
-SOURCE_ENGINE = HERE.parents[1] / "scripts/fedora-kernel-build-script"
+SOURCE_ENGINE = HERE / "engine"
 INSTALLED_ENGINE = Path("/usr/local/libexec/t2-kernel-builder")
 ENGINE = SOURCE_ENGINE if (SOURCE_ENGINE / "build.sh").is_file() else INSTALLED_ENGINE
 BUILD_SCRIPT = ENGINE / "build.sh"

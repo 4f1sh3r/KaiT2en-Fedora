@@ -1,0 +1,73 @@
+Subject: [PATCH 2/2] drm/i915/psr: add Apple TCON PSR handshake
+
+Apple eDP panels carry a Banksia TCON that ignores DP_PSR_EN_CFG on its own.
+Derived from a DTrace capture of AppleIntelPort::writeAUX under macOS 15.7.7
+on a MacBookPro16,2: the sink needs three vendor registers plus a capture
+trigger at 0x4d4, and DP_PSR_CRC_VERIFICATION must stay clear. Apple's VBT
+also leaves the PSR enable bit unset, so psr_global_enabled() has to override.
+---
+--- a/drivers/gpu/drm/i915/display/intel_psr.c
++++ b/drivers/gpu/drm/i915/display/intel_psr.c
+@@ -237,12 +237,50 @@
+ 	       intel_encoder_can_psr(encoder);
+ }
+ 
++static int t2_apple_psr = 1;
++module_param_named(t2_apple_psr, t2_apple_psr, int, 0644);
++MODULE_PARM_DESC(t2_apple_psr,
++	"Apple eDP TCON PSR handshake: 0=off, 1=on (default 1)");
++
++#define APPLE_PSR_UNLOCK	0x321
++#define APPLE_PSR_CFG1		0x4d1
++#define APPLE_PSR_CFG2		0x4d2
++#define APPLE_PSR_TRIGGER	0x4d4
++
++static bool intel_psr_is_apple_tcon(struct intel_dp *intel_dp)
++{
++	static const u8 apple_oui[] = { 0x00, 0x10, 0xfa };
++
++	return t2_apple_psr &&
++	       memcmp(intel_dp->desc.ident.oui, apple_oui, sizeof(apple_oui)) == 0;
++}
++
++/* Apple panels do not latch a frame from DP_PSR_EN_CFG alone; 0x4d4 is the trigger. */
++static void intel_psr_apple_enable_sink(struct intel_dp *intel_dp)
++{
++	struct intel_display *display = to_intel_display(intel_dp);
++	u8 status = 0, error = 0;
++
++	drm_dp_dpcd_write_byte(&intel_dp->aux, APPLE_PSR_UNLOCK, 0x3c);
++	drm_dp_dpcd_write_byte(&intel_dp->aux, APPLE_PSR_CFG2, 0x01);
++	drm_dp_dpcd_write_byte(&intel_dp->aux, APPLE_PSR_CFG1, 0x03);
++	drm_dp_dpcd_write_byte(&intel_dp->aux, DP_PSR_EN_CFG, DP_PSR_ENABLE);
++	drm_dp_dpcd_write_byte(&intel_dp->aux, APPLE_PSR_TRIGGER, 0x01);
++
++	drm_dp_dpcd_read_byte(&intel_dp->aux, DP_PSR_STATUS, &status);
++	drm_dp_dpcd_read_byte(&intel_dp->aux, DP_PSR_ERROR_STATUS, &error);
++	drm_dbg_kms(display->drm, "apple psr: armed, sink status=%02x error=%02x\n",
++		    status, error);
++}
++
+ static bool psr_global_enabled(struct intel_dp *intel_dp)
+ {
+ 	struct intel_connector *connector = intel_dp->attached_connector;
+ 
+ 	switch (intel_dp->psr.debug & I915_PSR_DEBUG_MODE_MASK) {
+ 	case I915_PSR_DEBUG_DEFAULT:
++		if (intel_psr_is_apple_tcon(intel_dp))
++			return true;
+ 		return intel_dp_is_edp(intel_dp) ?
+ 			connector->panel.vbt.psr.enable : true;
+ 	case I915_PSR_DEBUG_DISABLE:
+@@ -818,6 +856,11 @@
+ 	struct intel_display *display = to_intel_display(intel_dp);
+ 	u8 val = 0;
+ 
++	if (intel_psr_is_apple_tcon(intel_dp)) {
++		intel_psr_apple_enable_sink(intel_dp);
++		return;
++	}
++
+ 	if (crtc_state->has_sel_update) {
+ 		val |= DP_PSR_ENABLE_PSR2 | DP_PSR_IRQ_HPD_WITH_CRC_ERRORS;
+ 	} else {

@@ -1,6 +1,6 @@
 # T2 Kernel Builder
 
-GTK4/libadwaita frontend for `scripts/fedora-kernel-build-script/build.sh`.
+GTK4/libadwaita frontend for the bundled `engine/build.sh`.
 
 The configuration page uses the actively maintained sysprog21 Kconfiglib fork
 to display the real kernel Kconfig hierarchy, including bool/tristate values
