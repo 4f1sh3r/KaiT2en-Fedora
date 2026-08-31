@@ -284,6 +284,25 @@ REDHAT_PATCH=$(find "$WORK/sources" -maxdepth 1 -name 'patch-*-redhat.patch' -pr
 }
 
 if [[ ! -f $WORK/.prepared ]]; then
+	(
+	prepare_complete=0
+	cleanup_incomplete_prepare() {
+		local status=$?
+
+		if ((prepare_complete == 0)); then
+			rm -rf -- "$WORK/kernel"
+			rm -f -- "$WORK/.prepared" "$WORK/input-hash" "$WORK/kernel-tree"
+		fi
+		exit "$status"
+	}
+	trap cleanup_incomplete_prepare EXIT
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+
+	# A failed or interrupted earlier preparation may have left an extracted,
+	# partially patched tree behind. Never apply Fedora's patch set twice.
+	rm -rf -- "$WORK/kernel"
+	mkdir -p "$WORK/kernel"
 	printf 'Preparing Fedora kernel sources\n'
 	tar --no-same-owner -xf "$TARBALL" -C "$WORK/kernel"
 	TREE=$(find "$WORK/kernel" -mindepth 1 -maxdepth 1 -type d -name 'linux-*' -print -quit)
@@ -412,6 +431,9 @@ if [[ ! -f $WORK/.prepared ]]; then
 	printf '%s\n' "$TREE" >"$WORK/kernel-tree"
 	printf '%s\n' "$INPUT_HASH" >"$WORK/input-hash"
 	touch "$WORK/.prepared"
+	prepare_complete=1
+	trap - EXIT INT TERM
+	)
 fi
 
 TREE=$(<"$WORK/kernel-tree")
