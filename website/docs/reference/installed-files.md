@@ -4,7 +4,7 @@ KAIT2EN keeps Fedora's vanilla kernel and installs T2 hardware support as a
 separate layer. The changes we are doing to your system are documented here to
 provide transparency to users and devs.
 
-## Project checkout and updater
+## Repo location and updater
 
 The guided installer creates a clean checkout of the `main` branch at:
 
