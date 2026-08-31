@@ -6,6 +6,22 @@ require_root
 require_fedora
 require_command dnf install find rm
 
+required_files=(
+	"$APP_DIR/t2-kernel-builder.py"
+	"$APP_DIR/t2-kernel-builder-cleanup"
+	"$APP_DIR/org.t2kernelbuilder.gtk.policy"
+	"$APP_DIR/org.t2kernelbuilder.gtk.desktop"
+	"$APP_DIR/org.t2kernelbuilder.gtk.svg"
+	"$APP_DIR/engine/build.sh"
+)
+for required_file in "${required_files[@]}"; do
+	[[ -f "$required_file" ]] || fail "t2-kernel-builder bundle is incomplete: $required_file"
+done
+[[ -d "$APP_DIR/engine/configs" ]] ||
+	fail "t2-kernel-builder bundle is incomplete: $APP_DIR/engine/configs"
+find "$APP_DIR/engine/configs" -maxdepth 1 -type f -name '*.config' -print -quit |
+	grep -q . || fail "t2-kernel-builder bundle contains no kernel configs"
+
 dnf install -y bc binutils bison cpio curl dwarves elfutils-libelf-devel flex gcc \
 	git-core gtk4 libadwaita make openssl-devel patch perl-core python3-gobject \
 	python3-pip polkit rpm-build rsync tar xz

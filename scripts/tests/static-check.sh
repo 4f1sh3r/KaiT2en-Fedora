@@ -85,6 +85,10 @@ grep -Fq 'dracut --force --force-drivers' \
 # without headers has to be refused before anything is removed.
 grep -Fq 'require_kernel_headers' scripts/fedora/install-dkms-modules.sh
 grep -Fq 'require_kernel_headers()' scripts/fedora/lib.sh
+grep -Fq 't2-kernel-builder installation failed; continuing because it is optional' \
+	scripts/fedora/install-apps.sh
+grep -Fq 't2-kernel-builder bundle is incomplete' \
+	apps/t2-kernel-builder/install.sh
 grep -Fq '/etc/modprobe.d/kait2en-silent-blacklist.conf' \
 	scripts/fedora/install-kernel-args.sh
 grep -Fq "printf 'install %s /bin/true" scripts/fedora/install-kernel-args.sh

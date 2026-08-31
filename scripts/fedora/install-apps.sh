@@ -357,7 +357,10 @@ if [[ "$install_mode" == all ]]; then
 	install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
 	install_gpu_control
 	"$REPO_ROOT/apps/t2-cpu-control/install.sh"
-	"$REPO_ROOT/apps/t2-kernel-builder/install.sh"
+	if ! "$REPO_ROOT/apps/t2-kernel-builder/install.sh"; then
+		warn "t2-kernel-builder installation failed; continuing because it is optional"
+		warn "retry it later with: sudo $REPO_ROOT/apps/t2-kernel-builder/install.sh"
+	fi
 	"$REPO_ROOT/apps/t2-power-tune/install.sh"
 fi
 install_react_drm
