@@ -183,8 +183,6 @@ class KernelBuilder(Adw.Application):
                                                xalign=0, yalign=0)
         self.component_placeholder.set_margin_top(8)
         self.component_tree.set_child(self.component_placeholder); features.append(self.component_tree)
-        self.stack.add_titled(config_page, "configuration", "2. Config")
-
         patch_page = self.page()
         patches = self.section(patch_page, "Patch series", help_key="Patch series")
         self.patch_entry = self.entry_row(patches, "Patch folder", self.saved_settings.get("patch_folder", ""), self.patch_folder_changed)
@@ -199,7 +197,8 @@ class KernelBuilder(Adw.Application):
         for side in ("top", "bottom", "start", "end"):
             getattr(self.patch_contents, f"set_margin_{side}")(10)
         patch_contents_frame.set_child(self.patch_contents); patches.append(patch_contents_frame)
-        self.stack.add_titled(patch_page, "patches", "3. Patches")
+        self.stack.add_titled(patch_page, "patches", "2. Patches")
+        self.stack.add_titled(config_page, "configuration", "3. Config")
 
         build_page = self.page()
         build = self.section(build_page, "Build and install", help_key="Build and install")

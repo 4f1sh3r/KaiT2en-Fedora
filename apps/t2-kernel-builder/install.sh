@@ -9,7 +9,8 @@ require_command dnf install find rm
 dnf install -y bc binutils bison cpio curl dwarves elfutils-libelf-devel flex gcc \
 	git-core gtk4 libadwaita make openssl-devel patch perl-core python3-gobject \
 	python3-pip polkit rpm-build rsync tar xz
-python3 -m pip install --root-user-action=ignore --prefix=/usr/local \
+PIP_NO_INPUT=1 GIT_TERMINAL_PROMPT=0 \
+	python3 -m pip install --root-user-action=ignore --prefix=/usr/local \
 	'git+https://github.com/sysprog21/Kconfiglib.git@578b2c924cc673459c2f858ba902a47ad429a567'
 install -d -m 0755 /usr/local/bin /usr/local/libexec/t2-kernel-builder/configs \
 	/usr/local/share/applications \
