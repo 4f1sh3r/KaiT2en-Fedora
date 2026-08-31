@@ -95,6 +95,27 @@ grep -Fq 'repair_origin_url' packaging/installer/runtime/kait2en-prepare
 ! grep -Fq 'unexpected origin URL' \
 	packaging/installer/runtime/kait2en-install \
 	packaging/installer/runtime/kait2en-prepare
+grep -Fq '["dkms", "autoinstall", "-k", release]' \
+	apps/t2-kernel-builder/t2-kernel-builder-cleanup
+grep -Fq "DKMS_OVERRIDE.write_text('post_transaction=\"\"\\n'" \
+	apps/t2-kernel-builder/t2-kernel-builder-cleanup
+grep -Fq 'rebuilt initramfs is missing required module' \
+	apps/t2-kernel-builder/t2-kernel-builder-cleanup
+for module in acpi_tad applesmc macsmc_core macsmc_acpi macsmc_hwmon \
+		macsmc_light macsmc_accel leds_macsmc macsmc_chamshell rtc_macsmc \
+		macsmc_power hid_apple hid_appletb_bl hid_appletb_kbd hid_magicmouse \
+		appletbdrm apple_mfi_fastcharge apple_gmux t2bce_dma t2bce_core \
+		t2bce_vhci t2hid; do
+	grep -Fq "\"$module\"" apps/t2-kernel-builder/t2-kernel-builder-cleanup
+done
+grep -Fq 'installation rolled back' \
+	apps/t2-kernel-builder/t2-kernel-builder-cleanup
+grep -Fq 'Cancelling installation and rolling back' \
+	apps/t2-kernel-builder/t2-kernel-builder.py
+grep -Fq 'Path(f"/boot/initramfs-{release}.img").is_file()' \
+	apps/t2-kernel-builder/t2-kernel-builder.py
+! grep -Fq '["dracut", "--force"' \
+	apps/t2-kernel-builder/t2-kernel-builder-cleanup
 grep -Fq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl,gmux_backlight,intel_backlight,acpi_video0' \
 	apps/react-drm/.env.example.kait2en
 grep -Fq "grep -Fxq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl'" \
@@ -106,6 +127,7 @@ for symbol in MFD_MACSMC_CORE MACSMC_ACPI SENSORS_MACSMC_HWMON \
 done
 grep -Fq 'required T2 kernel module was rejected by Kconfig' \
 	apps/t2-kernel-builder/engine/build.sh
+grep -Fq -- '--enable IIO' apps/t2-kernel-builder/engine/build.sh
 grep -Fq '/etc/modprobe.d/kait2en-silent-blacklist.conf' \
 	scripts/fedora/install-kernel-args.sh
 grep -Fq "printf 'install %s /bin/true" scripts/fedora/install-kernel-args.sh

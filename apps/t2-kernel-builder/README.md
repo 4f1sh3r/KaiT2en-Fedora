@@ -4,8 +4,9 @@ GTK4/libadwaita frontend for the bundled `engine/build.sh`.
 
 The configuration page uses the actively maintained sysprog21 Kconfiglib fork
 to display the real kernel Kconfig hierarchy, including bool/tristate values
-and dependencies. The installer pins the tested upstream commit instead of the
-outdated PyPI release.
+and dependencies. The installer uses the source archive of the tested upstream
+commit instead of the outdated PyPI release. This also avoids Git credential
+configuration affecting installation of the public dependency.
 
 The app downloads Fedora kernel sources, validates an alphabetically ordered
 user patch directory, optionally runs `make localmodconfig` after an explicit

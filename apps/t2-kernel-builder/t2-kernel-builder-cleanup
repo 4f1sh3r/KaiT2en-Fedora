@@ -4,33 +4,190 @@ import os
 import pathlib
 import pwd
 import re
+import signal
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
+
+INPUT_MODULES = ("t2bce_dma", "t2bce_core", "t2bce_vhci", "t2hid")
+REQUIRED_MODULES = (
+    "acpi_tad", "rtc_cmos", "applesmc",
+    "macsmc_core", "macsmc_acpi", "macsmc_hwmon", "macsmc_light",
+    "macsmc_accel", "leds_macsmc", "macsmc_chamshell", "rtc_macsmc",
+    "macsmc_power", "hid_apple", "hid_appletb_bl", "hid_appletb_kbd",
+    "hid_magicmouse", "appletbdrm", "apple_mfi_fastcharge", "apple_gmux",
+    "hid_t2magicmouse", "t2bce_audio", "t2bce_core", "t2bce_dma",
+    "t2bce_vhci", "t2bdrm", "t2gmux", "t2mfi_fastcharge", "t2smc",
+    "t2smp", "t2thunderbolt", "t2hid", "t2touchbar_bl", "t2touchbar_kbd",
+)
+DRACUT_CONFIG = pathlib.Path("/etc/dracut.conf.d/90-kait2en-input.conf")
+DKMS_OVERRIDE = pathlib.Path("/etc/dkms/framework.conf.d/kait2en-disable-post-transaction.conf")
 
 def fail(message):
     print(f"t2-kernel-builder-cleanup: {message}", file=sys.stderr)
     raise SystemExit(1)
 
+def run(command, cancel_file=None, **kwargs):
+    process = subprocess.Popen(command, start_new_session=True, **kwargs)
+    while process.poll() is None:
+        if cancel_file is not None and cancel_file.exists() and cancel_file.stat().st_size:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+            raise KeyboardInterrupt
+        time.sleep(0.2)
+    if process.returncode:
+        raise subprocess.CalledProcessError(process.returncode, command)
+    return process
+
 if os.geteuid() != 0: fail("must run as root")
 
-if len(sys.argv) == 4 and sys.argv[1] == "install-kernel":
+if len(sys.argv) in (4, 5) and sys.argv[1] == "install-kernel":
     tree = pathlib.Path(sys.argv[2]).resolve()
     release = sys.argv[3]
+    cancel_file = pathlib.Path(sys.argv[4]).resolve() if len(sys.argv) == 5 else None
     if not re.fullmatch(r"[A-Za-z0-9._+-]+", release): fail("invalid kernel release")
     try:
         caller_uid = int(os.environ["PKEXEC_UID"])
         caller_home = pathlib.Path(pwd.getpwuid(caller_uid).pw_dir).resolve()
         tree.relative_to(caller_home)
+        if cancel_file is not None:
+            cancel_file.relative_to(caller_home / ".cache" / "t2-kernel-builder" / "cancel")
     except (KeyError, ValueError, OSError):
         fail("cannot identify the calling user")
     if not tree.is_dir() or not (tree / "Makefile").is_file(): fail("invalid kernel source tree")
     if tree.stat().st_uid != caller_uid: fail("kernel source tree is not owned by the calling user")
+    if cancel_file is not None and (not cancel_file.is_file() or cancel_file.stat().st_uid != caller_uid):
+        fail("invalid cancellation token")
     actual = subprocess.run(["make", "-s", "-C", str(tree), "kernelrelease"],
                             text=True, capture_output=True)
     if actual.returncode or actual.stdout.strip() != release: fail("kernel release validation failed")
-    subprocess.run(["make", "-C", str(tree), "INSTALL_MOD_STRIP=1", "modules_install"], check=True)
-    subprocess.run(["make", "-C", str(tree), "install"], check=True)
+    module_dir = pathlib.Path("/lib/modules") / release
+    boot_paths = [pathlib.Path("/boot") / name for name in
+                  (f"vmlinuz-{release}", f"initramfs-{release}.img",
+                   f"System.map-{release}", f"config-{release}")]
+    boot_paths.extend(pathlib.Path(path) for path in
+                      glob.glob(f"/boot/loader/entries/*{release}*.conf"))
+    previous_complete = (module_dir.is_dir() and
+                         (pathlib.Path("/boot") / f"vmlinuz-{release}").is_file() and
+                         (pathlib.Path("/boot") / f"initramfs-{release}.img").is_file())
+    backup = pathlib.Path(tempfile.mkdtemp(prefix="t2-kernel-builder-", dir="/var/tmp"))
+    saved = []
+    override_existed = DKMS_OVERRIDE.exists()
+    override_contents = DKMS_OVERRIDE.read_bytes() if override_existed else None
+
+    try:
+        previous_modules = None
+        if module_dir.exists():
+            destination = backup / "previous-modules"
+            shutil.move(module_dir, destination)
+            previous_modules = destination
+            if previous_complete:
+                saved.append((destination, module_dir))
+        for path in boot_paths:
+            if previous_complete and (path.exists() or path.is_symlink()):
+                destination = backup / "boot" / path.relative_to("/boot")
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(path, destination)
+                saved.append((destination, path))
+            elif path.exists() or path.is_symlink():
+                path.unlink()
+
+        DKMS_OVERRIDE.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        DKMS_OVERRIDE.write_text('post_transaction=""\n', encoding="utf-8")
+        os.chmod(DKMS_OVERRIDE, 0o644)
+
+        print("[kait2en-progress] phase=install-modules", flush=True)
+        run(["make", "-C", str(tree), "INSTALL_MOD_STRIP=1", "modules_install"], cancel_file)
+        if previous_modules is not None and (previous_modules / "extra").is_dir():
+            shutil.copytree(previous_modules / "extra", module_dir / "extra", dirs_exist_ok=True)
+
+        print("[kait2en-progress] phase=install-dkms", flush=True)
+        status = subprocess.run(
+            ["dkms", "status", "-k", release], text=True, capture_output=True, check=True,
+        ).stdout
+        registered = []
+        for line in status.splitlines():
+            match = re.match(r"^([^/,:\s]+)/([^,\s]+),\s*([^,]+),", line)
+            if match and match.group(3).strip() == release:
+                registered.append((match.group(1), match.group(2)))
+        for module, version in registered:
+            built = list((pathlib.Path("/var/lib/dkms") / module / version / release).glob("*/module/*.ko*"))
+            installed_names = {path.name for path in module_dir.rglob("*.ko*")}
+            if built and all(path.name in installed_names for path in built):
+                continue
+            run(["dkms", "install", "--force", "--no-depmod", "-m", module,
+                 "-v", version, "-k", release], cancel_file)
+
+        run(["dkms", "autoinstall", "-k", release], cancel_file)
+        run(["depmod", "-a", release], cancel_file)
+        for module in REQUIRED_MODULES:
+            found = subprocess.run(
+                ["modinfo", "-k", release, "-F", "filename", module],
+                text=True, capture_output=True,
+            )
+            if found.returncode or not found.stdout.strip():
+                fail(f"required kernel module is missing for {release}: {module}")
+
+        DRACUT_CONFIG.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        DRACUT_CONFIG.write_text(
+            "# Managed by scripts/fedora/rebuild-initramfs.sh\n"
+            f'force_drivers+=" {" ".join(INPUT_MODULES)} "\n',
+            encoding="utf-8",
+        )
+        os.chmod(DRACUT_CONFIG, 0o644)
+
+        print("[kait2en-progress] phase=install-boot", flush=True)
+        run(["make", "-C", str(tree), "install"], cancel_file)
+
+        print("[kait2en-progress] phase=verify-install", flush=True)
+        initramfs = pathlib.Path("/boot") / f"initramfs-{release}.img"
+        if not initramfs.is_file():
+            fail(f"kernel installation did not create {initramfs}")
+        listing = subprocess.run(
+            ["lsinitrd", str(initramfs)], text=True, capture_output=True, check=True,
+        ).stdout
+        for module in INPUT_MODULES:
+            if not re.search(rf"(?:^|/){re.escape(module)}\.ko(?:\.[a-z0-9]+)?(?:\s|$)", listing, re.MULTILINE):
+                fail(f"rebuilt initramfs is missing required module: {module}")
+    except BaseException:
+        if module_dir.exists(): shutil.rmtree(module_dir)
+        generated_boot_paths = [pathlib.Path("/boot") / name for name in
+                                (f"vmlinuz-{release}", f"initramfs-{release}.img",
+                                 f"System.map-{release}", f"config-{release}")]
+        generated_boot_paths.extend(pathlib.Path(path) for path in
+                                    glob.glob(f"/boot/loader/entries/*{release}*.conf"))
+        for path in generated_boot_paths:
+            if path.exists() or path.is_symlink(): path.unlink()
+        for source, destination in saved:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(source, destination)
+        if not previous_complete:
+            current = subprocess.run(
+                ["dkms", "status", "-k", release], text=True, capture_output=True,
+            ).stdout
+            for line in current.splitlines():
+                match = re.match(r"^([^/,:\s]+)/([^,\s]+),\s*([^,]+),", line)
+                if match and match.group(3).strip() == release:
+                    subprocess.run(
+                        ["dkms", "remove", "--no-depmod", "-m", match.group(1),
+                         "-v", match.group(2), "-k", release],
+                        check=False,
+                    )
+        print("t2-kernel-builder-cleanup: installation rolled back", file=sys.stderr)
+        raise
+    finally:
+        if override_existed:
+            DKMS_OVERRIDE.write_bytes(override_contents)
+        else:
+            DKMS_OVERRIDE.unlink(missing_ok=True)
+        shutil.rmtree(backup, ignore_errors=True)
+        if cancel_file is not None: cancel_file.unlink(missing_ok=True)
     raise SystemExit(0)
 
 if len(sys.argv) != 3 or sys.argv[1] != "remove-kernel": fail("invalid arguments")

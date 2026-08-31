@@ -15,7 +15,7 @@ T2_CONFIG=0
 PREPARE_ONLY=0
 LOCALMODCONFIG=0
 ALLOW_NO_PATCHES=0
-BUILD_CONFIG_SCHEMA=8
+BUILD_CONFIG_SCHEMA=9
 ENABLE_CONFIGS=()
 HAS_AMD_DGPU=0
 T2_REQUIRED_MODULES=(
@@ -420,6 +420,7 @@ if [[ ! -f $WORK/.prepared ]]; then
 			--enable INPUT_SPARSEKMAP \
 			--enable HOTPLUG_PCI \
 			--enable HOTPLUG_PCI_PCIE \
+			--enable IIO \
 			--enable RTC_DRV_CMOS \
 			--enable BACKLIGHT_CLASS_DEVICE \
 			--enable VGA_SWITCHEROO
@@ -463,8 +464,10 @@ if [[ ! -f $WORK/.prepared ]]; then
 			grep -qx "CONFIG_$symbol=m" "$TREE/.config" ||
 				fail "required T2 kernel module was rejected by Kconfig: CONFIG_$symbol"
 		done
-		grep -Eq '^CONFIG_RTC_DRV_CMOS=[ym]$' "$TREE/.config" ||
-			fail "required T2 kernel driver was rejected by Kconfig: CONFIG_RTC_DRV_CMOS"
+		for symbol in IIO RTC_DRV_CMOS; do
+			grep -Eq "^CONFIG_$symbol=[ym]$" "$TREE/.config" ||
+				fail "required T2 kernel driver was rejected by Kconfig: CONFIG_$symbol"
+		done
 	fi
 	printf '%s\n' "$TREE" >"$WORK/kernel-tree"
 	printf '%s\n' "$INPUT_HASH" >"$WORK/input-hash"

@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 import urllib.request
+import uuid
 from pathlib import Path
 
 import gi
@@ -83,6 +84,7 @@ class KernelBuilder(Adw.Application):
         self.build_after_prepare = False
         self.built_tree = None
         self.built_release = None
+        self.cancel_file = None
         self.available_jobs = max(1, os.cpu_count() or 1)
         self.saved_settings = self.load_settings()
         self.pending_config_values = dict(self.saved_settings.get("config_values", {}))
@@ -686,8 +688,13 @@ class KernelBuilder(Adw.Application):
 
     def start_install(self):
         if not self.built_tree or not self.built_release: return
+        cancel_dir = WORK_DIR.parent / "cancel"
+        cancel_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        cancel_dir.chmod(0o700)
+        self.cancel_file = cancel_dir / str(uuid.uuid4())
+        self.cancel_file.touch(mode=0o600)
         self.run_command(["pkexec", str(CLEANUP_HELPER), "install-kernel",
-                          str(self.built_tree), self.built_release],
+                          str(self.built_tree), self.built_release, str(self.cancel_file)],
                          "Waiting for authorization, then installing the built kernel…", "install")
 
     def scan_built_kernels(self, preferred_release=None):
@@ -701,14 +708,19 @@ class KernelBuilder(Adw.Application):
                     release = release_marker.read_text(encoding="utf-8").strip()
                     if (tree.is_relative_to(entry.resolve()) and (tree / "Makefile").is_file() and
                             re.fullmatch(r"[A-Za-z0-9._+-]+", release)):
-                        if Path(f"/lib/modules/{release}").is_dir() and Path(f"/boot/vmlinuz-{release}").is_file():
-                            continue
                         builds.append((release, tree))
                 except (OSError, ValueError):
                     continue
         builds.sort(key=lambda item: self.version_key(item[0]), reverse=True)
         self.completed_builds = builds
-        labels = [release for release, _tree in builds] or ["No completed builds found"]
+        labels = []
+        for release, _tree in builds:
+            present = [Path(f"/lib/modules/{release}").is_dir(),
+                       Path(f"/boot/vmlinuz-{release}").is_file(),
+                       Path(f"/boot/initramfs-{release}.img").is_file()]
+            state = "installed" if all(present) else "partial installation" if any(present) else "ready"
+            labels.append(f"{release} — {state}")
+        if not labels: labels = ["No completed builds found"]
         self.built_model.splice(0, self.built_model.get_n_items(), labels)
         selected = next((i for i, item in enumerate(builds) if item[0] == preferred_release), 0)
         self.built_drop.set_selected(selected)
@@ -778,6 +790,9 @@ class KernelBuilder(Adw.Application):
         finally:
             self.process = None
             self.running = False
+            if self.cancel_file is not None:
+                self.cancel_file.unlink(missing_ok=True)
+                self.cancel_file = None
         GLib.idle_add(self.finished, kind, code)
 
     def process_progress_line(self, line):
@@ -790,6 +805,10 @@ class KernelBuilder(Adw.Application):
             "[kait2en-progress] phase=localmodconfig": ("Running localmodconfig", 0.78),
             "Building ": ("Building kernel", 0.0),
             "[kait2en-progress] phase=installing": ("Waiting for authorization, then installing", 0.98),
+            "[kait2en-progress] phase=install-modules": ("Installing kernel modules", 0.98),
+            "[kait2en-progress] phase=install-dkms": ("Installing DKMS modules", 0.98),
+            "[kait2en-progress] phase=install-boot": ("Creating kernel boot files and initramfs", 0.98),
+            "[kait2en-progress] phase=verify-install": ("Verifying installed kernel", 0.98),
         }
         for marker, (phase, fraction) in phases.items():
             if marker in line:
@@ -866,8 +885,15 @@ class KernelBuilder(Adw.Application):
 
     def cancel(self):
         if self.process:
-            try: os.killpg(self.process.pid, signal.SIGTERM)
-            except ProcessLookupError: pass
+            if self.operation_kind == "install" and self.cancel_file is not None:
+                self.cancel_file.write_text("cancel\n", encoding="utf-8")
+                self.activity_label.set_text("Cancelling installation and rolling back…")
+                self.activity_cancel.set_sensitive(False)
+                try: os.killpg(self.process.pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError): pass
+            else:
+                try: os.killpg(self.process.pid, signal.SIGTERM)
+                except ProcessLookupError: pass
 
     def settings_data(self):
         config_values = dict(self.pending_config_values)
@@ -919,8 +945,13 @@ class KernelBuilder(Adw.Application):
                 if marker.is_file():
                     try:
                         tree = Path(marker.read_text(encoding="utf-8").strip()).resolve()
-                        in_use = any(link.is_symlink() and link.resolve() == tree
-                                     for link in Path("/lib/modules").glob("*/build"))
+                        for link in Path("/lib/modules").glob("*/build"):
+                            release = link.parent.name
+                            complete = (Path(f"/boot/vmlinuz-{release}").is_file() and
+                                        Path(f"/boot/initramfs-{release}.img").is_file())
+                            if complete and link.is_symlink() and link.resolve() == tree:
+                                in_use = True
+                                break
                     except OSError:
                         pass
                 label = f"{path.name} - {state}" + (" - installed kernel uses this tree" if in_use else "")
