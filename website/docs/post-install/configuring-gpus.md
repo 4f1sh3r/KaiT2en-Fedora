@@ -38,6 +38,12 @@ The discrete-GPU boot option remains available as a recovery setting. Rebooting
 is always a separate action so changing the stored boot GPU does not restart the
 system unexpectedly.
 
-Other Intel/AMD MacBook Pro models continue to use **T2 GPU Control**. Hybrid
+## Other MacBooks with dGPU
+
+Other Intel/AMD MacBook Pro models use **T2 GPU Control**. Hybrid
 runtime PM is not enabled on those models because their dGPU power-on path is
-not yet reliable.
+not yet reliable. **T2 GPU Control** has options to switch beetween iGPU and
+dGPU and to enable power saving for the dGPU. For the changes to take effect
+you need to reboot.
+Usually, users prefer iGPU as primary to save some energy and make suspend 
+more reliable.
