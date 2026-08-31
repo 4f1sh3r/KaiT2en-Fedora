@@ -15,7 +15,7 @@ T2_CONFIG=0
 PREPARE_ONLY=0
 LOCALMODCONFIG=0
 ALLOW_NO_PATCHES=0
-BUILD_CONFIG_SCHEMA=4
+BUILD_CONFIG_SCHEMA=5
 ENABLE_CONFIGS=()
 HAS_AMD_DGPU=0
 
@@ -369,9 +369,27 @@ if [[ ! -f $WORK/.prepared ]]; then
 		"$TREE/scripts/config" --file "$TREE/.config" --enable "$symbol"
 	done
 	if ((T2_CONFIG)); then
-		# Keep the normal in-tree Thunderbolt driver modular.  This comes after
-		# GUI overrides so the T2 profile cannot accidentally turn it built-in.
-		"$TREE/scripts/config" --file "$TREE/.config" --module USB4
+		# Keep the upstream drivers replaced by Kait2en as modules.  Their Kconfig
+		# entries select infrastructure needed by the DKMS replacements, while
+		# Kait2en's module_blacklist prevents the upstream modules from binding.
+		# This must come after GUI overrides so none can accidentally become
+		# built-in and bypass the module blacklist.
+		for symbol in ACPI_TAD SENSORS_APPLESMC HID_APPLE HID_APPLETB_BL \
+				HID_APPLETB_KBD HID_MAGICMOUSE DRM_APPLETBDRM \
+				APPLE_MFI_FASTCHARGE USB4; do
+			"$TREE/scripts/config" --file "$TREE/.config" --module "$symbol"
+		done
+
+		if ((HAS_AMD_DGPU)); then
+			# The runtime-PM installer replaces these two modules with builds from
+			# this tree.  Preserve their complete Kconfig dependency graph even if
+			# localmodconfig ran while the discrete GPU was powered off.
+			"$TREE/scripts/config" --file "$TREE/.config" \
+				--module APPLE_GMUX \
+				--module DRM_AMDGPU \
+				--module SND_HDA_INTEL \
+				--module SND_HDA_CODEC_HDMI
+		fi
 	fi
 	make -C "$TREE" olddefconfig
 	printf '%s\n' "$TREE" >"$WORK/kernel-tree"
