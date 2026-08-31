@@ -144,6 +144,11 @@ grep -Fq 'T2_REQUIRED_MODULES+=("${AMD_DGPU_REQUIRED_MODULES[@]}")' \
 	apps/t2-kernel-builder/engine/build.sh
 grep -Fq '/etc/modprobe.d/kait2en-silent-blacklist.conf' \
 	scripts/fedora/install-kernel-args.sh
+grep -Fq 'ln -sfn kait2en-multicall /usr/local/bin/edit-grub' scripts/fedora/install.sh
+grep -Fq 'ln -sfn kait2en-multicall /usr/local/bin/update-grub' scripts/fedora/install.sh
+grep -Fq 'exec sudo nano /etc/default/grub' scripts/fedora/kait2en-multicall
+grep -Fq 'exec sudo grub2-mkconfig -o /boot/grub2/grub.cfg' \
+	scripts/fedora/kait2en-multicall
 grep -Fq "printf 'install %s /bin/true" scripts/fedora/install-kernel-args.sh
 grep -Fq '"etc", "xdg", "autostart"' \
 	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py

@@ -7,6 +7,11 @@ require_repo_root
 require_fedora
 require_min_kernel 7 0
 
+install -d -o root -g root -m 0755 /usr/local/bin
+install -o root -g root -m 0755 "$SCRIPT_DIR/kait2en-multicall" /usr/local/bin/kait2en-multicall
+ln -sfn kait2en-multicall /usr/local/bin/edit-grub
+ln -sfn kait2en-multicall /usr/local/bin/update-grub
+
 STEPS=(
 	install-dependencies.sh
 	install-kernel-args.sh
