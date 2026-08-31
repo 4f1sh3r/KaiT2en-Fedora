@@ -227,13 +227,15 @@ apply_saved() {
     [[ -r "$CONFIG" ]] || return 0
     # shellcheck disable=SC1090
     source "$CONFIG"
+    # The thermal target is an explicit persistent setting.  The enabled flag
+    # only controls ownership and reapplication of the RAPL-related settings.
+    [[ -z $tcc_target_c || $tcc_target_c == 0 ]] || write_tcc_target "$tcc_target_c"
     [[ $enabled == 1 ]] || return 0
     if [[ -n $max_freq_khz && $max_freq_khz != 0 ]]; then
         max_freq_khz=$(normalize_max_freq "$max_freq_khz")
     fi
     write_limits "$pl1_uw" "$pl2_uw"
     write_no_turbo "$no_turbo"
-    [[ -z $tcc_target_c || $tcc_target_c == 0 ]] || write_tcc_target "$tcc_target_c"
     [[ -z $max_freq_khz || $max_freq_khz == 0 ]] || write_max_freq "$max_freq_khz"
     z=$(zone); long=$(constraint "$z" long_term); short=$(constraint "$z" short_term)
     active_pl1=$(<"${long}_power_limit_uw")
