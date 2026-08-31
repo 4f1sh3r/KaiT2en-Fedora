@@ -85,35 +85,38 @@ items:
       and capture sequence, reducing idle display power and enabling deeper
       package C-states up to PC10.
 
+
+  # --- Available -------------------------------------------------------------
+
   - id: keyboard-backlight-reenumeration
     title: "Keyboard backlight after re-enumeration"
-    state: in-progress
-    upstream: submitted
+    state: available
+    upstream: merged
     project: upower
     authors:
       - deqrocks
     link: "https://gitlab.freedesktop.org/upower/upower/-/merge_requests/335"
     updated: "2026-07-29"
-    notes: The backlight did not come back on after the keyboard re-enumerated.
+    notes: >-
+      The backlight did not come back on after the keyboard re-enumerated.
+      Was merged and is expected to ship with kernel 7.4.
 
   - id: thunderbolt-device-links
     title: "Thunderbolt device links"
-    state: in-progress
-    upstream: submitted
-    version: v8
+    state: available
+    upstream: merged
+    version: v9
     project: Linux kernel
     subsystem: Thunderbolt
     authors:
-      - ruiCON
+      - byte
       - deqrocks
     link: "https://lore.kernel.org/all/20260817101329.1517-1-atharvatiwarilinuxdev@gmail.com/"
     updated: "2026-08-17"
     notes: >-
-      Maintainers did not accept v7. The three-patch v8 series moves Apple
-      device-link discovery into the Thunderbolt PCI code and adds Titan Ridge
-      and Ice Lake support separately.
-
-  # --- Available -------------------------------------------------------------
+      The three-patch series moves Apple device-link discovery into the 
+      Thunderbolt PCI code and adds Titan Ridge and Ice Lake support separately.
+      Was merged and is expected to ship with kernel 7.4.
 
   - id: apple-t2-early-cpu-offlining
     title: "Fast CPU restore after suspend"
