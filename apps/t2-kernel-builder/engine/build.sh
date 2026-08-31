@@ -15,9 +15,36 @@ T2_CONFIG=0
 PREPARE_ONLY=0
 LOCALMODCONFIG=0
 ALLOW_NO_PATCHES=0
-BUILD_CONFIG_SCHEMA=7
+BUILD_CONFIG_SCHEMA=8
 ENABLE_CONFIGS=()
 HAS_AMD_DGPU=0
+T2_REQUIRED_MODULES=(
+	ACPI_TAD
+	SENSORS_APPLESMC
+	HID_APPLE
+	HID_APPLETB_BL
+	HID_APPLETB_KBD
+	HID_MAGICMOUSE
+	DRM_APPLETBDRM
+	APPLE_MFI_FASTCHARGE
+	APPLE_GMUX
+	DRM_I915
+	USB4
+	MFD_MACSMC_CORE
+	MACSMC_ACPI
+	SENSORS_MACSMC_HWMON
+	MACSMC_LIGHT
+	MACSMC_ACCEL
+	LEDS_MACSMC
+	INPUT_MACSMC_CHAMSHELL
+	RTC_DRV_MACSMC
+	MACSMC_POWER
+)
+
+fail() {
+	printf 'Error: %s\n' "$*" >&2
+	exit 1
+}
 
 usage() {
 	cat <<EOF
@@ -124,7 +151,7 @@ PATCH_DIR=$(cd -- "$PATCH_DIR" && pwd -P)
 	exit 2
 }
 
-for command in cpio curl find gcc git install make nproc patch rpm2cpio sed sha256sum sort tar uname xz yes; do
+for command in cpio curl find gcc git grep install make nproc patch rpm2cpio sed sha256sum sort tar uname xz yes; do
 	command -v "$command" >/dev/null || {
 		printf 'Missing command: %s\n' "$command" >&2
 		exit 1
@@ -387,18 +414,20 @@ if [[ ! -f $WORK/.prepared ]]; then
 		# keyboard module, which requires sparse-keymap symbols from the kernel.
 		# USB4 must also survive localmodconfig: pcie_ports=compat can keep the
 		# in-tree Thunderbolt driver unloaded while the profile is captured.
+		# The initcall and module blacklists used by Kait2en replace drivers at
+		# runtime; they do not make those drivers optional at build time.
 		"$TREE/scripts/config" --file "$TREE/.config" \
 			--enable INPUT_SPARSEKMAP \
 			--enable HOTPLUG_PCI \
-			--enable HOTPLUG_PCI_PCIE
+			--enable HOTPLUG_PCI_PCIE \
+			--enable RTC_DRV_CMOS \
+			--enable BACKLIGHT_CLASS_DEVICE \
+			--enable VGA_SWITCHEROO
 
 		if ((HAS_AMD_DGPU)); then
-			# t2gmux replaces apple_gmux at runtime, but builds against helpers
-			# exposed by apple-gmux.h only when CONFIG_APPLE_GMUX is configured.
-			"$TREE/scripts/config" --file "$TREE/.config" \
-				--enable BACKLIGHT_CLASS_DEVICE \
-				--enable VGA_SWITCHEROO \
-				--module APPLE_GMUX
+			# Preserve the discrete GPU stack even if localmodconfig ran while it
+			# was powered off.
+			"$TREE/scripts/config" --file "$TREE/.config" --module DRM_AMDGPU
 		fi
 	fi
 	for symbol in "${ENABLE_CONFIGS[@]}"; do
@@ -410,9 +439,7 @@ if [[ ! -f $WORK/.prepared ]]; then
 		# Kait2en's module_blacklist prevents the upstream modules from binding.
 		# This must come after GUI overrides so none can accidentally become
 		# built-in and bypass the module blacklist.
-		for symbol in ACPI_TAD SENSORS_APPLESMC HID_APPLE HID_APPLETB_BL \
-				HID_APPLETB_KBD HID_MAGICMOUSE DRM_APPLETBDRM \
-				APPLE_MFI_FASTCHARGE USB4; do
+		for symbol in "${T2_REQUIRED_MODULES[@]}"; do
 			"$TREE/scripts/config" --file "$TREE/.config" --module "$symbol"
 		done
 
@@ -425,14 +452,20 @@ if [[ ! -f $WORK/.prepared ]]; then
 			# builds from this tree. Preserve their complete Kconfig dependency
 			# graph even if localmodconfig ran while the discrete GPU was off.
 			"$TREE/scripts/config" --file "$TREE/.config" \
-				--module APPLE_GMUX \
-				--module DRM_I915 \
 				--module DRM_AMDGPU \
 				--module SND_HDA_INTEL \
 				--module SND_HDA_CODEC_HDMI
 		fi
 	fi
 	make -C "$TREE" olddefconfig
+	if ((T2_CONFIG)); then
+		for symbol in "${T2_REQUIRED_MODULES[@]}"; do
+			grep -qx "CONFIG_$symbol=m" "$TREE/.config" ||
+				fail "required T2 kernel module was rejected by Kconfig: CONFIG_$symbol"
+		done
+		grep -Eq '^CONFIG_RTC_DRV_CMOS=[ym]$' "$TREE/.config" ||
+			fail "required T2 kernel driver was rejected by Kconfig: CONFIG_RTC_DRV_CMOS"
+	fi
 	printf '%s\n' "$TREE" >"$WORK/kernel-tree"
 	printf '%s\n' "$INPUT_HASH" >"$WORK/input-hash"
 	touch "$WORK/.prepared"

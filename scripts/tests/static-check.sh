@@ -89,6 +89,13 @@ grep -Fq 't2-kernel-builder installation failed; continuing because it is option
 	scripts/fedora/install-apps.sh
 grep -Fq 't2-kernel-builder bundle is incomplete' \
 	apps/t2-kernel-builder/install.sh
+for symbol in MFD_MACSMC_CORE MACSMC_ACPI SENSORS_MACSMC_HWMON \
+		MACSMC_LIGHT MACSMC_ACCEL LEDS_MACSMC INPUT_MACSMC_CHAMSHELL \
+		RTC_DRV_MACSMC MACSMC_POWER; do
+	grep -Fq "$symbol" apps/t2-kernel-builder/engine/build.sh
+done
+grep -Fq 'required T2 kernel module was rejected by Kconfig' \
+	apps/t2-kernel-builder/engine/build.sh
 grep -Fq '/etc/modprobe.d/kait2en-silent-blacklist.conf' \
 	scripts/fedora/install-kernel-args.sh
 grep -Fq "printf 'install %s /bin/true" scripts/fedora/install-kernel-args.sh
