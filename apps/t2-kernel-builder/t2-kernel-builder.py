@@ -17,7 +17,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, GObject, Gtk
 
 APP_ID = "org.t2kernelbuilder.gtk"
-APP_VERSION = "0.01"
+APP_VERSION = "0.02"
 HERE = Path(__file__).resolve().parent
 SOURCE_ENGINE = HERE / "engine"
 INSTALLED_ENGINE = Path("/usr/local/libexec/t2-kernel-builder")
@@ -273,6 +273,12 @@ class KernelBuilder(Adw.Application):
 
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         footer.add_css_class("sticky-bar")
+        donate = Gtk.LinkButton(
+            uri="https://donate.stripe.com/eVq14n8a7agh2lQdqq14400",
+            label="Fund my bugs",
+        )
+        donate.add_css_class("dim-label")
+        footer.append(donate)
         self.notice = Gtk.Label(xalign=0, wrap=True, hexpand=True)
         footer.append(self.notice)
         footer.append(Gtk.Label(label=f"v{APP_VERSION}"))

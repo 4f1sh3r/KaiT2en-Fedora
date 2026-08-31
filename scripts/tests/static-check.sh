@@ -114,6 +114,10 @@ grep -Fq 'Cancelling installation and rolling back' \
 	apps/t2-kernel-builder/t2-kernel-builder.py
 grep -Fq 'Path(f"/boot/initramfs-{release}.img").is_file()' \
 	apps/t2-kernel-builder/t2-kernel-builder.py
+grep -Fq 'label="Fund my bugs"' \
+	apps/t2-kernel-builder/t2-kernel-builder.py
+grep -Fq 'https://donate.stripe.com/eVq14n8a7agh2lQdqq14400' \
+	apps/t2-kernel-builder/t2-kernel-builder.py
 ! grep -Fq '["dracut", "--force"' \
 	apps/t2-kernel-builder/t2-kernel-builder-cleanup
 grep -Fq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl,gmux_backlight,intel_backlight,acpi_video0' \
@@ -128,6 +132,16 @@ done
 grep -Fq 'required T2 kernel module was rejected by Kconfig' \
 	apps/t2-kernel-builder/engine/build.sh
 grep -Fq -- '--enable IIO' apps/t2-kernel-builder/engine/build.sh
+grep -Fq "grep -Eq '^\\+config[[:space:]]+MACSMC_ACPI" \
+	apps/t2-kernel-builder/engine/build.sh
+grep -Fq 'if ((HAS_MACSMC_PATCHES)); then' \
+	apps/t2-kernel-builder/engine/build.sh
+grep -Fq 'if ((HAS_AMD_DGPU)); then' \
+	apps/t2-kernel-builder/engine/build.sh
+grep -Fq 'T2_REQUIRED_MODULES+=("${MACSMC_REQUIRED_MODULES[@]}")' \
+	apps/t2-kernel-builder/engine/build.sh
+grep -Fq 'T2_REQUIRED_MODULES+=("${AMD_DGPU_REQUIRED_MODULES[@]}")' \
+	apps/t2-kernel-builder/engine/build.sh
 grep -Fq '/etc/modprobe.d/kait2en-silent-blacklist.conf' \
 	scripts/fedora/install-kernel-args.sh
 grep -Fq "printf 'install %s /bin/true" scripts/fedora/install-kernel-args.sh

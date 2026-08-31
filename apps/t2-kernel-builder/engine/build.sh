@@ -15,9 +15,10 @@ T2_CONFIG=0
 PREPARE_ONLY=0
 LOCALMODCONFIG=0
 ALLOW_NO_PATCHES=0
-BUILD_CONFIG_SCHEMA=9
+BUILD_CONFIG_SCHEMA=10
 ENABLE_CONFIGS=()
 HAS_AMD_DGPU=0
+HAS_MACSMC_PATCHES=0
 T2_REQUIRED_MODULES=(
 	ACPI_TAD
 	SENSORS_APPLESMC
@@ -27,9 +28,16 @@ T2_REQUIRED_MODULES=(
 	HID_MAGICMOUSE
 	DRM_APPLETBDRM
 	APPLE_MFI_FASTCHARGE
-	APPLE_GMUX
 	DRM_I915
 	USB4
+)
+AMD_DGPU_REQUIRED_MODULES=(
+	APPLE_GMUX
+	DRM_AMDGPU
+	SND_HDA_INTEL
+	SND_HDA_CODEC_HDMI
+)
+MACSMC_REQUIRED_MODULES=(
 	MFD_MACSMC_CORE
 	MACSMC_ACPI
 	SENSORS_MACSMC_HWMON
@@ -263,6 +271,18 @@ if ((${#PATCHES[@]} == 0 && !ALLOW_NO_PATCHES)); then
 	printf 'No patches found in %s\n' "$PATCH_DIR" >&2
 	exit 1
 fi
+for patch_file in "${PATCHES[@]}"; do
+	if grep -Eq '^\+config[[:space:]]+MACSMC_ACPI([[:space:]]|$)' "$patch_file"; then
+		HAS_MACSMC_PATCHES=1
+		break
+	fi
+done
+if ((HAS_MACSMC_PATCHES)); then
+	T2_REQUIRED_MODULES+=("${MACSMC_REQUIRED_MODULES[@]}")
+fi
+if ((HAS_AMD_DGPU)); then
+	T2_REQUIRED_MODULES+=("${AMD_DGPU_REQUIRED_MODULES[@]}")
+fi
 
 INPUT_HASH=$({
 	printf '%s\0%s\0' "$KERNEL_RELEASE" "$KERNEL_LOCALVERSION"
@@ -271,6 +291,7 @@ INPUT_HASH=$({
 	if ((T2_CONFIG)); then
 		printf 't2-config\0'
 		printf 'amd-dgpu=%s\0' "$HAS_AMD_DGPU"
+		printf 'macsmc-patches=%s\0' "$HAS_MACSMC_PATCHES"
 	fi
 	if ((LOCALMODCONFIG)); then
 		printf 'localmodconfig\0'
@@ -420,10 +441,12 @@ if [[ ! -f $WORK/.prepared ]]; then
 			--enable INPUT_SPARSEKMAP \
 			--enable HOTPLUG_PCI \
 			--enable HOTPLUG_PCI_PCIE \
-			--enable IIO \
 			--enable RTC_DRV_CMOS \
 			--enable BACKLIGHT_CLASS_DEVICE \
 			--enable VGA_SWITCHEROO
+		if ((HAS_MACSMC_PATCHES)); then
+			"$TREE/scripts/config" --file "$TREE/.config" --enable IIO
+		fi
 
 		if ((HAS_AMD_DGPU)); then
 			# Preserve the discrete GPU stack even if localmodconfig ran while it
@@ -464,7 +487,11 @@ if [[ ! -f $WORK/.prepared ]]; then
 			grep -qx "CONFIG_$symbol=m" "$TREE/.config" ||
 				fail "required T2 kernel module was rejected by Kconfig: CONFIG_$symbol"
 		done
-		for symbol in IIO RTC_DRV_CMOS; do
+		driver_symbols=(RTC_DRV_CMOS)
+		if ((HAS_MACSMC_PATCHES)); then
+			driver_symbols+=(IIO)
+		fi
+		for symbol in "${driver_symbols[@]}"; do
 			grep -Eq "^CONFIG_$symbol=[ym]$" "$TREE/.config" ||
 				fail "required T2 kernel driver was rejected by Kconfig: CONFIG_$symbol"
 		done

@@ -14,13 +14,14 @@ import time
 INPUT_MODULES = ("t2bce_dma", "t2bce_core", "t2bce_vhci", "t2hid")
 REQUIRED_MODULES = (
     "acpi_tad", "rtc_cmos", "applesmc",
+    "hid_apple", "hid_appletb_bl", "hid_appletb_kbd",
+    "hid_magicmouse", "appletbdrm", "apple_mfi_fastcharge",
+    "t2bce_core", "t2bce_dma", "t2bce_vhci", "t2hid",
+)
+MACSMC_MODULES = (
     "macsmc_core", "macsmc_acpi", "macsmc_hwmon", "macsmc_light",
     "macsmc_accel", "leds_macsmc", "macsmc_chamshell", "rtc_macsmc",
-    "macsmc_power", "hid_apple", "hid_appletb_bl", "hid_appletb_kbd",
-    "hid_magicmouse", "appletbdrm", "apple_mfi_fastcharge", "apple_gmux",
-    "hid_t2magicmouse", "t2bce_audio", "t2bce_core", "t2bce_dma",
-    "t2bce_vhci", "t2bdrm", "t2gmux", "t2mfi_fastcharge", "t2smc",
-    "t2smp", "t2thunderbolt", "t2hid", "t2touchbar_bl", "t2touchbar_kbd",
+    "macsmc_power",
 )
 DRACUT_CONFIG = pathlib.Path("/etc/dracut.conf.d/90-kait2en-input.conf")
 DKMS_OVERRIDE = pathlib.Path("/etc/dkms/framework.conf.d/kait2en-disable-post-transaction.conf")
@@ -126,7 +127,14 @@ if len(sys.argv) in (4, 5) and sys.argv[1] == "install-kernel":
 
         run(["dkms", "autoinstall", "-k", release], cancel_file)
         run(["depmod", "-a", release], cancel_file)
-        for module in REQUIRED_MODULES:
+        required_modules = list(REQUIRED_MODULES)
+        config = tree / ".config"
+        config_text = config.read_text(encoding="utf-8")
+        if re.search(r"^CONFIG_MACSMC_ACPI=[ym]$", config_text, re.MULTILINE):
+            required_modules.extend(MACSMC_MODULES)
+        if re.search(r"^CONFIG_APPLE_GMUX=[ym]$", config_text, re.MULTILINE):
+            required_modules.append("apple_gmux")
+        for module in required_modules:
             found = subprocess.run(
                 ["modinfo", "-k", release, "-F", "filename", module],
                 text=True, capture_output=True,
