@@ -89,6 +89,12 @@ grep -Fq 't2-kernel-builder installation failed; continuing because it is option
 	scripts/fedora/install-apps.sh
 grep -Fq 't2-kernel-builder bundle is incomplete' \
 	apps/t2-kernel-builder/install.sh
+# A wrong origin URL must be repaired; dying leaves the user with no way out.
+grep -Fq 'repair_origin_url' packaging/installer/runtime/kait2en-install
+grep -Fq 'repair_origin_url' packaging/installer/runtime/kait2en-prepare
+! grep -Fq 'unexpected origin URL' \
+	packaging/installer/runtime/kait2en-install \
+	packaging/installer/runtime/kait2en-prepare
 grep -Fq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl,gmux_backlight,intel_backlight,acpi_video0' \
 	apps/react-drm/.env.example.kait2en
 grep -Fq "grep -Fxq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl'" \
