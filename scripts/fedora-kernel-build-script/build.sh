@@ -15,7 +15,7 @@ T2_CONFIG=0
 PREPARE_ONLY=0
 LOCALMODCONFIG=0
 ALLOW_NO_PATCHES=0
-BUILD_CONFIG_SCHEMA=6
+BUILD_CONFIG_SCHEMA=7
 ENABLE_CONFIGS=()
 HAS_AMD_DGPU=0
 
@@ -417,11 +417,16 @@ if [[ ! -f $WORK/.prepared ]]; then
 		done
 
 		if ((HAS_AMD_DGPU)); then
-			# The runtime-PM installer replaces these two modules with builds from
-			# this tree.  Preserve their complete Kconfig dependency graph even if
-			# localmodconfig ran while the discrete GPU was powered off.
+			# Keep i915 and apple_gmux at the same linkage level. localmodconfig
+			# can promote the currently active i915 driver to built-in, but the
+			# patched i915 calls apple_gmux directly and cannot link against it as
+			# a module. apple_gmux must remain modular so t2gmux can replace it.
+			# The runtime-PM installer also replaces the AMD and HDA modules with
+			# builds from this tree. Preserve their complete Kconfig dependency
+			# graph even if localmodconfig ran while the discrete GPU was off.
 			"$TREE/scripts/config" --file "$TREE/.config" \
 				--module APPLE_GMUX \
+				--module DRM_I915 \
 				--module DRM_AMDGPU \
 				--module SND_HDA_INTEL \
 				--module SND_HDA_CODEC_HDMI
