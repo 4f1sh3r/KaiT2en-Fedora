@@ -15,7 +15,7 @@ T2_CONFIG=0
 PREPARE_ONLY=0
 LOCALMODCONFIG=0
 ALLOW_NO_PATCHES=0
-BUILD_CONFIG_SCHEMA=5
+BUILD_CONFIG_SCHEMA=6
 ENABLE_CONFIGS=()
 HAS_AMD_DGPU=0
 
@@ -206,6 +206,13 @@ esac
 VERSION=${PACKAGE_RELEASE%%-*}
 RELEASE=${PACKAGE_RELEASE#*-}
 [[ -n $VERSION && -n $RELEASE && $VERSION != "$RELEASE" ]] || usage
+[[ $VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || {
+	printf 'Expected a numeric kernel version, got: %s\n' "$VERSION" >&2
+	exit 2
+}
+KERNEL_VERSION_MAJOR=${BASH_REMATCH[1]}
+KERNEL_VERSION_PATCHLEVEL=${BASH_REMATCH[2]}
+KERNEL_VERSION_SUBLEVEL=${BASH_REMATCH[3]}
 KERNEL_LOCALVERSION=-${RELEASE}.x86_64${LOCALVERSION}
 
 SRPM=kernel-$VERSION-$RELEASE.src.rpm
@@ -290,6 +297,16 @@ if [[ ! -f $WORK/.prepared ]]; then
 		printf 'Applying %s\n' "${patch_file##*/}"
 		git -C "$TREE" apply "$patch_file"
 	done
+
+	# Fedora merge-window rc0 tarballs still carry the previous release in the
+	# upstream Makefile.  The RPM spec rewrites PATCHLEVEL before building; do
+	# the equivalent for direct local builds and keep all three fields aligned
+	# with the selected Fedora package version.
+	sed -i \
+		-e "s/^VERSION = .*/VERSION = $KERNEL_VERSION_MAJOR/" \
+		-e "s/^PATCHLEVEL = .*/PATCHLEVEL = $KERNEL_VERSION_PATCHLEVEL/" \
+		-e "s/^SUBLEVEL = .*/SUBLEVEL = $KERNEL_VERSION_SUBLEVEL/" \
+		"$TREE/Makefile"
 
 	if [[ -n $CONFIG_FILE ]]; then
 		install -m 0644 "$CONFIG_FILE" "$TREE/.config"
