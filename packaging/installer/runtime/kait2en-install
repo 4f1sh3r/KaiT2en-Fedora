@@ -57,13 +57,31 @@ offer_reboot() {
 	sudo systemctl reboot
 }
 
+repository_git() {
+	git -c safe.directory="$repository" -C "$repository" "$@"
+}
+
+# The origin URL is a constant, not user data, so repair it instead of dying.
+repair_origin_url() {
+	local current
+	current=$(repository_git remote get-url origin 2>/dev/null) || current=
+	[[ "$current" != "$repository_url" ]] || return 0
+	printf 'Repairing the KaiT2en origin URL (found: %s).\n' "${current:-none}"
+	if [[ -n "$current" ]]; then
+		repository_git remote set-url origin "$repository_url" ||
+			die "The KaiT2en origin URL could not be repaired in $repository."
+	else
+		repository_git remote add origin "$repository_url" ||
+			die "The KaiT2en origin remote could not be added in $repository."
+	fi
+}
+
 validate_repository() {
 	[[ -d "$repository/.git" ]] ||
 		die "The KaiT2en Git checkout is missing: $repository"
-	[[ -z $(git -C "$repository" status --porcelain) ]] ||
+	[[ -z $(repository_git status --porcelain) ]] ||
 		die "The KaiT2en checkout has local changes. They were not discarded. Resolve them in $repository and log in again."
-	[[ $(git -C "$repository" remote get-url origin) == "$repository_url" ]] ||
-		die 'The KaiT2en checkout has an unexpected origin URL.'
+	repair_origin_url
 }
 
 delegate_to_repository() {
@@ -78,10 +96,10 @@ refresh_repository() {
 	validate_repository
 	printf 'Checking for the latest KaiT2en %s branch...\n' "$repository_branch"
 	wait_for_github
-	git -C "$repository" checkout "$repository_branch"
-	previous=$(git -C "$repository" rev-parse HEAD)
-	git -C "$repository" pull --ff-only origin "$repository_branch"
-	current=$(git -C "$repository" rev-parse HEAD)
+	repository_git checkout "$repository_branch"
+	previous=$(repository_git rev-parse HEAD)
+	repository_git pull --ff-only origin "$repository_branch"
+	current=$(repository_git rev-parse HEAD)
 
 	# Once this implementation is available in the checkout, run the freshly
 	# updated copy. Future releases can change the update policy in one place.
