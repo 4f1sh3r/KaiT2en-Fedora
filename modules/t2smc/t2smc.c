@@ -22,6 +22,7 @@
 #include <linux/err.h>
 #include <linux/ktime.h>
 #include <linux/power_supply.h>
+#include <linux/platform_device.h>
 #include <linux/rtc.h>
 #include <linux/workqueue.h>
 
@@ -1309,7 +1310,7 @@ static const struct rtc_class_ops t2smc_rtc_ops = {
 
 static int t2smc_register_rtc(struct t2smc_device *t2)
 {
-	struct device *dev = &t2->adev->dev;
+	struct device *dev = t2->dev;
 	bool has_counter, has_offset;
 	int ret;
 
@@ -1348,7 +1349,7 @@ static int t2smc_register_rtc(struct t2smc_device *t2)
 /* Register hwmon device with fan, temp channels and BCLM extra group */
 static int t2smc_register_hwmon(struct t2smc_device *t2)
 {
-	struct device *dev = &t2->adev->dev;
+	struct device *dev = t2->dev;
 	struct device *hwmon_dev;
 	struct hwmon_channel_info *fan_info;
 	struct hwmon_chip_info *chip_info;
@@ -1454,30 +1455,34 @@ static void t2smc_unregister_power_notifier(void *data)
 	cancel_work_sync(&t2->power_event_work);
 }
 
-/* -- ACPI driver callbacks -- */
-static int t2smc_add(struct acpi_device *adev)
+/* -- Platform driver callbacks -- */
+static int t2smc_probe(struct platform_device *pdev)
 {
+	struct acpi_device *adev = ACPI_COMPANION(&pdev->dev);
 	struct t2smc_device *t2;
 	int ret;
 
-	t2 = devm_kzalloc(&adev->dev, sizeof(*t2), GFP_KERNEL);
+	if (!adev)
+		return -ENODEV;
+
+	t2 = devm_kzalloc(&pdev->dev, sizeof(*t2), GFP_KERNEL);
 	if (!t2)
 		return -ENOMEM;
 
 	t2->adev = adev;
-	t2->dev = &adev->dev;
+	t2->dev = &pdev->dev;
 	mutex_init(&t2->mutex);
 	INIT_WORK(&t2->power_event_work, t2smc_power_event_work);
 	atomic64_set(&t2->power_event_count, 0);
 	t2->power_supply_nb.notifier_call = t2smc_power_supply_event;
-	dev_set_drvdata(&adev->dev, t2);
+	platform_set_drvdata(pdev, t2);
 
 	/*
 	 * Register cleanup action before anything that can fail.
 	 * devres runs in reverse order, so this runs AFTER hwmon devres,
 	 * ensuring hwmon callbacks never see freed t2.
 	 */
-	ret = devm_add_action_or_reset(&adev->dev, t2smc_devm_cleanup, t2);
+	ret = devm_add_action_or_reset(&pdev->dev, t2smc_devm_cleanup, t2);
 	if (ret)
 		return ret;
 
@@ -1541,7 +1546,7 @@ static int t2smc_add(struct acpi_device *adev)
 	if (ret)
 		return ret;
 	t2->power_notifier_registered = true;
-	ret = devm_add_action_or_reset(&adev->dev,
+	ret = devm_add_action_or_reset(&pdev->dev,
 				       t2smc_unregister_power_notifier, t2);
 	if (ret)
 		return ret;
@@ -1551,11 +1556,6 @@ static int t2smc_add(struct acpi_device *adev)
 	return 0;
 }
 
-static void t2smc_remove(struct acpi_device *adev)
-{
-	/* All resources (iomem, cache, mutex, hwmon, rtc) are devm-managed */
-}
-
 static const struct acpi_device_id t2smc_ids[] = {
 	{ "APP0001", 0 },
 	{ "smc-huronriver", 0 },
@@ -1563,16 +1563,15 @@ static const struct acpi_device_id t2smc_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, t2smc_ids);
 
-static struct acpi_driver t2smc_driver = {
-	.name  = "t2smc",
-	.ids   = t2smc_ids,
-	.ops   = {
-		.add    = t2smc_add,
-		.remove = t2smc_remove,
+static struct platform_driver t2smc_driver = {
+	.probe = t2smc_probe,
+	.driver = {
+		.name = "t2smc",
+		.acpi_match_table = t2smc_ids,
 	},
 };
 
-module_acpi_driver(t2smc_driver);
+module_platform_driver(t2smc_driver);
 
 MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@gmail.com>");
 MODULE_DESCRIPTION("T2 Mac SMC driver");
