@@ -20,7 +20,6 @@ STEPS=(
 	install-alsa-ucm.sh
 	install-dsp.sh
 	install-networkmanager-rules.sh
-	install-t2-ncm-debug-service.sh
 	install-acpi-fixes.sh
 	install-plymouth-theme.sh
 	install-gdm-branding.sh
