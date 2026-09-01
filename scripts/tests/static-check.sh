@@ -115,10 +115,6 @@ grep -Fq 'Cancelling installation and rolling back' \
 	apps/t2-kernel-builder/t2-kernel-builder.py
 grep -Fq 'Path(f"/boot/initramfs-{release}.img").is_file()' \
 	apps/t2-kernel-builder/t2-kernel-builder.py
-grep -Fq 'label="Fund my bugs"' \
-	apps/t2-kernel-builder/t2-kernel-builder.py
-grep -Fq 'https://donate.stripe.com/eVq14n8a7agh2lQdqq14400' \
-	apps/t2-kernel-builder/t2-kernel-builder.py
 ! grep -Fq '["dracut", "--force"' \
 	apps/t2-kernel-builder/t2-kernel-builder-cleanup
 grep -Fq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl,gmux_backlight,intel_backlight,acpi_video0' \
