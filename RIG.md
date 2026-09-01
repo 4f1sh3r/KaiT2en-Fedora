@@ -59,7 +59,11 @@ and decided case by case.
   deliberately *not* taken here — the whole `apps/t2-fan-control/` directory, README
   included, is resolved to the `local/rig` side on every `merge main`, so this
   app stays pinned to the pre-v0.05 base the bias work was written against.
-  `rerere` has that resolution recorded.
+  `rerere` has that resolution recorded. The 2026-09-01 merge added packaging drift
+  on top of the code drift: upstream's branding pass redrew the app icon and its
+  `Makefile` grew a `check-build` guard against installing without a prior
+  `make build`. Neither is taken here, so this app keeps the old icon while every
+  other app got the new one.
 - Config trap: `/etc/t2-fancontrol/config.txt` holds the bias keys and has no
   `config_version` line. v0.05 discards any config whose version does not match
   and rewrites the file from its own defaults, so running an upstream install
