@@ -21,7 +21,8 @@ else
 fi
 
 info "installing Fedora build and runtime dependencies for $KVER"
-dnf install -y \
+packages=(
+	plymouth-plugin-script \
 	acpica-tools \
 	alsa-ucm \
 	dkms \
@@ -45,10 +46,22 @@ dnf install -y \
 	libdrm-devel \
 	cairo-devel \
 	librsvg2-devel \
-	plymouth-plugin-script \
 	nodejs \
 	npm \
 	brightnessctl \
 	cava
+)
+
+failed_packages=()
+for package in "${packages[@]}"; do
+	if ! dnf install -y "$package"; then
+		warn "failed to install dependency $package; continuing"
+		failed_packages+=("$package")
+	fi
+done
+
+if (( ${#failed_packages[@]} > 0 )); then
+	warn "dependency installation completed with errors in: ${failed_packages[*]}"
+fi
 
 info "dependencies installed"
