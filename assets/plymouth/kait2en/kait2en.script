@@ -5,25 +5,86 @@ Window.SetBackgroundBottomColor(0, 0, 0);
 
 boot.image = Image("boot.png");
 boot.sprite = Sprite(boot.image);
-boot.x = Window.GetX() + Window.GetWidth() / 2 - boot.image.GetWidth() / 2;
-boot.y = Window.GetY() + Window.GetHeight() * 0.45 - boot.image.GetHeight() / 2;
-boot.sprite.SetPosition(boot.x, boot.y, 10);
 
 progress_box.image = Image("progress_box.png");
 progress_box.sprite = Sprite(progress_box.image);
-progress_box.x = Window.GetX() + Window.GetWidth() / 2 - progress_box.image.GetWidth() / 2;
-progress_box.y = Window.GetY() + Window.GetHeight() * 0.62 - progress_box.image.GetHeight() / 2;
-progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 10);
 
 progress_bar.original_image = Image("progress_bar.png");
 progress_bar.sprite = Sprite();
-progress_bar.sprite.SetPosition(progress_box.x, progress_box.y, 11);
 
 kait2en.image = Image("watermark.png");
 kait2en.sprite = Sprite(kait2en.image);
-kait2en.x = Window.GetX() + Window.GetWidth() / 2 - kait2en.image.GetWidth() / 2;
-kait2en.y = Window.GetY() + Window.GetHeight() - kait2en.image.GetHeight() - 36;
-kait2en.sprite.SetPosition(kait2en.x, kait2en.y, 10);
+
+message.sprite = Sprite();
+
+dialog.status = "hidden";
+
+last_win_w = 0;
+last_win_h = 0;
+
+fun update_layout()
+{
+  win_w = Window.GetWidth();
+  win_h = Window.GetHeight();
+  win_x = Window.GetX();
+  win_y = Window.GetY();
+
+  if (win_w == last_win_w && win_h == last_win_h)
+    return;
+
+  last_win_w = win_w;
+  last_win_h = win_h;
+
+  boot.x = win_x + win_w / 2 - boot.image.GetWidth() / 2;
+  boot.y = win_y + win_h * 0.45 - boot.image.GetHeight() / 2;
+  boot.sprite.SetPosition(boot.x, boot.y, 10);
+
+  progress_box.x = win_x + win_w / 2 - progress_box.image.GetWidth() / 2;
+  progress_box.y = win_y + win_h * 0.62 - progress_box.image.GetHeight() / 2;
+  progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 10);
+
+  progress_bar.sprite.SetPosition(progress_box.x, progress_box.y, 11);
+
+  kait2en.x = win_x + win_w / 2 - kait2en.image.GetWidth() / 2;
+  kait2en.y = win_y + win_h - kait2en.image.GetHeight() - 36;
+  kait2en.sprite.SetPosition(kait2en.x, kait2en.y, 10);
+
+  if (dialog.box_sprite)
+  {
+    dialog.box_x = win_x + win_w / 2 - dialog.box_image.GetWidth() / 2;
+    dialog.box_y = win_y + win_h / 2 - dialog.box_image.GetHeight() / 2;
+    dialog.box_sprite.SetPosition(dialog.box_x, dialog.box_y, 100);
+
+    dialog.lock_x = dialog.box_x + 22;
+    dialog.lock_y = dialog.box_y + dialog.box_image.GetHeight() / 2 - dialog.lock_image.GetHeight() / 2;
+    dialog.lock_sprite.SetPosition(dialog.lock_x, dialog.lock_y, 101);
+
+    dialog.entry_x = dialog.lock_x + dialog.lock_image.GetWidth() + 12;
+    dialog.entry_y = dialog.box_y + dialog.box_image.GetHeight() / 2 - dialog.entry_image.GetHeight() / 2;
+    dialog.entry_sprite.SetPosition(dialog.entry_x, dialog.entry_y, 101);
+
+    for (index = 0; dialog.bullets[index]; index++)
+    {
+      bullet_x = dialog.entry_x + 8 + index * dialog.bullet_image.GetWidth();
+      bullet_y = dialog.entry_y + dialog.entry_image.GetHeight() / 2 - dialog.bullet_image.GetHeight() / 2;
+      dialog.bullets[index].SetPosition(bullet_x, bullet_y, 102);
+    }
+  }
+
+  if (message.image)
+  {
+    message.x = win_x + win_w / 2 - message.image.GetWidth() / 2;
+    message.y = progress_box.y + 28;
+    message.sprite.SetPosition(message.x, message.y, 50);
+  }
+}
+
+fun refresh_callback()
+{
+  update_layout();
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);
 
 fun progress_callback(duration, progress)
 {
@@ -40,8 +101,6 @@ fun progress_callback(duration, progress)
 
 Plymouth.SetBootProgressFunction(progress_callback);
 
-dialog.status = "hidden";
-
 fun dialog_setup()
 {
   dialog.box_image = Image("box.png");
@@ -50,23 +109,18 @@ fun dialog_setup()
   dialog.bullet_image = Image("bullet.png");
 
   dialog.box_sprite = Sprite(dialog.box_image);
-  dialog.box_x = Window.GetX() + Window.GetWidth() / 2 - dialog.box_image.GetWidth() / 2;
-  dialog.box_y = Window.GetY() + Window.GetHeight() / 2 - dialog.box_image.GetHeight() / 2;
-  dialog.box_sprite.SetPosition(dialog.box_x, dialog.box_y, 100);
-
   dialog.lock_sprite = Sprite(dialog.lock_image);
-  dialog.lock_x = dialog.box_x + 22;
-  dialog.lock_y = dialog.box_y + dialog.box_image.GetHeight() / 2 - dialog.lock_image.GetHeight() / 2;
-  dialog.lock_sprite.SetPosition(dialog.lock_x, dialog.lock_y, 101);
-
   dialog.entry_sprite = Sprite(dialog.entry_image);
-  dialog.entry_x = dialog.lock_x + dialog.lock_image.GetWidth() + 12;
-  dialog.entry_y = dialog.box_y + dialog.box_image.GetHeight() / 2 - dialog.entry_image.GetHeight() / 2;
-  dialog.entry_sprite.SetPosition(dialog.entry_x, dialog.entry_y, 101);
+
+  last_win_w = 0;
+  update_layout();
 }
 
 fun dialog_set_opacity(opacity)
 {
+  if (!dialog.box_sprite)
+    return;
+
   dialog.box_sprite.SetOpacity(opacity);
   dialog.lock_sprite.SetOpacity(opacity);
   dialog.entry_sprite.SetOpacity(opacity);
@@ -94,24 +148,20 @@ fun display_password_callback(prompt, bullets)
   for (index = 0; dialog.bullets[index] || index < bullets; index++)
   {
     if (!dialog.bullets[index])
-    {
       dialog.bullets[index] = Sprite(dialog.bullet_image);
-      bullet_x = dialog.entry_x + 8 + index * dialog.bullet_image.GetWidth();
-      bullet_y = dialog.entry_y + dialog.entry_image.GetHeight() / 2 - dialog.bullet_image.GetHeight() / 2;
-      dialog.bullets[index].SetPosition(bullet_x, bullet_y, 102);
-    }
 
     if (index < bullets)
       dialog.bullets[index].SetOpacity(1);
     else
       dialog.bullets[index].SetOpacity(0);
   }
+
+  last_win_w = 0;
+  update_layout();
 }
 
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
 Plymouth.SetDisplayPasswordFunction(display_password_callback);
-
-message.sprite = Sprite();
 
 fun display_message_callback(text)
 {
