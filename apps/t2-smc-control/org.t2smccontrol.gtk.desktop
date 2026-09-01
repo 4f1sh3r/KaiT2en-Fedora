@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=SMC Control
+Name=T2 SMC Control
 Comment=SMC temperatures and battery charge limit
 Exec=/usr/local/bin/t2-smc-control
 TryExec=/usr/local/bin/t2-smc-control

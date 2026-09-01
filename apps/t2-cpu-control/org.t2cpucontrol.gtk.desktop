@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=CPU Control
+Name=T2 CPU Control
 Comment=CPU power limits and thermal telemetry
 Exec=/usr/local/bin/t2-cpu-control
 TryExec=/usr/local/bin/t2-cpu-control
