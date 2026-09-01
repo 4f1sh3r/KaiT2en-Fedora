@@ -105,6 +105,7 @@ class KernelBuilder(Adw.Application):
         self.built_tree = None
         self.built_release = None
         self.cancel_file = None
+        self.updating_kernel_model = False
         self.available_jobs = max(1, os.cpu_count() or 1)
         self.saved_settings = self.load_settings()
         self.pending_config_values = dict(self.saved_settings.get("config_values", {}))
@@ -170,8 +171,9 @@ class KernelBuilder(Adw.Application):
         self.kernel_drop.set_list_factory(dropdown_factory)
         self.kernel_drop.connect("notify::selected", self.kernel_selection_changed)
         row.attach(self.kernel_drop, 0, 0, 1, 1)
-        self.suffix = Gtk.Entry(text=self.saved_settings.get("suffix", "-t2-custom"), hexpand=True)
-        self.suffix.set_placeholder_text("-custom-suffix")
+        saved_suffix = str(self.saved_settings.get("suffix", "-t2-custom"))
+        self.suffix = Gtk.Entry(text=saved_suffix, hexpand=True)
+        self.suffix.set_placeholder_text("custom-suffix")
         self.suffix.connect("changed", self.suffix_changed)
         row.attach(self.suffix, 1, 0, 1, 1)
         source.append(row); source.append(self.source_detail)
@@ -404,10 +406,14 @@ class KernelBuilder(Adw.Application):
 
     def finish_kernels(self, kernels, error):
         self.kernel_values = kernels
-        self.kernel_model.splice(0, self.kernel_model.get_n_items(), kernels or ["No kernels available"])
-        remembered = self.saved_settings.get("kernel", "")
-        if remembered in kernels:
-            self.kernel_drop.set_selected(kernels.index(remembered))
+        self.updating_kernel_model = True
+        try:
+            self.kernel_model.splice(0, self.kernel_model.get_n_items(), kernels or ["No kernels available"])
+            remembered = self.saved_settings.get("kernel", "")
+            if remembered in kernels:
+                self.kernel_drop.set_selected(kernels.index(remembered))
+        finally:
+            self.updating_kernel_model = False
         mode = self.saved_settings.get("base_mode")
         if mode in ("fedora", "localmodconfig"):
             self.base_mode = mode
@@ -418,6 +424,7 @@ class KernelBuilder(Adw.Application):
         self.update_actions(); return False
 
     def kernel_selection_changed(self, *_args):
+        if self.updating_kernel_model: return
         self.update_kernel_base()
         self.base_inputs_changed()
         self.save_settings()
@@ -634,7 +641,7 @@ class KernelBuilder(Adw.Application):
 
     def source_error(self):
         if not self.selected_kernel(): return "Select an available kernel."
-        if not re.fullmatch(r"-[A-Za-z0-9._+-]+", self.suffix.get_text()): return "The kernel suffix must begin with '-' and contain no spaces."
+        if not re.fullmatch(r"[A-Za-z0-9._+-]+", self.suffix.get_text()): return "The kernel suffix must be non-empty and contain only letters, numbers, '.', '_', '+', or '-'."
         if not BUILD_SCRIPT.is_file(): return f"Build script not found: {BUILD_SCRIPT}"
         return ""
 
@@ -979,11 +986,10 @@ class KernelBuilder(Adw.Application):
                 if marker.is_file():
                     try:
                         tree = Path(marker.read_text(encoding="utf-8").strip()).resolve()
-                        for link in Path("/lib/modules").glob("*/build"):
+                        for link in list(Path("/lib/modules").glob("*/build")) + list(Path("/lib/modules").glob("*/source")):
                             release = link.parent.name
-                            complete = (Path(f"/boot/vmlinuz-{release}").is_file() and
-                                        Path(f"/boot/initramfs-{release}.img").is_file())
-                            if complete and link.is_symlink() and link.resolve() == tree:
+                            if ((release == running or Path(f"/boot/vmlinuz-{release}").is_file()) and
+                                    link.is_symlink() and link.resolve() == tree):
                                 in_use = True
                                 break
                     except OSError:
@@ -1064,6 +1070,9 @@ class KernelBuilder(Adw.Application):
         return False
 
     def finish_cleanup(self, errors, kind, total):
+        if kind == "cache":
+            self.base_inputs_changed()
+            self.save_settings()
         self.scan_cleanup()
         self.scan_built_kernels()
         self.cleanup_running = False

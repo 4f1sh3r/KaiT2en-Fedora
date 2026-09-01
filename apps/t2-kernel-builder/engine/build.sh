@@ -154,8 +154,8 @@ fi
 }
 PATCH_DIR=$(cd -- "$PATCH_DIR" && pwd -P)
 
-[[ $LOCALVERSION == -* ]] || {
-	printf 'Local version must start with a hyphen: %s\n' "$LOCALVERSION" >&2
+[[ $LOCALVERSION =~ ^[A-Za-z0-9._+-]+$ ]] || {
+	printf 'Local version must be non-empty and contain only letters, numbers, dot, underscore, plus, or hyphen: %s\n' "$LOCALVERSION" >&2
 	exit 2
 }
 

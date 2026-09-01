@@ -212,7 +212,20 @@ query = subprocess.run(["rpm", "-q", "--whatprovides", f"kernel-core-uname-r = {
 if query.returncode == 0:
     package = query.stdout.splitlines()[0].strip()
     if not package.startswith("kernel-core-"): fail(f"unexpected package provider: {package}")
-    raise SystemExit(subprocess.run(["dnf", "remove", "-y", package]).returncode)
+    result = subprocess.run(["dnf", "remove", "-y", package]).returncode
+    if result:
+        raise SystemExit(result)
+    # DKMS transaction hooks can recreate /lib/modules/<release>/updates after
+    # the kernel RPM has removed the main tree. Remove that orphan only after
+    # DNF succeeded and the corresponding boot image is gone.
+    if not pathlib.Path(f"/boot/vmlinuz-{release}").exists():
+        shutil.rmtree(module_dir, ignore_errors=True)
+    for pattern in (f"/boot/initramfs-{release}.img", f"/boot/System.map-{release}",
+                    f"/boot/config-{release}", f"/boot/loader/entries/*{release}*.conf"):
+        for path in glob.glob(pattern):
+            if os.path.isfile(path) or os.path.islink(path): os.unlink(path)
+    subprocess.run(["grub2-mkconfig", "-o", "/boot/grub2/grub.cfg"], check=False)
+    raise SystemExit(0)
 
 shutil.rmtree(module_dir)
 for pattern in (f"/boot/vmlinuz-{release}", f"/boot/initramfs-{release}.img",
