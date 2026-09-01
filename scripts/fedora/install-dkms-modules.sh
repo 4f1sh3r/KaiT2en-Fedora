@@ -9,10 +9,7 @@ require_command dkms make install rm chown mktemp depmod sed tar find grep
 require_kernel_headers
 
 MODULES=(
-	t2bce_dma
-	t2bce_core
-	t2bce_vhci
-	t2bce_audio
+	t2bce_stack
 	t2smc
 	t2bdrm
 	t2touchbar
@@ -24,12 +21,23 @@ MODULES=(
 )
 
 LEGACY_MODULES=(
+	t2bce_dma
+	t2bce_core
+	t2bce_vhci
+	t2bce_audio
 	t2bce
 	t2dma
 	t2audio
 	t2vhci
 	t2bce-core
 	t2bce-dma
+)
+
+RETIRED_BCE_DKMS_PACKAGES=(
+	t2bce_dma
+	t2bce_core
+	t2bce_vhci
+	t2bce_audio
 )
 
 DKMS_POST_TRANSACTION_OVERRIDE="/etc/dkms/framework.conf.d/kait2en-disable-post-transaction.conf"
@@ -65,10 +73,7 @@ kernelver=${2:-}
 [[ "$command" == add && -n "$kernelver" ]] || exit 0
 
 modules=(
-	t2bce_dma
-	t2bce_core
-	t2bce_vhci
-	t2bce_audio
+	t2bce_stack
 	t2smc
 	t2bdrm
 	t2touchbar
@@ -123,10 +128,25 @@ remove_dkms_module_versions_for_kernel() {
 }
 
 remove_legacy_dkms_modules() {
-	local module
+	local module conf
 
 	for module in "${LEGACY_MODULES[@]}"; do
 		remove_dkms_module_versions_for_kernel "$module"
+	done
+
+	# Older kernels may still rely on the split packages. Keep those installed,
+	# but stop DKMS from automatically rebuilding them alongside t2bce_stack for
+	# future kernels. They can be removed once those older kernels are retired.
+	for module in "${RETIRED_BCE_DKMS_PACKAGES[@]}"; do
+		for conf in /usr/src/"$module"-*/dkms.conf; do
+			[[ -f "$conf" ]] || continue
+			info "disabling autoinstall for retired DKMS package ${conf%/dkms.conf}"
+			if grep -q '^AUTOINSTALL=' "$conf"; then
+				sed -i 's/^AUTOINSTALL=.*/AUTOINSTALL="no"/' "$conf"
+			else
+				printf 'AUTOINSTALL="no"\n' >>"$conf"
+			fi
+		done
 	done
 }
 
@@ -193,38 +213,22 @@ copy_module_source() {
 		--exclude='modules.order' \
 		-cf - . | tar -C "$dst" -xf -
 
-	if [[ "$name" == "t2bce_core" ]]; then
-		local t2bce_dma_version t2bce_dma_symvers
-
-		t2bce_dma_version="$(sed -n 's/^PACKAGE_VERSION="\([^"]*\)".*/\1/p' "$REPO_ROOT/modules/t2bce_dma/dkms.conf")"
-		[[ -n "$t2bce_dma_version" ]] || fail "missing PACKAGE_VERSION in $REPO_ROOT/modules/t2bce_dma/dkms.conf"
-		t2bce_dma_symvers="$(find "/var/lib/dkms/t2bce_dma/$t2bce_dma_version/$(kernel_release)" -path '*/module/Module.symvers' -print -quit 2>/dev/null || true)"
-		[[ -f "$t2bce_dma_symvers" ]] || fail "missing t2bce_dma Module.symvers; build t2bce_dma before t2bce_core"
-
-		info "copying t2bce_dma interface into $dst/t2bce_dma for t2bce_core build"
-		install -d -o root -g root -m 0755 "$dst/t2bce_dma"
-		install -d -o root -g root -m 0755 "$dst/t2bce_dma/include"
-		tar -C "$REPO_ROOT/modules/t2bce_dma/include" \
-			--exclude='.git' \
-			-cf - . | tar -C "$dst/t2bce_dma/include" -xf -
-		install -o root -g root -m 0644 "$t2bce_dma_symvers" "$dst/t2bce_dma/Module.symvers"
-	fi
-
-	if [[ "$name" == "t2bce_audio" || "$name" == "t2bce_vhci" ]]; then
-		local t2bce_core_version t2bce_core_symvers
-
-		t2bce_core_version="$(sed -n 's/^PACKAGE_VERSION="\([^"]*\)".*/\1/p' "$REPO_ROOT/modules/t2bce_core/dkms.conf")"
-		[[ -n "$t2bce_core_version" ]] || fail "missing PACKAGE_VERSION in $REPO_ROOT/modules/t2bce_core/dkms.conf"
-		t2bce_core_symvers="$(find "/var/lib/dkms/t2bce_core/$t2bce_core_version/$(kernel_release)" -path '*/module/Module.symvers' -print -quit 2>/dev/null || true)"
-		[[ -f "$t2bce_core_symvers" ]] || fail "missing t2bce_core Module.symvers; build t2bce_core before $name"
-
-		info "copying t2bce_core interface into $dst/t2bce_core for $name build"
-		install -d -o root -g root -m 0755 "$dst/t2bce_core"
-		install -d -o root -g root -m 0755 "$dst/t2bce_core/include"
-		tar -C "$REPO_ROOT/modules/t2bce_core/include" \
-			--exclude='.git' \
-			-cf - . | tar -C "$dst/t2bce_core/include" -xf -
-		install -o root -g root -m 0644 "$t2bce_core_symvers" "$dst/t2bce_core/Module.symvers"
+	if [[ "$name" == "t2bce_stack" ]]; then
+		local component
+		for component in t2bce_dma t2bce_core t2bce_vhci t2bce_audio; do
+			info "staging $component in $dst"
+			install -d -o root -g root -m 0755 "$dst/$component"
+			tar -C "$REPO_ROOT/modules/$component" \
+				--exclude='.git' \
+				--exclude='*.ko' \
+				--exclude='*.o' \
+				--exclude='*.mod' \
+				--exclude='*.mod.c' \
+				--exclude='.*.cmd' \
+				--exclude='Module.symvers' \
+				--exclude='modules.order' \
+				-cf - . | tar -C "$dst/$component" -xf -
+		done
 	fi
 
 	chown -R root:root "$dst"

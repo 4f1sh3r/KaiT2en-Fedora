@@ -24,17 +24,17 @@ checkout with an unexpected Git remote. Its persistent files are:
 
 ## Kernel modules
 
-The installer copies each module source to `/usr/src/<name>-<version>/`,
-registers it with DKMS and builds it for the running Fedora kernel. DKMS keeps
+The installer copies each DKMS source package to `/usr/src/<name>-<version>/`,
+registers it and builds it for the running Fedora kernel. DKMS keeps
 its build state below `/var/lib/dkms/` and rebuilds the modules for later
 kernel updates. `modinfo -n <module>` prints the installed kernel object path.
 
 | DKMS source | Installed module | Purpose |
 | --- | --- | --- |
-| `t2bce_dma` | `t2bce_dma` | Shared DMA queue engine for T2 BCE clients |
-| `t2bce_core` | `t2bce_core` | T2 bridge PCI device, mailbox, power management and transport |
-| `t2bce_vhci` | `t2bce_vhci` | Virtual USB host for internal T2 input devices |
-| `t2bce_audio` | `t2bce_audio` | Apple T2 audio driver |
+| `t2bce_stack` | `t2bce_dma` | Shared DMA queue engine for T2 BCE clients |
+| `t2bce_stack` | `t2bce_core` | T2 bridge PCI device, mailbox, power management and transport |
+| `t2bce_stack` | `t2bce_vhci` | Virtual USB host for internal T2 input devices |
+| `t2bce_stack` | `t2bce_audio` | Apple T2 audio driver |
 | `t2smc` | `t2smc` | Fan, temperature, charge-limit and RTC access through hwmon |
 | `t2bdrm` | `t2bdrm` | Touch Bar DRM display device |
 | `t2touchbar` | `t2hid`, `t2touchbar_bl`, `t2touchbar_kbd` | Internal HID quirks, Touch Bar backlight and keyboard mode |
