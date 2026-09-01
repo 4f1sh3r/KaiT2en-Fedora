@@ -4,6 +4,7 @@ APP_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$APP_DIR/../../scripts/fedora/lib.sh"
 
 require_root
+install_kait2en_fonts
 require_fedora
 require_command cargo make sudo
 
@@ -47,7 +48,6 @@ target_user="${SUDO_USER:-}"
 	fail "t2-hybrid-gpu-control must be built for the user who invoked sudo"
 
 info "building and installing t2-hybrid-gpu-control"
-sudo -H -u "$target_user" make -C "$APP_DIR" clean
 sudo -H -u "$target_user" make -C "$APP_DIR" build
 make -C "$APP_DIR" install
 

@@ -68,9 +68,14 @@ install_rust_app() {
 	[[ -n "$target_user" && "$target_user" != root ]] ||
 		fail "$name must be built for the user who invoked sudo"
 
-	sudo -H -u "$target_user" make -C "$path" clean
-	sudo -H -u "$target_user" make -C "$path" build
-	make -C "$path" install
+	if ! sudo -H -u "$target_user" make -C "$path" build; then
+		warn "$name build failed; skipping this app and continuing"
+		return 0
+	fi
+	if ! make -C "$path" install; then
+		warn "$name installation failed; continuing with the remaining apps"
+		return 0
+	fi
 }
 
 systemd_escape_path() {
@@ -118,17 +123,29 @@ install_gpu_control() {
 	case "$model" in
 		MacBookPro15,1)
 			info "installing tested hybrid graphics support for $model"
-			make -C "$REPO_ROOT/apps/t2-dgpu-control" uninstall
-			"$REPO_ROOT/apps/t2-hybrid-gpu-control/install.sh"
+			if ! make -C "$REPO_ROOT/apps/t2-dgpu-control" uninstall; then
+				warn "unable to remove the inactive t2-dgpu-control app; continuing"
+			fi
+			if ! "$REPO_ROOT/apps/t2-hybrid-gpu-control/install.sh"; then
+				warn "t2-hybrid-gpu-control installation failed; continuing"
+			fi
 			;;
 		MacBookPro15,3|MacBookPro16,1|MacBookPro16,4)
-			make -C "$REPO_ROOT/apps/t2-hybrid-gpu-control" uninstall
-			"$REPO_ROOT/apps/t2-dgpu-control/install.sh"
+			if ! make -C "$REPO_ROOT/apps/t2-hybrid-gpu-control" uninstall; then
+				warn "unable to remove the inactive t2-hybrid-gpu-control app; continuing"
+			fi
+			if ! "$REPO_ROOT/apps/t2-dgpu-control/install.sh"; then
+				warn "t2-dgpu-control installation failed; continuing"
+			fi
 			;;
 		*)
 			info "Model $model has no supported switchable AMD dGPU"
-			make -C "$REPO_ROOT/apps/t2-hybrid-gpu-control" uninstall
-			make -C "$REPO_ROOT/apps/t2-dgpu-control" uninstall
+			if ! make -C "$REPO_ROOT/apps/t2-hybrid-gpu-control" uninstall; then
+				warn "unable to remove t2-hybrid-gpu-control; continuing"
+			fi
+			if ! make -C "$REPO_ROOT/apps/t2-dgpu-control" uninstall; then
+				warn "unable to remove t2-dgpu-control; continuing"
+			fi
 			;;
 	esac
 }
@@ -360,17 +377,26 @@ install_react_drm() {
 }
 
 if [[ "$install_mode" == all ]]; then
+	install -d -o root -g root -m 0755 /usr/local/share/kait2en
+	install -o root -g root -m 0644 \
+		"$REPO_ROOT/assets/kait2en-app-logo.png" \
+		/usr/local/share/kait2en/kait2en-wordmark.png
+	install_kait2en_fonts
 	remove_obsolete_apps
 	install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-fan-control"
 	install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
 	install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
 	install_gpu_control
-	"$REPO_ROOT/apps/t2-cpu-control/install.sh"
+	if ! "$REPO_ROOT/apps/t2-cpu-control/install.sh"; then
+		warn "t2-cpu-control installation failed; continuing"
+	fi
 	if ! "$REPO_ROOT/apps/t2-kernel-builder/install.sh"; then
 		warn "t2-kernel-builder installation failed; continuing because it is optional"
 		warn "retry it later with: sudo $REPO_ROOT/apps/t2-kernel-builder/install.sh"
 	fi
-	"$REPO_ROOT/apps/t2-power-tune/install.sh"
+	if ! "$REPO_ROOT/apps/t2-power-tune/install.sh"; then
+		warn "t2-power-tune installation failed; continuing"
+	fi
 fi
 install_react_drm
 

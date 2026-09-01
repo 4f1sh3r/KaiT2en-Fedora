@@ -33,23 +33,35 @@ use ipc::{DaemonState, Request};
 use signal_hook::consts::signal::SIGHUP;
 use sysfs::{discover_fans, discover_temperature_sources, FanEndpoint, TemperatureSnapshot, TemperatureSource};
 
+fn kait2en_brand() -> DrawingArea {
+    let pixbuf = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+        .expect("failed to load kait2en wordmark");
+    let brand = DrawingArea::new();
+    brand.set_content_width(80); brand.set_content_height(21); brand.set_size_request(80, 21);
+    brand.set_draw_func(move |_area, context, width, height| {
+        let scale = f64::min(width as f64 / pixbuf.width() as f64, height as f64 / pixbuf.height() as f64);
+        let _ = context.save();
+        context.translate((width as f64 - pixbuf.width() as f64 * scale) / 2.0, (height as f64 - pixbuf.height() as f64 * scale) / 2.0);
+        context.scale(scale, scale); context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+        let _ = context.paint(); let _ = context.restore();
+    });
+    brand
+}
+
 const APP_ID: &str = "org.t2fancontrol.gtk";
-const APP_VERSION: &str = "0.06";
+const APP_VERSION: &str = "0.07";
 const HISTORY_CAPACITY: usize = 90;
 
 #[derive(Clone, Copy)]
 struct ThemePalette {
     window_bg: &'static str,
     window_fg: &'static str,
-    chip_fg: &'static str,
     chip_border: &'static str,
     chip_hover_bg: &'static str,
     chip_checked_bg: &'static str,
     chip_checked_border: &'static str,
     meta_fg: &'static str,
-    details_fg: &'static str,
     panel_fill: (f64, f64, f64),
-    panel_border: (f64, f64, f64),
     grid: (f64, f64, f64),
     cpu: (f64, f64, f64),
     gpu: (f64, f64, f64),
@@ -62,17 +74,14 @@ struct ThemePalette {
 }
 
 const DARK_PALETTE: ThemePalette = ThemePalette {
-    window_bg: "#181818",
-    window_fg: "#efefef",
-    chip_fg: "#cfcfcf",
+    window_bg: "#161616",
+    window_fg: "#e8e8e8",
     chip_border: "rgba(210,210,210,0.24)",
     chip_hover_bg: "rgba(255,255,255,0.04)",
     chip_checked_bg: "rgba(255,255,255,0.10)",
     chip_checked_border: "rgba(232,232,232,0.45)",
     meta_fg: "rgba(230,230,230,0.62)",
-    details_fg: "rgba(232,232,232,0.74)",
-    panel_fill: (0.115, 0.115, 0.115),
-    panel_border: (0.90, 0.90, 0.92),
+    panel_fill: (0.063, 0.063, 0.063),
     grid: (0.28, 0.30, 0.32),
     cpu: (0.92, 0.54, 0.28),
     gpu: (0.34, 0.60, 0.86),
@@ -81,22 +90,19 @@ const DARK_PALETTE: ThemePalette = ThemePalette {
     system: (0.78, 0.52, 0.88),
     fan: (0.50, 0.76, 0.58),
     curve: (0.86, 0.86, 0.88),
-    label: (0.93, 0.96, 0.99),
+    label: (0.56, 0.56, 0.56),
 };
 
 const LIGHT_PALETTE: ThemePalette = ThemePalette {
-    window_bg: "#f4f1ea",
-    window_fg: "#1f1e1b",
-    chip_fg: "#3d392f",
-    chip_border: "rgba(73,66,55,0.24)",
-    chip_hover_bg: "rgba(42,34,24,0.05)",
-    chip_checked_bg: "rgba(42,34,24,0.10)",
-    chip_checked_border: "rgba(42,34,24,0.40)",
-    meta_fg: "rgba(52,48,43,0.68)",
-    details_fg: "rgba(40,37,32,0.82)",
-    panel_fill: (0.955, 0.945, 0.925),
-    panel_border: (0.34, 0.30, 0.25),
-    grid: (0.78, 0.75, 0.70),
+    window_bg: "#f2f2f2",
+    window_fg: "#242424",
+    chip_border: "rgba(0,0,0,0.18)",
+    chip_hover_bg: "rgba(0,0,0,0.05)",
+    chip_checked_bg: "rgba(0,0,0,0.10)",
+    chip_checked_border: "rgba(0,0,0,0.35)",
+    meta_fg: "rgba(36,36,36,0.68)",
+    panel_fill: (0.91, 0.91, 0.91),
+    grid: (0.72, 0.72, 0.72),
     cpu: (0.86, 0.43, 0.18),
     gpu: (0.20, 0.45, 0.75),
     effective: (0.42, 0.62, 0.18),
@@ -104,7 +110,7 @@ const LIGHT_PALETTE: ThemePalette = ThemePalette {
     system: (0.55, 0.30, 0.68),
     fan: (0.30, 0.58, 0.38),
     curve: (0.20, 0.20, 0.22),
-    label: (0.18, 0.18, 0.18),
+    label: (0.096, 0.096, 0.096),
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -614,13 +620,18 @@ fn build_ui(app: &Application) {
     root.set_margin_start(8);
     root.set_margin_end(8);
 
-    let header = GtkBox::new(Orientation::Vertical, 0);
+    let header = adw::HeaderBar::new();
+    header.set_title_widget(Some(&adw::WindowTitle::new("Fan Control", "")));
+    let brand = kait2en_brand();
+    brand.set_margin_start(10);
+    brand.set_margin_end(10);
+    header.pack_start(&brand);
+    window.set_titlebar(Some(&header));
+
     ui.status.set_halign(Align::Start);
     ui.status.set_wrap(true);
     ui.status.set_xalign(0.0);
     ui.status.add_css_class("meta-text");
-    header.append(&ui.status);
-    root.append(&header);
 
     let summary = Grid::builder()
         .column_spacing(12)
@@ -664,6 +675,7 @@ fn build_ui(app: &Application) {
     advanced_content.append(&any_sensor_row);
     advanced_content.append(&curve_sensor_row);
     let advanced = Expander::new(Some("Advanced settings"));
+    advanced.add_css_class("secondary-control");
     advanced.set_child(Some(&advanced_content));
     root.append(&advanced);
 
@@ -691,11 +703,12 @@ fn build_ui(app: &Application) {
     ui.details_label.set_xalign(0.0);
     ui.details_label.add_css_class("details-text");
     root.append(&ui.details_label);
+    root.append(&ui.status);
 
     let footer = GtkBox::new(Orientation::Horizontal, 8);
     let donate = LinkButton::builder()
         .uri("https://donate.stripe.com/eVq14n8a7agh2lQdqq14400")
-        .label("Fund my bugs")
+        .label("Fund our bugs")
         .build();
     donate.set_halign(Align::Start);
     donate.add_css_class("footer-link");
@@ -1627,15 +1640,6 @@ fn draw_panel(_cr: &cairo::Context, width: f64, height: f64) -> (f64, f64, f64, 
     _cr.set_source_rgb(palette.panel_fill.0, palette.panel_fill.1, palette.panel_fill.2);
     _cr.rectangle(0.5, 0.5, width - 1.0, height - 1.0);
     let _ = _cr.fill();
-    _cr.set_source_rgba(
-        palette.panel_border.0,
-        palette.panel_border.1,
-        palette.panel_border.2,
-        0.20,
-    );
-    _cr.set_line_width(1.0);
-    _cr.rectangle(0.5, 0.5, width - 1.0, height - 1.0);
-    let _ = _cr.stroke();
     plot_rect(width, height)
 }
 
@@ -1775,15 +1779,15 @@ fn rgb_to_hex(color: (f64, f64, f64)) -> String {
     )
 }
 
-fn draw_label(cr: &cairo::Context, x: f64, y: f64, text: &str, size: f64, alpha: f64) {
+fn draw_label(cr: &cairo::Context, x: f64, y: f64, text: &str, _size: f64, _alpha: f64) {
     let palette = current_palette();
     cr.select_font_face(
-        "Sans",
+        "JetBrains Mono",
         cairo::FontSlant::Normal,
         cairo::FontWeight::Normal,
     );
-    cr.set_font_size(size);
-    cr.set_source_rgba(palette.label.0, palette.label.1, palette.label.2, alpha);
+    cr.set_font_size(11.0);
+    cr.set_source_rgba(palette.label.0, palette.label.1, palette.label.2, 1.0);
     cr.move_to(x, y);
     let _ = cr.show_text(text);
 }
@@ -1834,16 +1838,31 @@ fn is_dark_theme() -> bool {
 
 fn build_css(palette: ThemePalette) -> String {
     format!(
-        "window {{
+        "window, popover {{
   background: {};
   color: {};
+  font-family: \"JetBrains Mono\";
+  font-size: 11pt;
+  font-weight: 400;
+}}
+headerbar {{
+  background: @headerbar_bg_color;
+}}
+.top-strip button,
+.top-strip button label,
+entry,
+combobox {{
+  color: {};
+  font-size: 11pt;
+  font-weight: 400;
 }}
 .top-strip {{
   border-spacing: 0;
 }}
 .panel-title {{
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  color: {};
+  font-size: 11pt;
+  font-weight: 400;
 }}
 .toggle-chip {{
   padding: 5px 10px;
@@ -1883,18 +1902,24 @@ fn build_css(palette: ThemePalette) -> String {
 }}
 .toggle-chip label,
 .preset-chip label {{
-  font-weight: 600;
+  font-weight: 400;
 }}
 .meta-text {{
   color: {};
-  font-size: 0.9em;
+  font-size: 11pt;
 }}
-.metric-key {{
+.metric-key,
+.metric-value {{
   color: {};
 }}
 .metric-value {{
-  font-weight: 650;
+  font-weight: 400;
   font-feature-settings: \"tnum\" 1;
+}}
+.secondary-control > title,
+.secondary-control > title > label {{
+  color: {};
+  font-weight: 400;
 }}
 .inline-input {{
   background: transparent;
@@ -1910,7 +1935,7 @@ fn build_css(palette: ThemePalette) -> String {
   padding: 4px 0;
 }}
 .inline-input-unit {{
-  opacity: 0.72;
+  opacity: 0.68;
 }}
 combobox button {{
   background: transparent;
@@ -1918,31 +1943,35 @@ combobox button {{
 }}
 .details-text {{
   color: {};
-  font-family: Monospace;
+  font-family: \"JetBrains Mono\";
   line-height: 1.28;
 }}
 .footer-link,
 .footer-version {{
   color: {};
-  font-size: 0.9em;
+  font-size: 11pt;
+  font-weight: 400;
 }}",
         palette.window_bg,
+        palette.meta_fg,
+        palette.meta_fg,
         palette.window_fg,
-        palette.chip_fg,
+        palette.meta_fg,
         palette.chip_border,
         palette.chip_hover_bg,
         palette.chip_checked_bg,
-        palette.window_fg,
+        palette.meta_fg,
         palette.chip_checked_border,
-        palette.chip_fg,
+        palette.meta_fg,
         palette.chip_border,
         palette.chip_hover_bg,
         palette.chip_checked_bg,
-        palette.window_fg,
+        palette.meta_fg,
         palette.chip_checked_border,
         palette.meta_fg,
         palette.meta_fg,
-        palette.details_fg,
+        palette.meta_fg,
+        palette.meta_fg,
         palette.meta_fg,
     )
 }

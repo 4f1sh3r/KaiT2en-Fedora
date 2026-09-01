@@ -3,6 +3,7 @@ set -euo pipefail
 APP_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$APP_DIR/../../scripts/fedora/lib.sh"
 require_root
+install_kait2en_fonts
 require_fedora
 require_command dnf install systemctl
 

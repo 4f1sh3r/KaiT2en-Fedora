@@ -21,6 +21,7 @@ shell_files=(
 	packaging/installer/runtime/kait2en-live-wifi
 	packaging/installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
+	scripts/fedora/install-gdm-branding.sh
 	scripts/fedora/install-dkms-modules.sh
 	scripts/fedora/install-kernel-args.sh
 	scripts/fedora/lib.sh

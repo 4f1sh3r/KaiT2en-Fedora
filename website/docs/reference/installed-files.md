@@ -147,7 +147,11 @@ audio behavior and diagnostics.
 | `/etc/modprobe.d/kait2en-silent-blacklist.conf` | Silently ignores attempts to load drivers replaced by KAIT2EN modules |
 | `/etc/systemd/system/kait2en-t2-ncm-down.service` | Starts when `t2_ncm` appears |
 | `/usr/local/libexec/kait2en/kait2en-t2-ncm-down.sh` | Keeps the internal debug interface down |
-| `/usr/share/plymouth/themes/kait2en/` | Fedora's spinner theme with the KAIT2EN watermark |
+| `/usr/share/plymouth/themes/kait2en/` | macOS-style boot splash with a KAIT2EN logo |
+| `/usr/share/pixmaps/kait2en-gdm-logo.png` | White and red KAIT2EN logo shown by GDM |
+| `/etc/dconf/db/gdm.d/00-kait2en` | Configures the GDM logo and solid black login background |
+| `/usr/share/backgrounds/kait2en/gdm-black.png` | Black GDM background image |
+| `/usr/share/gnome-shell/gnome-shell-theme.gresource` | GNOME Shell theme patched so the GDM and lock-screen shield render black |
 | `/etc/dracut.conf.d/90-kait2en-input.conf` | Keeps the internal keyboard drivers in initramfs images built during kernel updates |
 | `/boot/initramfs-<running-kernel>.img` | Rebuilt by Dracut after modules and ACPI handling are complete |
 
@@ -208,6 +212,8 @@ outcome of the Bluetooth step is recorded in the installed system at:
 `t2-power-tune` are installed system-wide under `/usr/local`. The
 MacBookPro15,1 gets `t2-hybrid-gpu-control`; other MacBook Pro models with Intel
 and AMD display devices get `t2-dgpu-control`.
+All Kait2en desktop applications use the shared header wordmark at
+`/usr/local/share/kait2en/kait2en-wordmark.png`.
 
 | Application | Installed files |
 | --- | --- |

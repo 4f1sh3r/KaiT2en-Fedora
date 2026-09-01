@@ -11,9 +11,10 @@ from collections import deque
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, GLib, Gtk, Pango
+from gi.repository import Adw, Gdk, GdkPixbuf, GLib, Gtk, Pango
 
 APP_ID = "org.t2cpucontrol.gtk"
+APP_VERSION = "0.02"
 HELPER = "/usr/local/libexec/t2-cpu-control-helper"
 STATUS = "/usr/local/libexec/t2-cpu-control-status"
 BENCHMARK = "/usr/local/libexec/t2-cpu-kernel-benchmark"
@@ -28,22 +29,28 @@ def frequency_step_mhz(value):
 
 def palette_css(dark):
     if dark:
-        window_bg, window_fg = "#181818", "#efefef"
-        box_bg, box_border = "#1d1d1d", "rgba(230,230,235,0.20)"
+        window_bg, window_fg = "#161616", "#e8e8e8"
+        box_bg = "#101010"
     else:
-        window_bg, window_fg = "#eeeae2", "#1f1e1b"
-        box_bg, box_border = "#f4f1ec", "rgba(87,77,64,0.20)"
+        window_bg, window_fg = "#f2f2f2", "#242424"
+        box_bg = "#e8e8e8"
     return f"""
-        .app-background {{ background-color: {window_bg}; color: {window_fg}; }}
-        .app-background headerbar {{ background-color: {window_bg}; color: {window_fg}; }}
+        window, popover {{ font-family: "JetBrains Mono"; font-size: 11pt; font-weight: 400; color: alpha({window_fg}, 0.72); }}
+        button, button label, entry, spinbutton, dropdown {{ font-size: 11pt; font-weight: 400; color: alpha({window_fg}, 0.72); }}
+        .app-background {{ background-color: {window_bg}; color: alpha({window_fg}, 0.72); }}
+        .app-background headerbar {{ background-color: @headerbar_bg_color; color: alpha({window_fg}, 0.72); }}
+        .app-background .title-1, .app-background .title-2, .app-background .title-3,
+        .app-background .title-4, .app-background .title, .app-background .heading, windowtitle .title {{ color: {window_fg}; font-size: 11pt; font-weight: 400; }}
+        .app-background .dim-label, windowtitle .subtitle {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
         .unified-box {{
             background-color: {box_bg};
-            color: {window_fg};
-            border: 1px solid {box_border};
+            color: alpha({window_fg}, 0.72);
+            border: none;
             border-radius: 12px;
             box-shadow: none;
         }}
         .padded-box {{ padding: 14px; }}
+        .donate-link, .donate-link > label {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
     """
 
 
@@ -98,9 +105,9 @@ class HistoryGraph(Gtk.DrawingArea):
 
     def draw(self, _area, cr, width, height):
         dark = Adw.StyleManager.get_default().get_dark()
-        bg = (0.115, 0.115, 0.115) if dark else (0.955, 0.945, 0.925)
+        bg = (0.063, 0.063, 0.063) if dark else (0.91, 0.91, 0.91)
         fg = (0.90, 0.90, 0.90) if dark else (0.15, 0.15, 0.15)
-        grid = (0.28, 0.30, 0.32) if dark else (0.78, 0.75, 0.70)
+        grid = (0.28, 0.28, 0.28) if dark else (0.72, 0.72, 0.72)
         radius = 12
         cr.new_sub_path()
         cr.arc(width - radius, radius, radius, -math.pi / 2, 0)
@@ -111,15 +118,6 @@ class HistoryGraph(Gtk.DrawingArea):
         cr.clip()
         cr.set_source_rgb(*bg); cr.paint()
         cr.reset_clip()
-        cr.set_source_rgba(0.90, 0.90, 0.92, 0.20) if dark else cr.set_source_rgba(0.34, 0.30, 0.25, 0.20)
-        cr.set_line_width(1)
-        cr.new_sub_path()
-        cr.arc(width - radius, radius, radius, -math.pi / 2, 0)
-        cr.arc(width - radius, height - radius, radius, 0, math.pi / 2)
-        cr.arc(radius, height - radius, radius, math.pi / 2, math.pi)
-        cr.arc(radius, radius, radius, math.pi, 3 * math.pi / 2)
-        cr.close_path()
-        cr.stroke()
         left, top, right, bottom = 48, 28, width - 12, height - 24
         cr.set_line_width(1); cr.set_source_rgb(*grid)
         for i in range(5):
@@ -129,14 +127,14 @@ class HistoryGraph(Gtk.DrawingArea):
         values = [v for _, vals in self.series for v in vals if v is not None]
         maximum = self.fixed_max or (max(values, default=1) * 1.1)
         maximum = max(maximum, 1)
-        cr.set_source_rgb(*fg); cr.select_font_face("Sans", 0, 0); cr.set_font_size(13)
+        cr.set_source_rgb(*fg); cr.select_font_face("JetBrains Mono", 0, 0); cr.set_font_size(11)
         cr.move_to(12, 18); cr.show_text(self.title)
         if self.current_value is not None:
             value = f"{self.current_value:.0f}{self.unit}"
             extents = cr.text_extents(value)
             cr.move_to(width - extents.width - 14, 18)
             cr.show_text(value)
-        cr.set_font_size(10); cr.move_to(8, top + 4); cr.show_text(f"{maximum:.0f}{self.unit}")
+        cr.set_font_size(11); cr.move_to(8, top + 4); cr.show_text(f"{maximum:.0f}{self.unit}")
         cr.move_to(18, bottom); cr.show_text(f"0{self.unit}")
         for idx, (label, vals) in enumerate(self.series):
             if len(vals) < 2: continue
@@ -182,7 +180,7 @@ class CpuControl(Adw.Application):
             ])
         self.controls_initialized = False
         win = Adw.ApplicationWindow(application=self, title="T2 CPU Control")
-        win.set_default_size(1080, 940)
+        win.set_default_size(940, 940)
         style_manager = Adw.StyleManager.get_default()
         css = Gtk.CssProvider()
         css.load_from_string(palette_css(style_manager.get_dark()))
@@ -197,6 +195,25 @@ class CpuControl(Adw.Application):
         header = Adw.HeaderBar()
         title = Adw.WindowTitle(title="CPU Control", subtitle="Package power and thermal stability")
         header.set_title_widget(title)
+        brand_pixbuf = GdkPixbuf.Pixbuf.new_from_file(
+            "/usr/local/share/kait2en/kait2en-wordmark.png"
+        )
+        brand = Gtk.DrawingArea(content_width=80, content_height=21)
+        def draw_brand(_area, context, width, height):
+            source_width = brand_pixbuf.get_width()
+            source_height = brand_pixbuf.get_height()
+            scale = min(width / source_width, height / source_height)
+            offset_x = (width - source_width * scale) / 2
+            offset_y = (height - source_height * scale) / 2
+            context.save()
+            context.translate(offset_x, offset_y)
+            context.scale(scale, scale)
+            Gdk.cairo_set_source_pixbuf(context, brand_pixbuf, 0, 0)
+            context.paint()
+            context.restore()
+        brand.set_draw_func(draw_brand)
+        brand.set_size_request(80, 21)
+        brand.set_margin_start(10); brand.set_margin_end(10); header.pack_start(brand)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.add_css_class("app-background")
         root.append(header)
@@ -298,7 +315,7 @@ class CpuControl(Adw.Application):
             "Maximum CPU frequency applied to every cpufreq policy. The control is disabled when the kernel does not expose writable frequency limits."
         )
 
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        actions = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.apply_btn = Gtk.Button(label="Apply settings")
         self.apply_btn.add_css_class("suggested-action")
         self.apply_btn.set_sensitive(False)
@@ -326,8 +343,9 @@ class CpuControl(Adw.Application):
         table_title = Gtk.Label(label="Logical CPU status", xalign=0)
         table_title.add_css_class("title-4")
         table_box.append(table_title)
-        self.cpu_table = Gtk.Grid(column_spacing=24, row_spacing=4)
-        self.cpu_column_widths = (52, 76, 76, 52, 150)
+        self.cpu_table = Gtk.Grid(column_spacing=12, row_spacing=4)
+        self.cpu_table.set_halign(Gtk.Align.CENTER)
+        self.cpu_column_widths = (36, 58, 58, 42, 105)
         for column, heading in enumerate(("CPU", "MHz", "Temp", "dTj", "Status")):
             label = Gtk.Label(label=heading, xalign=1 if column < 4 else 0)
             label.set_size_request(self.cpu_column_widths[column], -1)
@@ -353,6 +371,13 @@ class CpuControl(Adw.Application):
         throttle_row.append(self.prochot_override)
         throttle_row.append(self.throttle)
         body.append(throttle_row)
+        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        footer.set_margin_start(8); footer.set_margin_end(8); footer.set_margin_bottom(8)
+        donate = Gtk.LinkButton(uri="https://donate.stripe.com/eVq14n8a7agh2lQdqq14400", label="Fund our bugs")
+        donate.add_css_class("donate-link"); footer.append(donate)
+        spacer = Gtk.Box(hexpand=True); footer.append(spacer)
+        footer.append(Gtk.Label(label=f"v{APP_VERSION}"))
+        root.append(footer)
         self.prochot_override.connect("notify::active", self.prochot_override_changed)
         win.connect("close-request", self.close_requested)
         win.present()
@@ -695,7 +720,7 @@ class CpuControl(Adw.Application):
             if thermal_cores: reasons.append("thermal CPU " + ",".join(thermal_cores))
             if perf & (1<<10): reasons.append("PL1")
             if perf & (1<<11): reasons.append("PL2")
-            self.throttle.set_markup("<b>Active throttle:</b> " + (", ".join(reasons) or "none") + f"    <b>Logged bits:</b> 0x{int(data.get('perf_log',0)):x}")
+            self.throttle.set_text("Active throttle: " + (", ".join(reasons) or "none") + f"    Logged bits: 0x{int(data.get('perf_log',0)):x}")
         except Exception as e: self.status.set_text(f"Telemetry unavailable: {e}")
         return True
 

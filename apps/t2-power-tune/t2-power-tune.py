@@ -2,13 +2,22 @@
 import json, os, subprocess, threading
 import gi
 gi.require_version("Gtk","4.0"); gi.require_version("Adw","1")
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gdk, GdkPixbuf, GLib, Gtk
 
 APP_ID="org.t2powertune.gtk"
-APP_VERSION="0.01"
+APP_VERSION="0.02"
 HELPER="/usr/local/libexec/t2-power-tune-helper"
 STATUS="/usr/local/libexec/t2-power-tune-status"
 SERVICE="/etc/systemd/system/kait2en-power-tune.service"
+
+def kait2en_brand():
+    pixbuf=GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    brand=Gtk.DrawingArea(content_width=80,content_height=21)
+    def draw(_area,context,width,height):
+        scale=min(width/pixbuf.get_width(),height/pixbuf.get_height())
+        context.save(); context.translate((width-pixbuf.get_width()*scale)/2,(height-pixbuf.get_height()*scale)/2)
+        context.scale(scale,scale); Gdk.cairo_set_source_pixbuf(context,pixbuf,0,0); context.paint(); context.restore()
+    brand.set_draw_func(draw); brand.set_size_request(80,21); return brand
 
 SECTION_HELP={
     "PCIe ASPM candidates":("PCIe ASPM link states",
@@ -37,9 +46,9 @@ ACTION_HELP=("Actions",
     "Apply selected changes writes the currently chosen values for this boot and verifies them. Nothing is written merely by changing a checkbox.\n\nCreate or Update systemd service stores the same selection in kait2en-power-tune.service so it is restored at boot. Unselected managed values are removed from the service.\n\nRescan reads the current hardware state again. It does not apply settings, but hardware values such as LTR can change dynamically while devices are active.")
 
 def palette_css(dark):
-    if dark: window,fg,panel,shadow,line="#1d1d1d","#d7d7d4","#181818","rgba(0,0,0,0.28)","rgba(255,255,255,0.13)"
-    else: window,fg,panel,shadow,line="#f4f1ec","#38342f","#eeeae2","rgba(72,62,50,0.16)","rgba(56,52,47,0.18)"
-    return f".app-background{{background:{window};color:{fg};}}.app-background label{{font-weight:400;}}.app-background .title-4,.app-background .heading{{font-weight:500;}}.app-background headerbar{{background:{window};color:{fg};}}.unified-box{{background:{panel};color:{fg};border-radius:12px;padding:14px;}}.sticky-bar{{background:{panel};color:{fg};padding:9px 18px;}}.sticky-top{{box-shadow:0 5px 12px {shadow};}}.sticky-bottom{{box-shadow:0 -5px 12px {shadow};}}.cstate-cell{{border:1px solid {line};border-radius:7px;padding:3px 6px;font-feature-settings:'tnum';}}.app-background .cstate-zero{{color:#808080;border-color:#808080;}}.app-background .cstate-positive{{color:#3b8132;border-color:#3b8132;}}"
+    if dark: window,fg,panel,shadow,line="#161616","#e8e8e8","#101010","rgba(0,0,0,0.32)","rgba(255,255,255,0.13)"
+    else: window,fg,panel,shadow,line="#f2f2f2","#242424","#e8e8e8","rgba(0,0,0,0.14)","rgba(0,0,0,0.16)"
+    return f"window,popover{{font-family:'JetBrains Mono';font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}button,button label,entry,spinbutton,dropdown{{font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}.app-background{{background:{window};color:alpha({fg},0.72);}}.app-background label{{font-size:11pt;font-weight:400;}}.app-background .title-1,.app-background .title-2,.app-background .title-3,.app-background .title-4,.app-background .title,.app-background .heading,windowtitle .title{{color:{fg};font-size:11pt;font-weight:400;}}.app-background .dim-label,windowtitle .subtitle{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}.app-background headerbar{{background:@headerbar_bg_color;color:alpha({fg},0.72);}}.unified-box{{background:{panel};color:alpha({fg},0.72);border-radius:12px;padding:14px;}}.sticky-bar{{background:{panel};color:alpha({fg},0.72);padding:9px 18px;}}.sticky-top{{box-shadow:0 5px 12px {shadow};}}.sticky-bottom{{box-shadow:0 -5px 12px {shadow};}}.cstate-cell{{border:1px solid {line};border-radius:7px;padding:3px 6px;font-feature-settings:'tnum';}}.app-background .cstate-zero{{color:#808080;border-color:#808080;}}.app-background .cstate-positive{{color:#3b8132;border-color:#3b8132;}}.donate-link,.donate-link>label{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}"
 
 class PowerTune(Adw.Application):
     def __init__(self):
@@ -51,7 +60,8 @@ class PowerTune(Adw.Application):
         Gtk.StyleContext.add_provider_for_display(self.win.get_display(),css,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         manager.connect("notify::dark",lambda m,_p:css.load_from_string(palette_css(m.get_dark())))
         root=Gtk.Box(orientation=Gtk.Orientation.VERTICAL); root.add_css_class("app-background")
-        header=Adw.HeaderBar(); header.set_title_widget(Adw.WindowTitle(title="Power Tune",subtitle="PCIe ASPM and power tunables")); root.append(header)
+        header=Adw.HeaderBar(); header.set_title_widget(Adw.WindowTitle(title="Power Tune",subtitle="PCIe ASPM and power tunables"))
+        brand=kait2en_brand(); brand.set_margin_start(10); brand.set_margin_end(10); header.pack_start(brand); root.append(header)
         metrics=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,spacing=8); metrics.add_css_class("sticky-bar"); metrics.add_css_class("sticky-top"); metrics.set_margin_bottom(8)
         title=Gtk.Label(label="Package C-states",xalign=0); title.add_css_class("heading"); metrics.append(title)
         self.cstate_values={}
@@ -85,13 +95,15 @@ class PowerTune(Adw.Application):
         self.service_btn.set_tooltip_text("Make the selected values persistent at boot")
         self.rescan_btn.set_tooltip_text("Read the current hardware state again")
         footer.append(actions)
-        status=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,spacing=10)
-        self.notice=Gtk.Label(xalign=0,wrap=True,hexpand=True); self.notice.add_css_class("dim-label"); status.append(self.notice)
-        donate=Gtk.LinkButton(uri="https://donate.stripe.com/eVq14n8a7agh2lQdqq14400",label="Fund my bugs")
-        donate.add_css_class("dim-label"); status.append(donate)
+        self.notice=Gtk.Label(xalign=0,wrap=True); self.notice.add_css_class("dim-label"); footer.append(self.notice)
+        root.append(footer)
+        status=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,spacing=8)
+        status.set_margin_start(8); status.set_margin_end(8); status.set_margin_bottom(8)
+        donate=Gtk.LinkButton(uri="https://donate.stripe.com/eVq14n8a7agh2lQdqq14400",label="Fund our bugs")
+        donate.add_css_class("donate-link"); status.append(donate)
+        status.append(Gtk.Box(hexpand=True))
         version=Gtk.Label(label=f"v{APP_VERSION}"); version.add_css_class("dim-label"); status.append(version)
-        footer.append(status)
-        root.append(footer); self.win.set_content(root)
+        root.append(status); self.win.set_content(root)
         self.apply_btn.connect("clicked",lambda *_:self.run_action("apply")); self.service_btn.connect("clicked",lambda *_:self.run_action("persist")); self.rescan_btn.connect("clicked",lambda *_:self.scan())
         self.win.connect("close-request",self.close); self.win.present(); self.scan(); self.start_cstates()
     def section(self,parent,title):

@@ -14,6 +14,7 @@ use glib::timeout_add_local;
 use gtk4::{gio, glib};
 
 const APP_ID: &str = "org.t2smccontrol.gtk";
+const APP_VERSION: &str = "0.02";
 const HWMON_NAMES: &[&str] = &["t2smc", "macsmc"];
 const RTC_NAME_PREFIX: &str = "t2smc ";
 const CONFIG_PATH: &str = "/etc/t2-smc-control/config.txt";
@@ -21,35 +22,58 @@ const INSTALLED_BIN_PATH: &str = "/usr/local/bin/t2-smc-control";
 const APPLY_RETRY_ATTEMPTS: usize = 40;
 const APPLY_RETRY_DELAY: Duration = Duration::from_millis(250);
 
+fn kait2en_brand() -> gtk4::DrawingArea {
+    let pixbuf = gtk4::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+        .expect("failed to load kait2en wordmark");
+    let brand = gtk4::DrawingArea::new();
+    brand.set_content_width(80); brand.set_content_height(21); brand.set_size_request(80, 21);
+    brand.set_draw_func(move |_area, context, width, height| {
+        let scale = f64::min(width as f64 / pixbuf.width() as f64, height as f64 / pixbuf.height() as f64);
+        let _ = context.save();
+        context.translate((width as f64 - pixbuf.width() as f64 * scale) / 2.0, (height as f64 - pixbuf.height() as f64 * scale) / 2.0);
+        context.scale(scale, scale); context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+        let _ = context.paint(); let _ = context.restore();
+    });
+    brand
+}
+
 fn palette_css(dark: bool) -> String {
-    let (window_bg, window_fg, box_bg, box_border) = if dark {
-        ("#181818", "#efefef", "#1d1d1d", "rgba(230,230,235,0.20)")
+    let (window_bg, window_fg, box_bg) = if dark {
+        ("#161616", "#e8e8e8", "#101010")
     } else {
-        ("#f4f1ea", "#1f1e1b", "#f4f1ec", "rgba(87,77,64,0.20)")
+        ("#f2f2f2", "#242424", "#e8e8e8")
     };
     format!(
-        "window, .smc-root, .smc-root headerbar {{
+         "window, popover, .smc-root, .smc-root headerbar {{
              background: {window_bg};
-             color: {window_fg};
+             color: alpha({window_fg}, 0.72);
+             font-family: 'JetBrains Mono';
+             font-size: 11pt;
+             font-weight: 400;
          }}
+         button, button label, entry, spinbutton, dropdown {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
+         .title-1, .title-2, .title-3, .title-4, .title, .heading, windowtitle .title {{ color: {window_fg}; font-size: 11pt; font-weight: 400; }}
+         .dim-label, windowtitle .subtitle {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
+         headerbar {{ background: @headerbar_bg_color; }}
          .smc-panel, .boxed-list {{
              background: {box_bg};
-             color: {window_fg};
-             border: 1px solid {box_border};
+             color: alpha({window_fg}, 0.72);
+             border: none;
              border-radius: 12px;
              box-shadow: none;
          }}
          .smc-panel > border {{ border: none; }}
-         .boxed-list row {{ background: {box_bg}; color: {window_fg}; }}
-         .overview-value {{ font-size: 1em; font-weight: 600; }}
-         .overview-status {{ font-size: 0.95em; }}
+         .boxed-list row {{ background: {box_bg}; color: alpha({window_fg}, 0.72); }}
+         .overview-value {{ font-size: 11pt; font-weight: 400; font-feature-settings: 'tnum'; }}
+         .overview-status {{ font-size: 11pt; }}
          scale.overview-meter,
          progressbar.overview-meter {{ min-height: 24px; }}
          scale.overview-meter trough,
          progressbar.overview-meter trough {{ min-height: 10px; border-radius: 5px; }}
          progressbar.overview-meter trough {{ margin-top: 6px; }}
          progressbar.overview-meter progress {{ min-height: 10px; border-radius: 5px; }}
-         scale.overview-meter slider {{ min-width: 18px; min-height: 18px; }}"
+         scale.overview-meter slider {{ min-width: 18px; min-height: 18px; }}
+         .donate-link, .donate-link > label {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}"
     )
 }
 
@@ -1079,7 +1103,11 @@ fn main() {
         // Header bar
         let header = adw::HeaderBar::new();
         header.set_title_widget(Some(&gtk4::Label::new(Some("SMC Control"))));
-        let rtc_value = gtk4::Label::new(Some("SMC RTC: --"));
+        let brand = kait2en_brand();
+        brand.set_margin_start(10);
+        brand.set_margin_end(10);
+        header.pack_start(&brand);
+        let rtc_value = gtk4::Label::new(Some("RTC: --"));
         rtc_value.set_halign(gtk4::Align::End);
         rtc_value.add_css_class("numeric");
         header.pack_end(&rtc_value);
@@ -1219,6 +1247,13 @@ fn main() {
         root.set_vexpand(true);
         root.append(&header);
         root.append(&vbox);
+        let footer = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+        footer.set_margin_start(8); footer.set_margin_end(8); footer.set_margin_bottom(8);
+        let donate = gtk4::LinkButton::builder().uri("https://donate.stripe.com/eVq14n8a7agh2lQdqq14400").label("Fund our bugs").build();
+        donate.add_css_class("donate-link"); footer.append(&donate);
+        let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0); spacer.set_hexpand(true); footer.append(&spacer);
+        footer.append(&gtk4::Label::new(Some(&format!("v{APP_VERSION}"))));
+        root.append(&footer);
 
         let window = adw::ApplicationWindow::new(app);
         window.set_title(Some("SMC Control"));
@@ -1250,12 +1285,12 @@ fn main() {
 
         if let Some(ref r) = *rtc.borrow() {
             if let Some(time) = read_rtc_datetime(r) {
-                rtc_value.set_text(&format!("SMC RTC: {time}"));
+                rtc_value.set_text(&format!("RTC: {time}"));
             } else {
-                rtc_value.set_text("SMC RTC: unavailable");
+                rtc_value.set_text("RTC: unavailable");
             }
         } else {
-            rtc_value.set_text("SMC RTC: searching…");
+            rtc_value.set_text("RTC: searching…");
         }
 
         let value_for_slider = charge_value.clone();
@@ -1375,13 +1410,13 @@ fn main() {
             if let Some(r) = current_rtc {
                 match read_rtc_datetime(&r) {
                     Some(time) => {
-                        rtc_value_poll.set_text(&format!("SMC RTC: {time}"));
+                        rtc_value_poll.set_text(&format!("RTC: {time}"));
                     }
-                    None => rtc_value_poll.set_text("SMC RTC: unavailable"),
+                    None => rtc_value_poll.set_text("RTC: unavailable"),
                 }
             } else if let Some(r) = find_t2smc_rtc() {
                 if let Some(time) = read_rtc_datetime(&r) {
-                    rtc_value_poll.set_text(&format!("SMC RTC: {time}"));
+                    rtc_value_poll.set_text(&format!("RTC: {time}"));
                 }
                 *rtc_poll.borrow_mut() = Some(r);
             }

@@ -42,6 +42,27 @@ require_command() {
 	done
 }
 
+install_kait2en_fonts() {
+	local font_source="$REPO_ROOT/assets/fonts"
+	local font_dir=/usr/local/share/fonts/kait2en
+	local license_dir=/usr/local/share/licenses/kait2en-fonts
+
+	[[ -f "$font_source/JetBrainsMono-Regular.ttf" &&
+		-f "$font_source/JetBrainsMono-Medium.ttf" &&
+		-f "$font_source/OFL.txt" ]] || fail "bundled JetBrains Mono files are missing"
+	install -d -o root -g root -m 0755 "$font_dir" "$license_dir"
+	install -o root -g root -m 0644 \
+		"$font_source/JetBrainsMono-Regular.ttf" \
+		"$font_source/JetBrainsMono-Medium.ttf" \
+		"$font_dir/"
+	install -o root -g root -m 0644 "$font_source/OFL.txt" "$license_dir/OFL.txt"
+	if command -v fc-cache >/dev/null 2>&1; then
+		fc-cache -f "$font_dir" || warn "unable to refresh the font cache; continuing"
+	else
+		warn "fc-cache is unavailable; JetBrains Mono will appear after the next font-cache refresh"
+	fi
+}
+
 kernel_release() {
 	printf '%s\n' "${KERNEL_RELEASE:-$(uname -r)}"
 }

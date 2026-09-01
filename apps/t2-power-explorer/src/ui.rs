@@ -10,6 +10,23 @@ use crate::collector;
 use crate::diagnostics;
 use crate::model::{Assessment, DeviceKind, DeviceTree, Property, Severity};
 
+const APP_VERSION: &str = "0.02";
+
+fn kait2en_brand() -> gtk::DrawingArea {
+    let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+        .expect("failed to load kait2en wordmark");
+    let brand = gtk::DrawingArea::new();
+    brand.set_content_width(80); brand.set_content_height(21); brand.set_size_request(80, 21);
+    brand.set_draw_func(move |_area, context, width, height| {
+        let scale = f64::min(width as f64 / pixbuf.width() as f64, height as f64 / pixbuf.height() as f64);
+        let _ = context.save();
+        context.translate((width as f64 - pixbuf.width() as f64 * scale) / 2.0, (height as f64 - pixbuf.height() as f64 * scale) / 2.0);
+        context.scale(scale, scale); context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+        let _ = context.paint(); let _ = context.restore();
+    });
+    brand
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Filter {
     All,
@@ -70,43 +87,59 @@ struct VisibleRow {
     is_last: bool,
 }
 
+fn palette_css(dark: bool) -> String {
+    let (window, foreground, panel) = if dark {
+        ("#161616", "#e8e8e8", "#101010")
+    } else {
+        ("#f2f2f2", "#242424", "#e8e8e8")
+    };
+    format!("
+        window, headerbar, popover, .app-background {{ background: {window}; color: alpha({foreground}, 0.72); font-family: 'JetBrains Mono'; font-size: 11pt; font-weight: 400; }}
+        button, button label, entry, spinbutton, dropdown {{ color: alpha({foreground}, 0.72); font-size: 11pt; font-weight: 400; }}
+        .title-1, .title-2, .title-3, .title-4, .title, .heading, windowtitle .title {{ color: {foreground}; font-size: 11pt; font-weight: 400; }}
+        .dim-label, windowtitle .subtitle {{ color: alpha({foreground}, 0.72); font-size: 11pt; font-weight: 400; }}
+        headerbar {{ background: @headerbar_bg_color; }}
+        .device-tree {{ background: {panel}; color: alpha({foreground}, 0.72); }}
+        .device-row {{ border-bottom: 1px solid alpha(@borders, .45); min-height: 34px; }}
+        .device-id, .mono {{ font-family: 'JetBrains Mono'; font-size: 11pt; font-feature-settings: 'tnum'; }}
+        .device-name {{ font-size: 11pt; }}
+        .state-text {{ font-family: 'JetBrains Mono'; font-size: 11pt; color: alpha({foreground}, .72); }}
+        .section-title {{ font-size: 11pt; font-weight: 400; color: {foreground}; }}
+        .property-row {{ border-bottom: 1px solid alpha(@borders, .35); min-height: 32px; }}
+        .property-name {{ color: alpha({foreground}, .72); }}
+        .property-value {{ font-family: 'JetBrains Mono'; font-feature-settings: 'tnum'; }}
+        .thin-toolbar {{ border-bottom: 1px solid @borders; }}
+        .tree-toolbar {{ border-bottom: 1px solid @borders; padding: 6px 8px; }}
+        .tree-counts {{ font-family: 'JetBrains Mono'; font-size: 11pt; color: alpha({foreground}, .72); font-feature-settings: 'tnum'; }}
+        .severity-dot {{ min-width: 8px; min-height: 8px; border-radius: 4px; }}
+        .severity-normal {{ background: transparent; }}
+        .severity-info {{ background: alpha(@window_fg_color, .32); }}
+        .severity-notice {{ background: #e5a50a; }}
+        .severity-warning {{ background: #e01b24; }}
+        .donate-link, .donate-link > label {{ color: alpha({foreground}, 0.72); font-size: 11pt; font-weight: 400; }}
+    ")
+}
+
 fn install_css() {
     let provider = gtk::CssProvider::new();
-    provider.load_from_data(
-        "
-        .device-tree { background: @view_bg_color; }
-        .device-row { border-bottom: 1px solid alpha(@borders, .45); min-height: 34px; }
-        .device-id, .mono { font-family: monospace; font-size: 0.92em; }
-        .device-name { font-size: 0.94em; }
-        .state-text { font-family: monospace; font-size: 0.86em; color: alpha(@window_fg_color, .68); }
-        .section-title { font-size: 0.78em; font-weight: 700; color: alpha(@window_fg_color, .58); }
-        .property-row { border-bottom: 1px solid alpha(@borders, .35); min-height: 32px; }
-        .property-name { color: alpha(@window_fg_color, .7); }
-        .property-value { font-family: monospace; }
-        .thin-toolbar { border-bottom: 1px solid @borders; }
-        .tree-toolbar { border-bottom: 1px solid @borders; padding: 6px 8px; }
-        .tree-counts { font-family: monospace; font-size: 0.82em; color: alpha(@window_fg_color, .65); }
-        .severity-dot { min-width: 8px; min-height: 8px; border-radius: 4px; }
-        .severity-normal { background: transparent; }
-        .severity-info { background: alpha(@window_fg_color, .32); }
-        .severity-notice { background: #e5a50a; }
-        .severity-warning { background: #e01b24; }
-        ",
-    );
+    let style = adw::StyleManager::default();
+    provider.load_from_data(&palette_css(style.is_dark()));
     gtk::style_context_add_provider_for_display(
         &gtk::gdk::Display::default().expect("display"),
         &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
+    style.connect_dark_notify(move |manager| {
+        provider.load_from_data(&palette_css(manager.is_dark()));
+    });
 }
 
 fn aggregate_severity(state: &State, id: &str) -> Severity {
     let node = &state.tree.nodes[id];
-    node.children
-        .iter()
-        .fold(state.snapshot.assessments[id].severity, |severity, child| {
-            severity.max(aggregate_severity(state, child))
-        })
+    node.children.iter().fold(
+        state.snapshot.assessments[id].severity,
+        |severity, child| severity.max(aggregate_severity(state, child)),
+    )
 }
 
 fn direct_match(state: &State, id: &str) -> bool {
@@ -454,23 +487,28 @@ pub fn build(app: &adw::Application) {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("T2 Power Explorer")
-        .default_width(1180)
+        .default_width(1400)
         .default_height(760)
         .build();
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    root.add_css_class("app-background");
     let header = adw::HeaderBar::new();
     let title = adw::WindowTitle::new(
         "Power Explorer",
         "Kernel device topology and runtime power state",
     );
     header.set_title_widget(Some(&title));
+    let brand = kait2en_brand();
+    brand.set_margin_start(10);
+    brand.set_margin_end(10);
+    header.pack_start(&brand);
     let refresh = gtk::Button::from_icon_name("view-refresh-symbolic");
     refresh.set_tooltip_text(Some("Rescan device topology"));
     header.pack_end(&refresh);
     root.append(&header);
 
     let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
-    paned.set_position(520);
+    paned.set_position(700);
     paned.set_wide_handle(false);
     paned.set_vexpand(true);
     let list = gtk::ListBox::new();
@@ -508,6 +546,13 @@ pub fn build(app: &adw::Application) {
     paned.set_start_child(Some(&left));
     paned.set_end_child(Some(&right));
     root.append(&paned);
+    let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    footer.set_margin_start(8); footer.set_margin_end(8); footer.set_margin_bottom(8);
+    let donate = gtk::LinkButton::builder().uri("https://donate.stripe.com/eVq14n8a7agh2lQdqq14400").label("Fund our bugs").build();
+    donate.add_css_class("donate-link"); footer.append(&donate);
+    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0); spacer.set_hexpand(true); footer.append(&spacer);
+    footer.append(&gtk::Label::new(Some(&format!("v{APP_VERSION}"))));
+    root.append(&footer);
     window.set_content(Some(&root));
 
     rebuild_tree(&list, &details, &counts, &state);

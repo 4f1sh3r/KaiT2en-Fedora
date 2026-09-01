@@ -14,10 +14,24 @@ from pathlib import Path
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, GObject, Gtk
+from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, GObject, Gtk
 
 APP_ID = "org.t2kernelbuilder.gtk"
-APP_VERSION = "0.02"
+APP_VERSION = "0.03"
+
+def kait2en_brand():
+    pixbuf = GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    brand = Gtk.DrawingArea(content_width=80, content_height=21)
+    def draw(_area, context, width, height):
+        scale = min(width / pixbuf.get_width(), height / pixbuf.get_height())
+        context.save()
+        context.translate((width - pixbuf.get_width() * scale) / 2,
+                          (height - pixbuf.get_height() * scale) / 2)
+        context.scale(scale, scale)
+        Gdk.cairo_set_source_pixbuf(context, pixbuf, 0, 0)
+        context.paint(); context.restore()
+    brand.set_draw_func(draw); brand.set_size_request(80, 21)
+    return brand
 HERE = Path(__file__).resolve().parent
 SOURCE_ENGINE = HERE / "engine"
 INSTALLED_ENGINE = Path("/usr/local/libexec/t2-kernel-builder")
@@ -46,7 +60,8 @@ SECTION_HELP = {
     "Base configuration": ("Base configuration", "Fedora default keeps Fedora's complete x86_64 configuration. localmodconfig removes options that are not needed by the modules currently loaded on this Mac. Connect every device you need before running localmodconfig."),
     "Optional components": ("Optional components", "After either base configuration has been prepared, this tree exposes the kernel's real Kconfig hierarchy. T2 requirements are locked; other visible bool and tristate symbols can be changed."),
     "Patch series": ("Patch series", "Every readable *.patch file in the selected folder is applied alphabetically after Fedora's own patch set. Preparation stops on a missing or incompatible patch."),
-    "Build and install": ("Build and install", "Choose the number of parallel build threads. The default leaves one hardware thread available for the desktop. After the unprivileged build finishes, install it separately when you are ready to authorize through PolicyKit."),
+    "Build kernel": ("Build kernel", "Compile the configured kernel as your normal user. Choose the number of parallel build threads; the default leaves one hardware thread available for the desktop. Building does not modify the running system."),
+    "Install kernel": ("Install kernel", "Select a completed build and install it separately when you are ready. Installation requests administrator authorization through PolicyKit and creates the boot files for that kernel."),
     "Installed kernels": ("Installed kernels", "The running kernel and rescue images are protected. Package-managed kernels are removed with DNF; locally installed custom kernels are removed from /boot and /lib/modules."),
     "Builder data": ("Builder data", "Delete the cache and downloaded kernel sources for selected versions. Keep entries that you want to build again without downloading and preparing their sources."),
 }
@@ -57,13 +72,18 @@ class KconfigItem(GObject.Object):
 
 def palette_css(dark):
     if dark:
-        window, fg, panel, shadow = "#1d1d1d", "#d7d7d4", "#181818", "rgba(0,0,0,0.28)"
+        window, fg, panel, shadow = "#161616", "#e8e8e8", "#101010", "rgba(0,0,0,0.32)"
     else:
-        window, fg, panel, shadow = "#f4f1ec", "#38342f", "#eeeae2", "rgba(72,62,50,0.16)"
-    return (f".app-background{{background:{window};color:{fg};}}"
-            f".app-background headerbar{{background:{window};color:{fg};}}"
-            f".unified-box{{background:{panel};color:{fg};border-radius:12px;padding:14px;}}"
-            f".sticky-bar{{background:{panel};color:{fg};padding:9px 18px;box-shadow:0 -5px 12px {shadow};}}")
+        window, fg, panel, shadow = "#f2f2f2", "#242424", "#e8e8e8", "rgba(0,0,0,0.14)"
+    return (f"window,popover{{font-family:'JetBrains Mono';font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}"
+            f"button,button label,entry,spinbutton,dropdown{{font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}"
+            f".app-background{{background:{window};color:alpha({fg},0.72);}}"
+            f".app-background headerbar{{background:@headerbar_bg_color;color:alpha({fg},0.72);}}"
+            f".app-background .title-1,.app-background .title-2,.app-background .title-3,.app-background .title-4,.app-background .title,.app-background .heading,windowtitle .title{{color:{fg};font-size:11pt;font-weight:400;}}"
+            f".app-background .dim-label,windowtitle .subtitle{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}"
+            f".unified-box{{background:{panel};color:alpha({fg},0.72);border-radius:12px;padding:14px;}}"
+            f".sticky-bar{{background:{panel};color:alpha({fg},0.72);padding:9px 18px;box-shadow:0 -5px 12px {shadow};}}"
+            f".donate-link,.donate-link>label{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}")
 
 class KernelBuilder(Adw.Application):
     def __init__(self):
@@ -105,9 +125,12 @@ class KernelBuilder(Adw.Application):
         header = Adw.HeaderBar()
         header.set_title_widget(Adw.WindowTitle(title="Kernel Builder",
                                                 subtitle="Minimal Fedora kernels for T2 Macs"))
+        brand = kait2en_brand()
+        brand.set_margin_start(10); brand.set_margin_end(10); header.pack_start(brand)
         root.append(header)
 
         self.stack = Gtk.Stack(vexpand=True, transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.stack.set_hhomogeneous(False)
         switcher = Gtk.StackSwitcher(stack=self.stack)
         switcher.set_margin_top(8); switcher.set_margin_bottom(8)
         switcher.set_halign(Gtk.Align.CENTER)
@@ -130,29 +153,28 @@ class KernelBuilder(Adw.Application):
                                    wide_handle=True, position=ui_state.get("width", 1340) // 2)
         self.workspace.set_start_child(left); self.workspace.set_end_child(log_panel)
         self.workspace.set_resize_start_child(True); self.workspace.set_resize_end_child(True)
-        self.workspace.set_shrink_start_child(False); self.workspace.set_shrink_end_child(False)
+        self.workspace.set_shrink_start_child(True); self.workspace.set_shrink_end_child(False)
         root.append(self.workspace)
 
         source_page = self.page()
         source = self.section(source_page, "Kernel source", help_key="Kernel source")
         self.source_detail = Gtk.Label(xalign=0)
-        self.source_detail.add_css_class("dim-label"); source.append(self.source_detail)
-        row = Gtk.Box(spacing=8)
+        self.source_detail.add_css_class("dim-label")
+        row = Gtk.Grid(column_spacing=8, column_homogeneous=True)
         self.kernel_model = Gtk.StringList.new(["Loading available kernels…"])
         self.kernel_drop = Gtk.DropDown(model=self.kernel_model, hexpand=True)
-        self.kernel_drop.set_size_request(260, -1)
         dropdown_factory = Gtk.SignalListItemFactory()
         dropdown_factory.connect("setup", self.setup_kernel_choice)
         dropdown_factory.connect("bind", self.bind_kernel_choice)
         self.kernel_drop.set_factory(dropdown_factory)
         self.kernel_drop.set_list_factory(dropdown_factory)
         self.kernel_drop.connect("notify::selected", self.kernel_selection_changed)
-        row.append(self.kernel_drop)
-        self.suffix = Gtk.Entry(text=self.saved_settings.get("suffix", "-t2-custom"), hexpand=False, width_chars=14)
-        self.suffix.set_max_width_chars(18)
+        row.attach(self.kernel_drop, 0, 0, 1, 1)
+        self.suffix = Gtk.Entry(text=self.saved_settings.get("suffix", "-t2-custom"), hexpand=True)
         self.suffix.set_placeholder_text("-custom-suffix")
         self.suffix.connect("changed", self.suffix_changed)
-        row.append(self.suffix); source.append(row)
+        row.attach(self.suffix, 1, 0, 1, 1)
+        source.append(row); source.append(self.source_detail)
         self.stack.add_titled(source_page, "source", "1. Source")
 
         config_page = self.page()
@@ -203,7 +225,7 @@ class KernelBuilder(Adw.Application):
         self.stack.add_titled(config_page, "configuration", "3. Config")
 
         build_page = self.page()
-        build = self.section(build_page, "Build and install", help_key="Build and install")
+        build = self.section(build_page, "Build kernel", help_key="Build kernel")
         jobs_row = Gtk.Box(spacing=10)
         jobs_row.append(Gtk.Label(label="Parallel build threads", xalign=0, hexpand=True))
         default_jobs = max(1, self.available_jobs - 1)
@@ -224,15 +246,16 @@ class KernelBuilder(Adw.Application):
         self.cancel_btn.connect("clicked", lambda *_: self.cancel())
         controls.append(self.build_btn); controls.append(self.cancel_btn)
         build.append(controls)
-        completed = Gtk.Box(spacing=8)
-        completed.append(Gtk.Label(label="Completed build", xalign=0))
+        install = self.section(build_page, "Install kernel", help_key="Install kernel")
+        install.append(Gtk.Label(label="Completed build", xalign=0))
         self.built_model = Gtk.StringList.new(["No completed builds found"])
         self.built_drop = Gtk.DropDown(model=self.built_model, hexpand=True)
         self.built_drop.connect("notify::selected", self.built_selection_changed)
-        completed.append(self.built_drop)
+        install.append(self.built_drop)
         self.install_btn = Gtk.Button(label="Install built kernel", sensitive=False)
         self.install_btn.connect("clicked", lambda *_: self.start_install())
-        completed.append(self.install_btn); build.append(completed)
+        self.install_btn.set_halign(Gtk.Align.START)
+        install.append(self.install_btn)
         self.stack.add_titled(build_page, "build", "4. Build")
 
         cleanup_page = self.page()
@@ -272,15 +295,18 @@ class KernelBuilder(Adw.Application):
         root.append(self.activity)
 
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        footer.add_css_class("sticky-bar")
+        footer.set_margin_start(8); footer.set_margin_end(8); footer.set_margin_bottom(8)
+        self.notice = Gtk.Label(xalign=0, wrap=True)
+        self.notice.set_margin_start(18); self.notice.set_margin_end(18)
+        self.notice.set_margin_top(6); self.notice.set_margin_bottom(6)
+        root.append(self.notice)
         donate = Gtk.LinkButton(
             uri="https://donate.stripe.com/eVq14n8a7agh2lQdqq14400",
-            label="Fund my bugs",
+            label="Fund our bugs",
         )
-        donate.add_css_class("dim-label")
+        donate.add_css_class("donate-link")
         footer.append(donate)
-        self.notice = Gtk.Label(xalign=0, wrap=True, hexpand=True)
-        footer.append(self.notice)
+        footer.append(Gtk.Box(hexpand=True))
         footer.append(Gtk.Label(label=f"v{APP_VERSION}"))
         root.append(footer)
         self.win.set_content(root)
@@ -329,7 +355,9 @@ class KernelBuilder(Adw.Application):
 
     def entry_row(self, parent, label, value, changed=None):
         row = Gtk.Box(spacing=10)
-        row.append(Gtk.Label(label=label, xalign=0, width_chars=18))
+        name = Gtk.Label(label=label, xalign=0, max_width_chars=18, ellipsize=3)
+        name.set_tooltip_text(label)
+        row.append(name)
         entry = Gtk.Entry(text=value, hexpand=True)
         entry.connect("changed", lambda *_: (changed or self.inputs_changed)())
         row.append(entry); parent.append(row)
@@ -764,7 +792,7 @@ class KernelBuilder(Adw.Application):
         if width <= 1 and attempt < 10:
             GLib.timeout_add(50, self.apply_initial_divider, ratio, attempt + 1)
             return False
-        self.workspace.set_position(round(width * min(0.8, max(0.2, ratio))))
+        self.workspace.set_position(round(width * min(0.5, max(0.5, ratio))))
         return False
 
     def _run(self, command, kind):

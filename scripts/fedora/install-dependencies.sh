@@ -40,12 +40,12 @@ dnf install -y \
 	rust \
 	gtk4-devel \
 	libadwaita-devel \
+	glib2-devel \
 	systemd-devel \
 	libdrm-devel \
 	cairo-devel \
 	librsvg2-devel \
-	plymouth-plugin-two-step \
-	plymouth-theme-spinner \
+	plymouth-plugin-script \
 	nodejs \
 	npm \
 	brightnessctl \

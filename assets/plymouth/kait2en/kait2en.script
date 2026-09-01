@@ -1,0 +1,132 @@
+# macOS-style KaiT2en boot splash.
+
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+boot.image = Image("boot.png");
+boot.sprite = Sprite(boot.image);
+boot.x = Window.GetX() + Window.GetWidth() / 2 - boot.image.GetWidth() / 2;
+boot.y = Window.GetY() + Window.GetHeight() * 0.45 - boot.image.GetHeight() / 2;
+boot.sprite.SetPosition(boot.x, boot.y, 10);
+
+progress_box.image = Image("progress_box.png");
+progress_box.sprite = Sprite(progress_box.image);
+progress_box.x = Window.GetX() + Window.GetWidth() / 2 - progress_box.image.GetWidth() / 2;
+progress_box.y = Window.GetY() + Window.GetHeight() * 0.62 - progress_box.image.GetHeight() / 2;
+progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 10);
+
+progress_bar.original_image = Image("progress_bar.png");
+progress_bar.sprite = Sprite();
+progress_bar.sprite.SetPosition(progress_box.x, progress_box.y, 11);
+
+kait2en.image = Image("watermark.png");
+kait2en.sprite = Sprite(kait2en.image);
+kait2en.x = Window.GetX() + Window.GetWidth() / 2 - kait2en.image.GetWidth() / 2;
+kait2en.y = Window.GetY() + Window.GetHeight() - kait2en.image.GetHeight() - 36;
+kait2en.sprite.SetPosition(kait2en.x, kait2en.y, 10);
+
+fun progress_callback(duration, progress)
+{
+  width = Math.Int(progress_bar.original_image.GetWidth() * progress);
+  if (width < 1)
+    width = 1;
+
+  progress_bar.image = progress_bar.original_image.Scale(
+    width,
+    progress_bar.original_image.GetHeight()
+  );
+  progress_bar.sprite.SetImage(progress_bar.image);
+}
+
+Plymouth.SetBootProgressFunction(progress_callback);
+
+dialog.status = "hidden";
+
+fun dialog_setup()
+{
+  dialog.box_image = Image("box.png");
+  dialog.lock_image = Image("lock.png");
+  dialog.entry_image = Image("entry.png");
+  dialog.bullet_image = Image("bullet.png");
+
+  dialog.box_sprite = Sprite(dialog.box_image);
+  dialog.box_x = Window.GetX() + Window.GetWidth() / 2 - dialog.box_image.GetWidth() / 2;
+  dialog.box_y = Window.GetY() + Window.GetHeight() / 2 - dialog.box_image.GetHeight() / 2;
+  dialog.box_sprite.SetPosition(dialog.box_x, dialog.box_y, 100);
+
+  dialog.lock_sprite = Sprite(dialog.lock_image);
+  dialog.lock_x = dialog.box_x + 22;
+  dialog.lock_y = dialog.box_y + dialog.box_image.GetHeight() / 2 - dialog.lock_image.GetHeight() / 2;
+  dialog.lock_sprite.SetPosition(dialog.lock_x, dialog.lock_y, 101);
+
+  dialog.entry_sprite = Sprite(dialog.entry_image);
+  dialog.entry_x = dialog.lock_x + dialog.lock_image.GetWidth() + 12;
+  dialog.entry_y = dialog.box_y + dialog.box_image.GetHeight() / 2 - dialog.entry_image.GetHeight() / 2;
+  dialog.entry_sprite.SetPosition(dialog.entry_x, dialog.entry_y, 101);
+}
+
+fun dialog_set_opacity(opacity)
+{
+  dialog.box_sprite.SetOpacity(opacity);
+  dialog.lock_sprite.SetOpacity(opacity);
+  dialog.entry_sprite.SetOpacity(opacity);
+  for (index = 0; dialog.bullets[index]; index++)
+    dialog.bullets[index].SetOpacity(opacity);
+}
+
+fun display_normal_callback()
+{
+  if (dialog.status != "hidden")
+  {
+    dialog_set_opacity(0);
+    dialog.status = "hidden";
+  }
+}
+
+fun display_password_callback(prompt, bullets)
+{
+  if (!dialog.box_sprite)
+    dialog_setup();
+
+  dialog_set_opacity(1);
+  dialog.status = "visible";
+
+  for (index = 0; dialog.bullets[index] || index < bullets; index++)
+  {
+    if (!dialog.bullets[index])
+    {
+      dialog.bullets[index] = Sprite(dialog.bullet_image);
+      bullet_x = dialog.entry_x + 8 + index * dialog.bullet_image.GetWidth();
+      bullet_y = dialog.entry_y + dialog.entry_image.GetHeight() / 2 - dialog.bullet_image.GetHeight() / 2;
+      dialog.bullets[index].SetPosition(bullet_x, bullet_y, 102);
+    }
+
+    if (index < bullets)
+      dialog.bullets[index].SetOpacity(1);
+    else
+      dialog.bullets[index].SetOpacity(0);
+  }
+}
+
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+message.sprite = Sprite();
+
+fun display_message_callback(text)
+{
+  message.image = Image.Text(text, 0.85, 0.85, 0.85);
+  message.sprite.SetImage(message.image);
+  message.x = Window.GetX() + Window.GetWidth() / 2 - message.image.GetWidth() / 2;
+  message.y = progress_box.y + 28;
+  message.sprite.SetPosition(message.x, message.y, 50);
+  message.sprite.SetOpacity(1);
+}
+
+fun hide_message_callback(text)
+{
+  message.sprite.SetOpacity(0);
+}
+
+Plymouth.SetDisplayMessageFunction(display_message_callback);
+Plymouth.SetHideMessageFunction(hide_message_callback);

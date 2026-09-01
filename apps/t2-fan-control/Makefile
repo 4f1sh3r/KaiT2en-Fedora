@@ -23,14 +23,17 @@ USER_APPS_DIR := $(USER_PREFIX)/share/applications
 USER_ICONS_DIR := $(USER_PREFIX)/share/icons/hicolor/scalable/apps
 USER_ICON_THEME_DIR := $(USER_PREFIX)/share/icons/hicolor
 
-.PHONY: all build install uninstall install-user uninstall-user clean rebuild
+.PHONY: all build check-build install uninstall install-user uninstall-user clean rebuild
 
 all: build
 
 build:
 	$(CARGO) build --release
 
-install:
+check-build:
+	@test -x "$(BIN_SRC)" || { echo "error: $(BIN_SRC) is missing; run 'make build' as your normal user first" >&2; exit 1; }
+
+install: check-build
 	@if systemctl list-unit-files t2fanrd.service >/dev/null 2>&1; then systemctl disable --now t2fanrd.service || true; fi
 	$(INSTALL) -d -o root -g root -m 0755 $(BIN_DIR) $(APPS_DIR) $(ICONS_DIR) $(ICON_THEME_DIR) $(UNIT_DIR)
 	$(INSTALL) -o root -g root -m 0755 $(BIN_SRC) $(BIN_DIR)/$(BIN_NAME)
@@ -52,7 +55,7 @@ uninstall:
 	systemctl daemon-reload
 	@if systemctl list-unit-files t2fanrd.service >/dev/null 2>&1; then systemctl enable --now t2fanrd.service || true; fi
 
-install-user:
+install-user: check-build
 	$(INSTALL) -d -m 0755 $(USER_BIN_DIR) $(USER_APPS_DIR) $(USER_ICONS_DIR) $(USER_ICON_THEME_DIR)
 	$(INSTALL) -m 0755 $(BIN_SRC) $(USER_BIN_DIR)/$(BIN_NAME)
 	$(INSTALL) -m 0644 $(DESKTOP_SRC) $(USER_APPS_DIR)/$(APP_ID).desktop
