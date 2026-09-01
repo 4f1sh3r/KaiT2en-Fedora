@@ -18,12 +18,15 @@ ICONS_DIR := $(PREFIX)/share/icons/hicolor/scalable/apps
 ICON_THEME_DIR := $(PREFIX)/share/icons/hicolor
 UNIT_DIR := $(PREFIX)/lib/systemd/system
 
-.PHONY: build install uninstall clean
+.PHONY: build check-build install uninstall clean
 
 build:
 	$(CARGO) build --release
 
-install:
+check-build:
+	@test -x "$(BIN_SRC)" || { echo "error: $(BIN_SRC) is missing; run 'make build' as your normal user first" >&2; exit 1; }
+
+install: check-build
 	$(INSTALL) -d -o root -g root -m 0755 $(BIN_DIR) $(APPS_DIR) $(ICONS_DIR) $(ICON_THEME_DIR) $(UNIT_DIR)
 	$(INSTALL) -o root -g root -m 0755 $(BIN_SRC) $(BIN_DIR)/$(BIN_NAME)
 	$(INSTALL) -o root -g root -m 0644 $(DESKTOP_SRC) $(APPS_DIR)/$(APP_ID).desktop

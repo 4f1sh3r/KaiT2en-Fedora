@@ -7,6 +7,11 @@ require_repo_root
 require_fedora
 require_min_kernel 7 0
 
+install -d -o root -g root -m 0755 /usr/local/bin
+install -o root -g root -m 0755 "$SCRIPT_DIR/kait2en-multicall" /usr/local/bin/kait2en-multicall
+ln -sfn kait2en-multicall /usr/local/bin/edit-grub
+ln -sfn kait2en-multicall /usr/local/bin/update-grub
+
 STEPS=(
 	install-dependencies.sh
 	install-kernel-args.sh
@@ -15,24 +20,33 @@ STEPS=(
 	install-alsa-ucm.sh
 	install-dsp.sh
 	install-networkmanager-rules.sh
-	install-t2-ncm-debug-service.sh
 	install-acpi-fixes.sh
 	install-plymouth-theme.sh
+	install-gdm-branding.sh
 	rebuild-initramfs.sh
 	install-suspend-service.sh
 	install-apps.sh
 )
 
+failed_steps=()
 for step in "${STEPS[@]}"; do
 	info "running $step"
 	if [[ "$step" == install-plymouth-theme.sh ]]; then
-		bash "$SCRIPT_DIR/$step" --defer-initramfs
+		step_args=(--defer-initramfs)
 	elif [[ "$step" == install-gpu-runtime-pm.sh ]]; then
-		bash "$SCRIPT_DIR/$step" install --defer-initramfs
+		step_args=(install --defer-initramfs)
 	else
-		bash "$SCRIPT_DIR/$step"
+		step_args=()
+	fi
+
+	if ! bash "$SCRIPT_DIR/$step" "${step_args[@]}"; then
+		warn "$step failed; continuing with the remaining installation steps"
+		failed_steps+=("$step")
 	fi
 done
 
+if (( ${#failed_steps[@]} > 0 )); then
+	warn "installation completed with errors in: ${failed_steps[*]}"
+fi
 info "Kait2en installation completed"
 info "reboot after reviewing the output"

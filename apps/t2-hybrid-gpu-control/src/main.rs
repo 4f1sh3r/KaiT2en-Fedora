@@ -7,26 +7,47 @@ use adw::prelude::*;
 use gtk4 as gtk;
 
 const APP_ID: &str = "org.t2hybridgpucontrol.gtk";
+const APP_VERSION: &str = "0.02";
 const HELPER: &str = "/usr/local/libexec/t2-hybrid-gpu-control-helper";
 const STATUS_HELPER: &str = "/usr/local/libexec/t2-hybrid-gpu-control-status";
 const EFI_VAR: &str =
     "/sys/firmware/efi/efivars/gpu-power-prefs-fa4ce28d-b62f-4c99-9cc3-6815686e30f9";
 
+fn kait2en_brand() -> gtk::DrawingArea {
+    let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+        .expect("failed to load kait2en wordmark");
+    let brand = gtk::DrawingArea::new();
+    brand.set_content_width(80); brand.set_content_height(21); brand.set_size_request(80, 21);
+    brand.set_draw_func(move |_area, context, width, height| {
+        let scale = f64::min(width as f64 / pixbuf.width() as f64, height as f64 / pixbuf.height() as f64);
+        let _ = context.save();
+        context.translate((width as f64 - pixbuf.width() as f64 * scale) / 2.0, (height as f64 - pixbuf.height() as f64 * scale) / 2.0);
+        context.scale(scale, scale); context.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+        let _ = context.paint(); let _ = context.restore();
+    });
+    brand
+}
+
 fn palette_css(dark: bool) -> String {
-    let (window_bg, window_fg, box_bg, box_border) = if dark {
-        ("#181818", "#efefef", "#1d1d1d", "rgba(230,230,235,0.20)")
+    let (window_bg, window_fg, box_bg) = if dark {
+        ("#161616", "#e8e8e8", "#101010")
     } else {
-        ("#f4f1ea", "#1f1e1b", "#f4f1ec", "rgba(87,77,64,0.20)")
+        ("#f2f2f2", "#242424", "#e8e8e8")
     };
     format!(
-        "window, preferencespage, headerbar {{ background: {window_bg}; color: {window_fg}; }}
+        "window, preferencespage, headerbar, popover {{ background: {window_bg}; color: alpha({window_fg}, 0.72); font-family: 'JetBrains Mono'; font-size: 11pt; font-weight: 400; }}
+         button, button label, entry, spinbutton, dropdown {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
+         .title-1, .title-2, .title-3, .title-4, .title, .heading, windowtitle .title {{ color: {window_fg}; font-size: 11pt; font-weight: 400; }}
+         .dim-label, windowtitle .subtitle {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}
+         headerbar {{ background: @headerbar_bg_color; }}
          .boxed-list {{
              background: {box_bg};
-             border: 1px solid {box_border};
+             border: none;
              border-radius: 12px;
              box-shadow: none;
          }}
-         .boxed-list row {{ background: {box_bg}; color: {window_fg}; }}"
+         .boxed-list row {{ background: {box_bg}; color: alpha({window_fg}, 0.72); }}
+         .donate-link, .donate-link > label {{ color: alpha({window_fg}, 0.72); font-size: 11pt; font-weight: 400; }}"
     )
 }
 
@@ -179,11 +200,16 @@ fn build_ui(app: &adw::Application) {
         .application(app)
         .title("T2 Hybrid GPU Control")
         .default_width(520)
-        .default_height(700)
+        .default_height(740)
         .build();
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    content.append(&adw::HeaderBar::new());
+    let header = adw::HeaderBar::new();
+    let brand = kait2en_brand();
+    brand.set_margin_start(10);
+    brand.set_margin_end(10);
+    header.pack_start(&brand);
+    content.append(&header);
 
     let page = adw::PreferencesPage::new();
     let status_group = adw::PreferencesGroup::builder().title("GPU status").build();
@@ -332,6 +358,13 @@ fn build_ui(app: &adw::Application) {
     }
 
     content.append(&page);
+    let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    footer.set_margin_start(8); footer.set_margin_end(8); footer.set_margin_bottom(8);
+    let donate = gtk::LinkButton::builder().uri("https://donate.stripe.com/eVq14n8a7agh2lQdqq14400").label("Fund our bugs").build();
+    donate.add_css_class("donate-link"); footer.append(&donate);
+    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0); spacer.set_hexpand(true); footer.append(&spacer);
+    footer.append(&gtk::Label::new(Some(&format!("v{APP_VERSION}"))));
+    content.append(&footer);
     window.set_content(Some(&content));
     window.present();
 }

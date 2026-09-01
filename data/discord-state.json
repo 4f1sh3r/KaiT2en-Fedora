@@ -11,11 +11,11 @@
     },
     "keyboard-backlight-reenumeration": {
       "message_id": "1533951131821146283",
-      "hash": "c7a10f3fb838ee7bdff20f16adc3cd6dc0c9cfc119c172d0d02170c2d4592b1c"
+      "hash": "d24583cc95fddf837427bd2f38a1b10652836e62b3fd4f255c3fe6e97d3ca578"
     },
     "thunderbolt-device-links": {
       "message_id": "1533951135214469344",
-      "hash": "6815dbfe3b11fb7e77c7ee0f380cf44ed56dd7ad566664baf7062a6ab8f3d793"
+      "hash": "2b9fd64522ba9ec1ad35fbc6b3506e43b2a397e0b9f54efd8a5d50e1f1ca9c66"
     },
     "apple-t2-early-cpu-offlining": {
       "message_id": "1537074756724199444",

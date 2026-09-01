@@ -4,7 +4,7 @@ KAIT2EN keeps Fedora's vanilla kernel and installs T2 hardware support as a
 separate layer. The changes we are doing to your system are documented here to
 provide transparency to users and devs.
 
-## Project checkout and updater
+## Repo location and updater
 
 The guided installer creates a clean checkout of the `main` branch at:
 
@@ -24,17 +24,17 @@ checkout with an unexpected Git remote. Its persistent files are:
 
 ## Kernel modules
 
-The installer copies each module source to `/usr/src/<name>-<version>/`,
-registers it with DKMS and builds it for the running Fedora kernel. DKMS keeps
+The installer copies each DKMS source package to `/usr/src/<name>-<version>/`,
+registers it and builds it for the running Fedora kernel. DKMS keeps
 its build state below `/var/lib/dkms/` and rebuilds the modules for later
 kernel updates. `modinfo -n <module>` prints the installed kernel object path.
 
 | DKMS source | Installed module | Purpose |
 | --- | --- | --- |
-| `t2bce_dma` | `t2bce_dma` | Shared DMA queue engine for T2 BCE clients |
-| `t2bce_core` | `t2bce_core` | T2 bridge PCI device, mailbox, power management and transport |
-| `t2bce_vhci` | `t2bce_vhci` | Virtual USB host for internal T2 input devices |
-| `t2bce_audio` | `t2bce_audio` | Apple T2 audio driver |
+| `t2bce_stack` | `t2bce_dma` | Shared DMA queue engine for T2 BCE clients |
+| `t2bce_stack` | `t2bce_core` | T2 bridge PCI device, mailbox, power management and transport |
+| `t2bce_stack` | `t2bce_vhci` | Virtual USB host for internal T2 input devices |
+| `t2bce_stack` | `t2bce_audio` | Apple T2 audio driver |
 | `t2smc` | `t2smc` | Fan, temperature, charge-limit and RTC access through hwmon |
 | `t2bdrm` | `t2bdrm` | Touch Bar DRM display device |
 | `t2touchbar` | `t2hid`, `t2touchbar_bl`, `t2touchbar_kbd` | Internal HID quirks, Touch Bar backlight and keyboard mode |
@@ -145,9 +145,11 @@ audio behavior and diagnostics.
 | `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Handles the BCM4377 suspend workaround described below |
 | `/etc/udev/rules.d/90-kait2en-t2-network.rules` | Renames the internal T2 debug interface to `t2_ncm` and excludes it from NetworkManager |
 | `/etc/modprobe.d/kait2en-silent-blacklist.conf` | Silently ignores attempts to load drivers replaced by KAIT2EN modules |
-| `/etc/systemd/system/kait2en-t2-ncm-down.service` | Starts when `t2_ncm` appears |
-| `/usr/local/libexec/kait2en/kait2en-t2-ncm-down.sh` | Keeps the internal debug interface down |
-| `/usr/share/plymouth/themes/kait2en/` | Fedora's spinner theme with the KAIT2EN watermark |
+| `/usr/share/plymouth/themes/kait2en/` | macOS-style boot splash with a KAIT2EN logo |
+| `/usr/share/pixmaps/kait2en-gdm-logo.png` | White and red KAIT2EN logo shown by GDM |
+| `/etc/dconf/db/gdm.d/00-kait2en` | Configures the GDM logo and solid black login background |
+| `/usr/share/backgrounds/kait2en/gdm-black.png` | Black GDM background image |
+| `/usr/share/gnome-shell/gnome-shell-theme.gresource` | GNOME Shell theme patched so the GDM and lock-screen shield render black |
 | `/etc/dracut.conf.d/90-kait2en-input.conf` | Keeps the internal keyboard drivers in initramfs images built during kernel updates |
 | `/boot/initramfs-<running-kernel>.img` | Rebuilt by Dracut after modules and ACPI handling are complete |
 
@@ -208,6 +210,8 @@ outcome of the Bluetooth step is recorded in the installed system at:
 `t2-power-tune` are installed system-wide under `/usr/local`. The
 MacBookPro15,1 gets `t2-hybrid-gpu-control`; other MacBook Pro models with Intel
 and AMD display devices get `t2-dgpu-control`.
+All Kait2en desktop applications use the shared header wordmark at
+`/usr/local/share/kait2en/kait2en-wordmark.png`.
 
 | Application | Installed files |
 | --- | --- |

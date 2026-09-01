@@ -38,8 +38,8 @@ export default function DolphinPanel({ width, height }: { width: number; height:
     return (
       <Button
         // width={BTN_W}
-        color="#444444"
-        activeColor="#555555"
+        color="#373737"
+        activeColor="#474747"
         style={{flex:1, alignItems: 'center', justifyContent: 'center', borderRadius: 10 }}
         onClick={enabled ? onClick : () => {}}
       >

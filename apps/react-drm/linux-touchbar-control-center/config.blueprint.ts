@@ -31,12 +31,12 @@ export const ESC_KEY: {
   width: number;
   gap: number;
 } = {
-  // Show ESC on Touch Bar MacBooks without a physical Escape key.
-  // Standard 13-inch panel is 2008 px, wide 15/16-inch is 2170 px;
-  // 2020+ models with a physical Esc key report a narrower display.
-  // Set to 0 to always show, Infinity to never.
+  // Wide Touch Bars (MacBooks without a physical Esc key) report a wider
+  // panel — the standard bar is 2008 px, the wide variant 2170 px. Show an
+  // on-screen Esc at the far left when the auto-detected display width is at
+  // least this. Set to 0 to always show, Infinity to never.
   minWidth: 2170,
-  // Where the Esc key shows:
+  // Where the Esc key shows on wide displays:
   //   'all' — a fixed Esc button at the far left of every layer
   //   'fn'  — Esc shows only in the Fn-key layer, sized like the F-keys
   onLayers: 'all',
@@ -311,10 +311,28 @@ export interface FnKeyExtra {
 }
 
 export const FN_KEYS = {
-  // Extra keys shown after F1–F12 in the Fn-key layer. Add/remove/reorder here;
+  // Extra keys shown after F1–12 in the Fn-key layer. Add/remove/reorder here;
   // each fires keys.pressKey(key) — see linux-touchbar-control-center/layers/fnKeys.tsx.
   extra: [
     { label: 'prt', key: KEY.PRINT },
     { label: 'del',    key: KEY.DELETE },
   ] as FnKeyExtra[],
+};
+
+// ─── Custom Layer ────────────────────────────────────────────────────────────
+
+export const CUSTOM_LAYER = {
+  // Show a Custom Layer button in the control center's right panel.
+  showButton: false,
+  // Keyboard gesture that toggles the custom-layer overlay — same shape as
+  // FN_LAYER / DOCK.shortcut:
+  //   'hold'       — momentary: the layer shows only while the key is held.
+  //   'toggle'     — long-press to show, long-press again to return.
+  //   'double-tap' — double-tap to show, double-tap again to return.
+  shortcut: {
+    key:      'rmeta' as KeyId,
+    mode:     'double-tap' as 'hold' | 'toggle' | 'double-tap',
+    longMs:   500,
+    doubleMs: 350,
+  },
 };

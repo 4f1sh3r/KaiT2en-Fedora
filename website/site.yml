@@ -86,6 +86,7 @@ documentation:
         - {file: installation.md, split: h2}
     - title: Post-install
       pages:
+        - {file: post-install/kait2en-applications.md, title: KAIT2EN applications}
         - {file: post-install/audio-dsp.md}
         - {file: post-install/configuring-gpus.md, title: Configure GPUs}
         - {file: post-install/hardware-video-decoding.md}

@@ -1,4 +1,5 @@
 #include "udev_keyboard.h"
+#include <cstdlib>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <libudev.h>
@@ -62,18 +63,39 @@ static std::vector<std::string> enumerate_input(
 // The syspath alone distinguishes everything we need:
 //   • virtual nodes (ydotoold / our own react-drm-fkeys injector) live under
 //     /devices/virtual/ and must never be bound.
-//   • the built-in T2 keyboard always sits on the apple-bce/bce-vhci bridge.
+//   • the built-in T2 keyboard always sits on the apple-bce/bce-vhci bridge
+//     upstream, or t2bce on KaiT2en forks (a renamed "t2bce-vhci"). The bridge
+//     tokens come from the REACT_DRM_USB_BRIDGE env var (comma separated),
+//     defaulting to the upstream names when unset. Mirrors
+//     src/native/hardware.ts. Substring match, so a boost (never a gate).
+static bool bridge_matches(const std::string& sp) {
+  const char* e = getenv("REACT_DRM_USB_BRIDGE");
+  if (e && *e) {
+    std::string env = e;
+    size_t start = 0;
+    while (true) {
+      size_t comma = env.find(',', start);
+      std::string t = env.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+      size_t b = t.find_first_not_of(" \t");
+      size_t en2 = t.find_last_not_of(" \t");
+      t = (b == std::string::npos) ? "" : t.substr(b, en2 - b + 1);
+      if (!t.empty() && sp.find(t) != std::string::npos) return true;
+      if (comma == std::string::npos) break;
+      start = comma + 1;
+    }
+    return false;
+  }
+  return sp.find("apple-bce") != std::string::npos
+      || sp.find("bce-vhci") != std::string::npos;
+}
+
 static int score_keyboard(struct udev_device* dev) {
   const char* syspath = udev_device_get_syspath(dev);
   const std::string sp = syspath ? syspath : "";
 
   if (sp.find("/devices/virtual/") != std::string::npos) return -100; // injector — exclude
   int score = 10;                                                     // real hardware path
-  // T2 USB bridge: apple-bce upstream, t2bce on some forks (the "t2bce"
-  // substring also catches a renamed "t2bce-vhci"). Soft boost, not a gate.
-  if (sp.find("apple-bce") != std::string::npos
-      || sp.find("bce-vhci") != std::string::npos
-      || sp.find("t2bce") != std::string::npos) score += 50;          // built-in T2 keyboard
+  if (bridge_matches(sp)) score += 50;                               // built-in T2 keyboard
   return score;
 }
 

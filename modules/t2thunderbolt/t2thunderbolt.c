@@ -194,7 +194,7 @@ static void __exit t2thunderbolt_exit(void)
 module_init(t2thunderbolt_init);
 module_exit(t2thunderbolt_exit);
 
-MODULE_AUTHOR("Andre Eikmeyer <dev@deq.rocks>");
+MODULE_AUTHOR("Andre Eikmeyer <andre.eikmeyer@kait2en.org>");
 MODULE_DESCRIPTION("Apple T2 Thunderbolt power-management ordering quirks");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.6");

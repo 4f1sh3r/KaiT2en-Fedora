@@ -19,18 +19,74 @@ UDEV_RULE="/etc/udev/rules.d/99-react-drm.rules"
 LEGACY_UDEV_RULE="/etc/udev/rules.d/99-react-drm-uinput.rules"
 CONFIG_GUI_LAUNCHER="$HOME/.local/share/applications/react-drm-config-gui.desktop"
 
-info(){ printf '[uninstall] %s\n' "$*"; }
-fail(){ printf '[uninstall] error: %s\n' "$1" >&2; exit 1; }
-trap 'printf "[uninstall] fatal: line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2; exit 1' ERR
+GUI_MODE=0
+
+json_escape() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\t'/\\t}
+  printf '%s' "$s"
+}
+
+gui_phase() {
+  [[ $GUI_MODE -eq 1 ]] || return 0
+  printf '{"type":"phase","name":"%s","status":"%s"}\n' "$1" "$2"
+}
+
+gui_ask() {
+  printf '{"type":"question","kind":"%s"}\n' "$1"
+  local line
+  IFS= read -r line || fail "no answer received from the GUI"
+  GUI_ANSWER=$(printf '%s' "$line" | sed -n 's/.*"answer" *: *"\([^"]*\)".*/\1/p')
+}
+
+privileged() {
+  if [[ $GUI_MODE -eq 1 ]]; then pkexec "$@"; else sudo "$@"; fi
+}
+
+info(){
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"log","phase":"uninstall","level":"info","text":"%s"}\n' "$(json_escape "$*")"
+  else
+    printf '[uninstall] %s\n' "$*"
+  fi
+}
+fail(){
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"error","phase":"uninstall","message":"%s"}\n' "$(json_escape "$1")"
+  else
+    printf '[uninstall] error: %s\n' "$1" >&2
+  fi
+  exit 1
+}
+on_error_trap() {
+  local line=$1 cmd=$2
+  if [[ $GUI_MODE -eq 1 ]]; then
+    printf '{"type":"error","phase":"uninstall","message":"%s"}\n' "$(json_escape "line $line: $cmd")"
+  else
+    printf '[uninstall] fatal: line %s: %s\n' "$line" "$cmd" >&2
+  fi
+  exit 1
+}
+trap 'on_error_trap "$LINENO" "$BASH_COMMAND"' ERR
 
 confirm_uninstall() {
   local answer cmd
   [[ $EUID -ne 0 ]] || fail "run this script as your regular user, not as root"
-  for cmd in sudo systemctl udevadm; do
+  for cmd in systemctl udevadm; do
     command -v "$cmd" >/dev/null 2>&1 || fail "required command is missing: $cmd"
   done
   systemctl --user show-environment >/dev/null ||
     fail "unable to connect to the systemd user manager"
+  if [[ $GUI_MODE -eq 1 ]]; then
+    # install-gui's Confirm screen already showed this disclosure and got
+    # consent before spawning this process; nothing more to ask here.
+    command -v pkexec >/dev/null 2>&1 || fail "pkexec is required for the graphical uninstaller"
+    return
+  fi
+  command -v sudo >/dev/null 2>&1 || fail "required command is missing: sudo"
   cat <<'EOF'
 This removes the react-drm user service and udev rules and restores the
 firmware Touch Bar interface.
@@ -79,10 +135,10 @@ remove_service() {
 
 remove_udev_rules() {
   info "Removing react-drm udev rules"
-  sudo rm -f "$UDEV_RULE" "$LEGACY_UDEV_RULE"
-  sudo udevadm control --reload
-  sudo udevadm trigger --action=add --subsystem-match=usb --subsystem-match=backlight
-  sudo udevadm trigger --action=add --subsystem-match=misc --sysname-match=uinput
+  privileged rm -f "$UDEV_RULE" "$LEGACY_UDEV_RULE"
+  privileged udevadm control --reload
+  privileged udevadm trigger --action=add --subsystem-match=usb --subsystem-match=backlight
+  privileged udevadm trigger --action=add --subsystem-match=misc --sysname-match=uinput
 }
 
 remove_config_gui_launcher() {
@@ -91,12 +147,30 @@ remove_config_gui_launcher() {
   rm -f "$CONFIG_GUI_LAUNCHER"
 }
 
+launch_wizard() {
+  [[ $EUID -ne 0 ]] || fail "run this script as your regular user, not as root"
+  [[ -x "$SCRIPT_DIR/node_modules/.bin/electron" && -f "$SCRIPT_DIR/install-gui/dist/main/main.js" ]] ||
+    fail "the graphical installer isn't built yet; run './install.sh wizard' once first, or use the terminal flow: ./uninstall.sh"
+  info "Launching the graphical uninstaller"
+  REACT_DRM_REPO_DIR="$SCRIPT_DIR" exec "$SCRIPT_DIR/node_modules/.bin/electron" "$SCRIPT_DIR/install-gui" --mode=uninstall
+}
+
 main() {
-  confirm_uninstall
-  remove_service
-  remove_udev_rules
-  remove_config_gui_launcher
-  info "Uninstallation completed successfully"
+  case "${1:-uninstall}" in
+    uninstall)
+      [[ "${2:-}" == --gui ]] && GUI_MODE=1
+      gui_phase uninstall start
+      confirm_uninstall
+      remove_service
+      remove_udev_rules
+      remove_config_gui_launcher
+      info "Uninstallation completed successfully"
+      gui_phase uninstall done
+      [[ $GUI_MODE -eq 1 ]] && printf '{"type":"done"}\n'
+      ;;
+    wizard) launch_wizard ;;
+    *) printf 'usage: %s [uninstall|wizard]\n' "${0##*/}" >&2; return 2 ;;
+  esac
 }
 
 main "$@"

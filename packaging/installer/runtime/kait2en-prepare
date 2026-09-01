@@ -105,6 +105,25 @@ wait_for_github() {
 	done
 }
 
+# The origin URL is a constant, not user data, so repair it instead of dying.
+repair_origin_url() {
+	local current
+	current=$(git -c safe.directory="$repository" -C "$repository" \
+		remote get-url origin 2>/dev/null) || current=
+	[[ "$current" != "$repository_url" ]] || return 0
+	printf '[kait2en] repairing the origin URL of %s (found: %s)\n' \
+		"$repository" "${current:-none}"
+	if [[ -n "$current" ]]; then
+		git -c safe.directory="$repository" -C "$repository" \
+			remote set-url origin "$repository_url" ||
+			die "could not repair the origin URL in $repository"
+	else
+		git -c safe.directory="$repository" -C "$repository" \
+			remote add origin "$repository_url" ||
+			die "could not add the origin remote in $repository"
+	fi
+}
+
 bootstrap_repository() {
 	local setup_user uid gid parent
 	setup_user=${SUDO_USER:-}
@@ -120,8 +139,7 @@ bootstrap_repository() {
 	if [[ -e "$repository" ]]; then
 		[[ -d "$repository/.git" ]] ||
 			die "$repository exists but is not a Git checkout"
-		[[ $(git -c safe.directory="$repository" -C "$repository" remote get-url origin) == "$repository_url" ]] ||
-			die "$repository has an unexpected origin URL"
+		repair_origin_url
 		[[ $(git -c safe.directory="$repository" -C "$repository" branch --show-current) == main ]] ||
 			die "$repository is not on the main branch"
 		[[ -z $(git -c safe.directory="$repository" -C "$repository" status --porcelain) ]] ||

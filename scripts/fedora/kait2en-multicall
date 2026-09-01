@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case ${0##*/} in
+	edit-grub)
+		exec sudo nano /etc/default/grub
+		;;
+	update-grub)
+		exec sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+		;;
+	*)
+		printf 'Unknown KaiT2en multicall command: %s\n' "${0##*/}" >&2
+		exit 2
+		;;
+esac

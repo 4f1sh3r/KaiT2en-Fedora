@@ -98,7 +98,7 @@ index e5f26e5..2175743 100644
  	u32 max_MBps;
  	int tmp;
  
-@@ -4144,13 +4164,14 @@ fence_driver_init:
+@@ -4144,11 +4164,12 @@ fence_driver_init:
  		vga_client_register(adev->pdev, amdgpu_device_vga_set_decode);
  
  	px = amdgpu_device_supports_px(adev);
@@ -114,8 +114,6 @@ index e5f26e5..2175743 100644
 -	if (px)
 +	if (px || gmux)
  		vga_switcheroo_init_domain_pm_ops(adev->dev, &adev->vga_pm_domain);
- 
- 	adev->pm_nb.notifier_call = amdgpu_device_pm_notifier;
 @@ -4276,7 +4297,7 @@ void amdgpu_device_fini_hw(struct amdgpu_device *adev)
  void amdgpu_device_fini_sw(struct amdgpu_device *adev)
  {
@@ -207,7 +205,7 @@ index 4c0c77e..603ff39 100644
  		 * PCI core handles it for _PR3.
  		 */
  		pci_set_power_state(pdev, PCI_D0);
-@@ -2945,12 +2951,14 @@ static int amdgpu_pmops_runtime_resume(struct device *dev)
+@@ -2945,10 +2951,12 @@ static int amdgpu_pmops_runtime_resume(struct device *dev)
  	}
  	ret = amdgpu_device_resume(drm_dev, false);
  	if (ret) {
@@ -222,8 +220,6 @@ index 4c0c77e..603ff39 100644
 +	if (adev->pm.rpm_mode == AMDGPU_RUNPM_PX ||
 +	    adev->pm.rpm_mode == AMDGPU_RUNPM_GMUX)
  		drm_dev->switch_power_state = DRM_SWITCH_POWER_ON;
- 	adev->in_runpm = false;
- 	return 0;
 diff --git a/drivers/gpu/drm/amd/pm/inc/amdgpu_dpm.h b/drivers/gpu/drm/amd/pm/inc/amdgpu_dpm.h
 index aa3f427..d76968f 100644
 --- a/drivers/gpu/drm/amd/pm/inc/amdgpu_dpm.h
@@ -238,4 +234,3 @@ index aa3f427..d76968f 100644
  	AMDGPU_RUNPM_BAMACO,
 -- 
 2.55.0
-

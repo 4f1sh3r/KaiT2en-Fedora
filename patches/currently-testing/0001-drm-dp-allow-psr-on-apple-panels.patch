@@ -1,0 +1,17 @@
+Subject: [PATCH 1/2] drm/dp: stop blanket-disabling PSR on Apple panels
+
+The NO_PSR quirk has covered every Apple eDP panel since 2018 (1035f4a65f58)
+with the note that i915 did not support PSR on them yet. On the MacBookPro16,2
+panel PSR works once the vendor handshake in patch 2/2 is issued.
+---
+--- a/drivers/gpu/drm/display/drm_dp_helper.c
++++ b/drivers/gpu/drm/display/drm_dp_helper.c
+@@ -2541,7 +2541,7 @@
+ 	/* LG LP140WF6-SPM1 eDP panel */
+ 	{ OUI(0x00, 0x22, 0xb9), DEVICE_ID('s', 'i', 'v', 'a', 'r', 'T'), false, BIT(DP_DPCD_QUIRK_CONSTANT_N) },
+ 	/* Apple panels need some additional handling to support PSR */
+-	{ OUI(0x00, 0x10, 0xfa), DEVICE_ID_ANY, false, BIT(DP_DPCD_QUIRK_NO_PSR) },
++	{ OUI(0x00, 0x10, 0xfa), DEVICE_ID_ANY, false, 0 },
+ 	/* CH7511 seems to leave SINK_COUNT zeroed */
+ 	{ OUI(0x00, 0x00, 0x00), DEVICE_ID('C', 'H', '7', '5', '1', '1'), false, BIT(DP_DPCD_QUIRK_NO_SINK_COUNT) },
+ 	/* Synaptics DP1.4 MST hubs can support DSC without virtual DPCD */

@@ -8,17 +8,32 @@ import subprocess
 import threading
 import time
 import urllib.request
+import uuid
 from pathlib import Path
 
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, GObject, Gtk
+from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, GObject, Gtk
 
 APP_ID = "org.t2kernelbuilder.gtk"
-APP_VERSION = "0.01"
+APP_VERSION = "0.03"
+
+def kait2en_brand():
+    pixbuf = GdkPixbuf.Pixbuf.new_from_file("/usr/local/share/kait2en/kait2en-wordmark.png")
+    brand = Gtk.DrawingArea(content_width=80, content_height=21)
+    def draw(_area, context, width, height):
+        scale = min(width / pixbuf.get_width(), height / pixbuf.get_height())
+        context.save()
+        context.translate((width - pixbuf.get_width() * scale) / 2,
+                          (height - pixbuf.get_height() * scale) / 2)
+        context.scale(scale, scale)
+        Gdk.cairo_set_source_pixbuf(context, pixbuf, 0, 0)
+        context.paint(); context.restore()
+    brand.set_draw_func(draw); brand.set_size_request(80, 21)
+    return brand
 HERE = Path(__file__).resolve().parent
-SOURCE_ENGINE = HERE.parents[1] / "scripts/fedora-kernel-build-script"
+SOURCE_ENGINE = HERE / "engine"
 INSTALLED_ENGINE = Path("/usr/local/libexec/t2-kernel-builder")
 ENGINE = SOURCE_ENGINE if (SOURCE_ENGINE / "build.sh").is_file() else INSTALLED_ENGINE
 BUILD_SCRIPT = ENGINE / "build.sh"
@@ -31,12 +46,13 @@ UI_STATE = CONFIG_DIR / "ui-state.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 
 T2_REQUIRED = [
-    "ACPI", "BLK_DEV_NVME", "BT", "CFG80211", "DRM", "DRM_I915", "EFI",
-    "EFI_STUB", "EXT4_FS", "HID", "HID_APPLE", "INPUT", "INPUT_EVDEV",
-    "INPUT_SPARSEKMAP",
+    "ACPI", "ACPI_TAD", "APPLE_MFI_FASTCHARGE", "BLK_DEV_NVME", "BT",
+    "CFG80211", "DRM", "DRM_APPLETBDRM", "DRM_I915", "EFI", "EFI_STUB",
+    "EXT4_FS", "HID", "HID_APPLE", "HID_APPLETB_BL", "HID_APPLETB_KBD",
+    "HID_MAGICMOUSE", "INPUT", "INPUT_EVDEV", "INPUT_SPARSEKMAP",
     "MAC80211", "NET", "PCI", "PCIEPORTBUS", "SND", "SND_HDA_INTEL",
-    "SOUND", "TMPFS", "USB", "USB4", "USB_SUPPORT", "USB_XHCI_HCD",
-    "VFAT_FS", "WLAN",
+    "SENSORS_APPLESMC", "SOUND", "TMPFS", "USB", "USB4", "USB_SUPPORT",
+    "USB_XHCI_HCD", "VFAT_FS", "WLAN",
 ]
 
 SECTION_HELP = {
@@ -44,7 +60,8 @@ SECTION_HELP = {
     "Base configuration": ("Base configuration", "Fedora default keeps Fedora's complete x86_64 configuration. localmodconfig removes options that are not needed by the modules currently loaded on this Mac. Connect every device you need before running localmodconfig."),
     "Optional components": ("Optional components", "After either base configuration has been prepared, this tree exposes the kernel's real Kconfig hierarchy. T2 requirements are locked; other visible bool and tristate symbols can be changed."),
     "Patch series": ("Patch series", "Every readable *.patch file in the selected folder is applied alphabetically after Fedora's own patch set. Preparation stops on a missing or incompatible patch."),
-    "Build and install": ("Build and install", "Choose the number of parallel build threads. The default leaves one hardware thread available for the desktop. After the unprivileged build finishes, install it separately when you are ready to authorize through PolicyKit."),
+    "Build kernel": ("Build kernel", "Compile the configured kernel as your normal user. Choose the number of parallel build threads; the default leaves one hardware thread available for the desktop. Building does not modify the running system."),
+    "Install kernel": ("Install kernel", "Select a completed build and install it separately when you are ready. Installation requests administrator authorization through PolicyKit and creates the boot files for that kernel."),
     "Installed kernels": ("Installed kernels", "The running kernel and rescue images are protected. Package-managed kernels are removed with DNF; locally installed custom kernels are removed from /boot and /lib/modules."),
     "Builder data": ("Builder data", "Delete the cache and downloaded kernel sources for selected versions. Keep entries that you want to build again without downloading and preparing their sources."),
 }
@@ -55,13 +72,18 @@ class KconfigItem(GObject.Object):
 
 def palette_css(dark):
     if dark:
-        window, fg, panel, shadow = "#1d1d1d", "#d7d7d4", "#181818", "rgba(0,0,0,0.28)"
+        window, fg, panel, shadow = "#161616", "#e8e8e8", "#101010", "rgba(0,0,0,0.32)"
     else:
-        window, fg, panel, shadow = "#f4f1ec", "#38342f", "#eeeae2", "rgba(72,62,50,0.16)"
-    return (f".app-background{{background:{window};color:{fg};}}"
-            f".app-background headerbar{{background:{window};color:{fg};}}"
-            f".unified-box{{background:{panel};color:{fg};border-radius:12px;padding:14px;}}"
-            f".sticky-bar{{background:{panel};color:{fg};padding:9px 18px;box-shadow:0 -5px 12px {shadow};}}")
+        window, fg, panel, shadow = "#f2f2f2", "#242424", "#e8e8e8", "rgba(0,0,0,0.14)"
+    return (f"window,popover{{font-family:'JetBrains Mono';font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}"
+            f"button,button label,entry,spinbutton,dropdown{{font-size:11pt;font-weight:400;color:alpha({fg},0.72);}}"
+            f".app-background{{background:{window};color:alpha({fg},0.72);}}"
+            f".app-background headerbar{{background:@headerbar_bg_color;color:alpha({fg},0.72);}}"
+            f".app-background .title-1,.app-background .title-2,.app-background .title-3,.app-background .title-4,.app-background .title,.app-background .heading,windowtitle .title{{color:{fg};font-size:11pt;font-weight:400;}}"
+            f".app-background .dim-label,windowtitle .subtitle{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}"
+            f".unified-box{{background:{panel};color:alpha({fg},0.72);border-radius:12px;padding:14px;}}"
+            f".sticky-bar{{background:{panel};color:alpha({fg},0.72);padding:9px 18px;box-shadow:0 -5px 12px {shadow};}}"
+            f".donate-link,.donate-link>label{{color:alpha({fg},0.72);font-size:11pt;font-weight:400;}}")
 
 class KernelBuilder(Adw.Application):
     def __init__(self):
@@ -82,6 +104,8 @@ class KernelBuilder(Adw.Application):
         self.build_after_prepare = False
         self.built_tree = None
         self.built_release = None
+        self.cancel_file = None
+        self.updating_kernel_model = False
         self.available_jobs = max(1, os.cpu_count() or 1)
         self.saved_settings = self.load_settings()
         self.pending_config_values = dict(self.saved_settings.get("config_values", {}))
@@ -102,9 +126,12 @@ class KernelBuilder(Adw.Application):
         header = Adw.HeaderBar()
         header.set_title_widget(Adw.WindowTitle(title="Kernel Builder",
                                                 subtitle="Minimal Fedora kernels for T2 Macs"))
+        brand = kait2en_brand()
+        brand.set_margin_start(10); brand.set_margin_end(10); header.pack_start(brand)
         root.append(header)
 
         self.stack = Gtk.Stack(vexpand=True, transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.stack.set_hhomogeneous(False)
         switcher = Gtk.StackSwitcher(stack=self.stack)
         switcher.set_margin_top(8); switcher.set_margin_bottom(8)
         switcher.set_halign(Gtk.Align.CENTER)
@@ -127,29 +154,29 @@ class KernelBuilder(Adw.Application):
                                    wide_handle=True, position=ui_state.get("width", 1340) // 2)
         self.workspace.set_start_child(left); self.workspace.set_end_child(log_panel)
         self.workspace.set_resize_start_child(True); self.workspace.set_resize_end_child(True)
-        self.workspace.set_shrink_start_child(False); self.workspace.set_shrink_end_child(False)
+        self.workspace.set_shrink_start_child(True); self.workspace.set_shrink_end_child(False)
         root.append(self.workspace)
 
         source_page = self.page()
         source = self.section(source_page, "Kernel source", help_key="Kernel source")
         self.source_detail = Gtk.Label(xalign=0)
-        self.source_detail.add_css_class("dim-label"); source.append(self.source_detail)
-        row = Gtk.Box(spacing=8)
+        self.source_detail.add_css_class("dim-label")
+        row = Gtk.Grid(column_spacing=8, column_homogeneous=True)
         self.kernel_model = Gtk.StringList.new(["Loading available kernels…"])
         self.kernel_drop = Gtk.DropDown(model=self.kernel_model, hexpand=True)
-        self.kernel_drop.set_size_request(260, -1)
         dropdown_factory = Gtk.SignalListItemFactory()
         dropdown_factory.connect("setup", self.setup_kernel_choice)
         dropdown_factory.connect("bind", self.bind_kernel_choice)
         self.kernel_drop.set_factory(dropdown_factory)
         self.kernel_drop.set_list_factory(dropdown_factory)
         self.kernel_drop.connect("notify::selected", self.kernel_selection_changed)
-        row.append(self.kernel_drop)
-        self.suffix = Gtk.Entry(text=self.saved_settings.get("suffix", "-t2-custom"), hexpand=False, width_chars=14)
-        self.suffix.set_max_width_chars(18)
-        self.suffix.set_placeholder_text("-custom-suffix")
+        row.attach(self.kernel_drop, 0, 0, 1, 1)
+        saved_suffix = str(self.saved_settings.get("suffix", "-t2-custom"))
+        self.suffix = Gtk.Entry(text=saved_suffix, hexpand=True)
+        self.suffix.set_placeholder_text("custom-suffix")
         self.suffix.connect("changed", self.suffix_changed)
-        row.append(self.suffix); source.append(row)
+        row.attach(self.suffix, 1, 0, 1, 1)
+        source.append(row); source.append(self.source_detail)
         self.stack.add_titled(source_page, "source", "1. Source")
 
         config_page = self.page()
@@ -182,8 +209,6 @@ class KernelBuilder(Adw.Application):
                                                xalign=0, yalign=0)
         self.component_placeholder.set_margin_top(8)
         self.component_tree.set_child(self.component_placeholder); features.append(self.component_tree)
-        self.stack.add_titled(config_page, "configuration", "2. Config")
-
         patch_page = self.page()
         patches = self.section(patch_page, "Patch series", help_key="Patch series")
         self.patch_entry = self.entry_row(patches, "Patch folder", self.saved_settings.get("patch_folder", ""), self.patch_folder_changed)
@@ -198,10 +223,11 @@ class KernelBuilder(Adw.Application):
         for side in ("top", "bottom", "start", "end"):
             getattr(self.patch_contents, f"set_margin_{side}")(10)
         patch_contents_frame.set_child(self.patch_contents); patches.append(patch_contents_frame)
-        self.stack.add_titled(patch_page, "patches", "3. Patches")
+        self.stack.add_titled(patch_page, "patches", "2. Patches")
+        self.stack.add_titled(config_page, "configuration", "3. Config")
 
         build_page = self.page()
-        build = self.section(build_page, "Build and install", help_key="Build and install")
+        build = self.section(build_page, "Build kernel", help_key="Build kernel")
         jobs_row = Gtk.Box(spacing=10)
         jobs_row.append(Gtk.Label(label="Parallel build threads", xalign=0, hexpand=True))
         default_jobs = max(1, self.available_jobs - 1)
@@ -222,15 +248,16 @@ class KernelBuilder(Adw.Application):
         self.cancel_btn.connect("clicked", lambda *_: self.cancel())
         controls.append(self.build_btn); controls.append(self.cancel_btn)
         build.append(controls)
-        completed = Gtk.Box(spacing=8)
-        completed.append(Gtk.Label(label="Completed build", xalign=0))
+        install = self.section(build_page, "Install kernel", help_key="Install kernel")
+        install.append(Gtk.Label(label="Completed build", xalign=0))
         self.built_model = Gtk.StringList.new(["No completed builds found"])
         self.built_drop = Gtk.DropDown(model=self.built_model, hexpand=True)
         self.built_drop.connect("notify::selected", self.built_selection_changed)
-        completed.append(self.built_drop)
+        install.append(self.built_drop)
         self.install_btn = Gtk.Button(label="Install built kernel", sensitive=False)
         self.install_btn.connect("clicked", lambda *_: self.start_install())
-        completed.append(self.install_btn); build.append(completed)
+        self.install_btn.set_halign(Gtk.Align.START)
+        install.append(self.install_btn)
         self.stack.add_titled(build_page, "build", "4. Build")
 
         cleanup_page = self.page()
@@ -270,9 +297,18 @@ class KernelBuilder(Adw.Application):
         root.append(self.activity)
 
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        footer.add_css_class("sticky-bar")
-        self.notice = Gtk.Label(xalign=0, wrap=True, hexpand=True)
-        footer.append(self.notice)
+        footer.set_margin_start(8); footer.set_margin_end(8); footer.set_margin_bottom(8)
+        self.notice = Gtk.Label(xalign=0, wrap=True)
+        self.notice.set_margin_start(18); self.notice.set_margin_end(18)
+        self.notice.set_margin_top(6); self.notice.set_margin_bottom(6)
+        root.append(self.notice)
+        donate = Gtk.LinkButton(
+            uri="https://donate.stripe.com/eVq14n8a7agh2lQdqq14400",
+            label="Fund our bugs",
+        )
+        donate.add_css_class("donate-link")
+        footer.append(donate)
+        footer.append(Gtk.Box(hexpand=True))
         footer.append(Gtk.Label(label=f"v{APP_VERSION}"))
         root.append(footer)
         self.win.set_content(root)
@@ -321,7 +357,9 @@ class KernelBuilder(Adw.Application):
 
     def entry_row(self, parent, label, value, changed=None):
         row = Gtk.Box(spacing=10)
-        row.append(Gtk.Label(label=label, xalign=0, width_chars=18))
+        name = Gtk.Label(label=label, xalign=0, max_width_chars=18, ellipsize=3)
+        name.set_tooltip_text(label)
+        row.append(name)
         entry = Gtk.Entry(text=value, hexpand=True)
         entry.connect("changed", lambda *_: (changed or self.inputs_changed)())
         row.append(entry); parent.append(row)
@@ -368,10 +406,14 @@ class KernelBuilder(Adw.Application):
 
     def finish_kernels(self, kernels, error):
         self.kernel_values = kernels
-        self.kernel_model.splice(0, self.kernel_model.get_n_items(), kernels or ["No kernels available"])
-        remembered = self.saved_settings.get("kernel", "")
-        if remembered in kernels:
-            self.kernel_drop.set_selected(kernels.index(remembered))
+        self.updating_kernel_model = True
+        try:
+            self.kernel_model.splice(0, self.kernel_model.get_n_items(), kernels or ["No kernels available"])
+            remembered = self.saved_settings.get("kernel", "")
+            if remembered in kernels:
+                self.kernel_drop.set_selected(kernels.index(remembered))
+        finally:
+            self.updating_kernel_model = False
         mode = self.saved_settings.get("base_mode")
         if mode in ("fedora", "localmodconfig"):
             self.base_mode = mode
@@ -382,6 +424,7 @@ class KernelBuilder(Adw.Application):
         self.update_actions(); return False
 
     def kernel_selection_changed(self, *_args):
+        if self.updating_kernel_model: return
         self.update_kernel_base()
         self.base_inputs_changed()
         self.save_settings()
@@ -598,7 +641,7 @@ class KernelBuilder(Adw.Application):
 
     def source_error(self):
         if not self.selected_kernel(): return "Select an available kernel."
-        if not re.fullmatch(r"-[A-Za-z0-9._+-]+", self.suffix.get_text()): return "The kernel suffix must begin with '-' and contain no spaces."
+        if not re.fullmatch(r"[A-Za-z0-9._+-]+", self.suffix.get_text()): return "The kernel suffix must be non-empty and contain only letters, numbers, '.', '_', '+', or '-'."
         if not BUILD_SCRIPT.is_file(): return f"Build script not found: {BUILD_SCRIPT}"
         return ""
 
@@ -686,8 +729,13 @@ class KernelBuilder(Adw.Application):
 
     def start_install(self):
         if not self.built_tree or not self.built_release: return
+        cancel_dir = WORK_DIR.parent / "cancel"
+        cancel_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        cancel_dir.chmod(0o700)
+        self.cancel_file = cancel_dir / str(uuid.uuid4())
+        self.cancel_file.touch(mode=0o600)
         self.run_command(["pkexec", str(CLEANUP_HELPER), "install-kernel",
-                          str(self.built_tree), self.built_release],
+                          str(self.built_tree), self.built_release, str(self.cancel_file)],
                          "Waiting for authorization, then installing the built kernel…", "install")
 
     def scan_built_kernels(self, preferred_release=None):
@@ -701,14 +749,19 @@ class KernelBuilder(Adw.Application):
                     release = release_marker.read_text(encoding="utf-8").strip()
                     if (tree.is_relative_to(entry.resolve()) and (tree / "Makefile").is_file() and
                             re.fullmatch(r"[A-Za-z0-9._+-]+", release)):
-                        if Path(f"/lib/modules/{release}").is_dir() and Path(f"/boot/vmlinuz-{release}").is_file():
-                            continue
                         builds.append((release, tree))
                 except (OSError, ValueError):
                     continue
         builds.sort(key=lambda item: self.version_key(item[0]), reverse=True)
         self.completed_builds = builds
-        labels = [release for release, _tree in builds] or ["No completed builds found"]
+        labels = []
+        for release, _tree in builds:
+            present = [Path(f"/lib/modules/{release}").is_dir(),
+                       Path(f"/boot/vmlinuz-{release}").is_file(),
+                       Path(f"/boot/initramfs-{release}.img").is_file()]
+            state = "installed" if all(present) else "partial installation" if any(present) else "ready"
+            labels.append(f"{release} — {state}")
+        if not labels: labels = ["No completed builds found"]
         self.built_model.splice(0, self.built_model.get_n_items(), labels)
         selected = next((i for i, item in enumerate(builds) if item[0] == preferred_release), 0)
         self.built_drop.set_selected(selected)
@@ -746,7 +799,7 @@ class KernelBuilder(Adw.Application):
         if width <= 1 and attempt < 10:
             GLib.timeout_add(50, self.apply_initial_divider, ratio, attempt + 1)
             return False
-        self.workspace.set_position(round(width * min(0.8, max(0.2, ratio))))
+        self.workspace.set_position(round(width * min(0.5, max(0.5, ratio))))
         return False
 
     def _run(self, command, kind):
@@ -778,6 +831,9 @@ class KernelBuilder(Adw.Application):
         finally:
             self.process = None
             self.running = False
+            if self.cancel_file is not None:
+                self.cancel_file.unlink(missing_ok=True)
+                self.cancel_file = None
         GLib.idle_add(self.finished, kind, code)
 
     def process_progress_line(self, line):
@@ -790,6 +846,10 @@ class KernelBuilder(Adw.Application):
             "[kait2en-progress] phase=localmodconfig": ("Running localmodconfig", 0.78),
             "Building ": ("Building kernel", 0.0),
             "[kait2en-progress] phase=installing": ("Waiting for authorization, then installing", 0.98),
+            "[kait2en-progress] phase=install-modules": ("Installing kernel modules", 0.98),
+            "[kait2en-progress] phase=install-dkms": ("Installing DKMS modules", 0.98),
+            "[kait2en-progress] phase=install-boot": ("Creating kernel boot files and initramfs", 0.98),
+            "[kait2en-progress] phase=verify-install": ("Verifying installed kernel", 0.98),
         }
         for marker, (phase, fraction) in phases.items():
             if marker in line:
@@ -866,8 +926,15 @@ class KernelBuilder(Adw.Application):
 
     def cancel(self):
         if self.process:
-            try: os.killpg(self.process.pid, signal.SIGTERM)
-            except ProcessLookupError: pass
+            if self.operation_kind == "install" and self.cancel_file is not None:
+                self.cancel_file.write_text("cancel\n", encoding="utf-8")
+                self.activity_label.set_text("Cancelling installation and rolling back…")
+                self.activity_cancel.set_sensitive(False)
+                try: os.killpg(self.process.pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError): pass
+            else:
+                try: os.killpg(self.process.pid, signal.SIGTERM)
+                except ProcessLookupError: pass
 
     def settings_data(self):
         config_values = dict(self.pending_config_values)
@@ -919,8 +986,12 @@ class KernelBuilder(Adw.Application):
                 if marker.is_file():
                     try:
                         tree = Path(marker.read_text(encoding="utf-8").strip()).resolve()
-                        in_use = any(link.is_symlink() and link.resolve() == tree
-                                     for link in Path("/lib/modules").glob("*/build"))
+                        for link in list(Path("/lib/modules").glob("*/build")) + list(Path("/lib/modules").glob("*/source")):
+                            release = link.parent.name
+                            if ((release == running or Path(f"/boot/vmlinuz-{release}").is_file()) and
+                                    link.is_symlink() and link.resolve() == tree):
+                                in_use = True
+                                break
                     except OSError:
                         pass
                 label = f"{path.name} - {state}" + (" - installed kernel uses this tree" if in_use else "")
@@ -999,6 +1070,9 @@ class KernelBuilder(Adw.Application):
         return False
 
     def finish_cleanup(self, errors, kind, total):
+        if kind == "cache":
+            self.base_inputs_changed()
+            self.save_settings()
         self.scan_cleanup()
         self.scan_built_kernels()
         self.cleanup_running = False
