@@ -1,0 +1,384 @@
+name: Build COPR test kernel
+
+on:
+  pull_request:
+    paths:
+      - patches/testing/**
+      - '!patches/testing/**/README.md'
+  workflow_dispatch:
+    inputs:
+      experiment:
+        description: Experiment directory name below patches/testing
+        required: true
+        type: string
+      kernel_release:
+        description: Optional Fedora kernel series or exact NVR.arch
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: kernel-copr-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  COPR_CHROOT: fedora-44-x86_64
+  COPR_PROJECT: ${{ vars.COPR_PROJECT_TESTING }}
+
+jobs:
+  build:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: copr
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Select experiment
+        id: experiment
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_EXPERIMENT: ${{ inputs.experiment }}
+          MANUAL_KERNEL_RELEASE: ${{ inputs.kernel_release }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [[ $EVENT_NAME == pull_request ]]; then
+            mapfile -t experiments < <(
+              git diff --name-only --diff-filter=ACMRT \
+                "$BASE_SHA" "$SOURCE_SHA" -- patches/testing/ |
+                awk -F/ 'NF >= 4 { print $3 }' |
+                LC_ALL=C sort -u
+            )
+            if ((${#experiments[@]} != 1)); then
+              printf 'Expected exactly one changed experiment, found %d:\n' \
+                "${#experiments[@]}" >&2
+              printf '  %s\n' "${experiments[@]}" >&2
+              exit 1
+            fi
+            experiment=${experiments[0]}
+          else
+            experiment=$MANUAL_EXPERIMENT
+          fi
+
+          [[ $experiment =~ ^[a-z0-9][a-z0-9-]*$ ]] || {
+            printf 'Invalid experiment name: %s\n' "$experiment" >&2
+            exit 1
+          }
+          experiment_dir=patches/testing/$experiment
+          [[ -s $experiment_dir/README.md ]] || {
+            printf '%s must contain a non-empty README.md\n' \
+              "$experiment_dir" >&2
+            exit 1
+          }
+          if [[ -e $experiment_dir/series ]] && \
+              [[ ! -f $experiment_dir/series || ! -s $experiment_dir/series ]]; then
+            printf '%s/series must be a non-empty regular file when present\n' \
+              "$experiment_dir" >&2
+            exit 1
+          fi
+
+          kernel_release=$MANUAL_KERNEL_RELEASE
+          kernel_release_file=$experiment_dir/kernel-release
+          if [[ -z $kernel_release && -e $kernel_release_file ]]; then
+            [[ -f $kernel_release_file && -s $kernel_release_file ]] || {
+              printf '%s must be a non-empty regular file\n' \
+                "$kernel_release_file" >&2
+              exit 1
+            }
+            mapfile -t kernel_release_lines <"$kernel_release_file"
+            ((${#kernel_release_lines[@]} == 1)) || {
+              printf '%s must contain exactly one line\n' \
+                "$kernel_release_file" >&2
+              exit 1
+            }
+            kernel_release=${kernel_release_lines[0]}
+          fi
+          if [[ -n $kernel_release ]] && \
+              [[ ! $kernel_release =~ ^[0-9]+\.[0-9]+$ ]] && \
+              [[ ! $kernel_release =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z][0-9A-Za-z._+~]*\.fc[0-9]+\.x86_64$ ]]; then
+            printf 'Invalid kernel release: %s\n' "$kernel_release" >&2
+            exit 1
+          fi
+
+          suffix=${experiment//-/_}.g${SOURCE_SHA::7}
+          {
+            echo "name=$experiment"
+            echo "directory=$experiment_dir"
+            echo "kernel_release=$kernel_release"
+            echo "suffix=$suffix"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Create and validate kernel SRPM
+        id: srpm
+        shell: bash
+        env:
+          BUILD_SUFFIX: ${{ steps.experiment.outputs.suffix }}
+          EXPERIMENT_DIR: ${{ steps.experiment.outputs.directory }}
+          KERNEL_RELEASE: ${{ steps.experiment.outputs.kernel_release }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p out
+          podman run --rm \
+            --volume "$PWD:/repo:ro" \
+            --volume "$PWD/out:/out" \
+            --env GITHUB_OUTPUT=/out/github-output \
+            fedora:44 \
+            bash -euo pipefail -c '
+              dnf -y install dnf5-plugins rpm-build
+              kernel_args=()
+              if [[ -n $3 ]]; then
+                kernel_args=(--kernel-release "$3")
+              fi
+              bash /repo/scripts/copr/make-kernel-srpm.sh \
+                --buildid "$1" --patch-dir "/repo/$2" --out /out \
+                "${kernel_args[@]}"
+            ' bash "$BUILD_SUFFIX" "$EXPERIMENT_DIR" "$KERNEL_RELEASE"
+          cat out/github-output >>"$GITHUB_OUTPUT"
+          test -s "out/$(sed -n 's/^srpm_name=//p' out/github-output)"
+
+      - name: Check COPR configuration
+        id: credential
+        shell: bash
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+        run: |
+          if [[ -z $COPR_CONFIG ]]; then
+            echo '::notice::COPR_CONFIG is empty; SRPM validation passed, COPR submission skipped.'
+            echo 'enabled=false' >>"$GITHUB_OUTPUT"
+          elif [[ -z $COPR_PROJECT ]]; then
+            echo '::error::COPR_PROJECT_TESTING repository variable is not configured.'
+            exit 1
+          else
+            echo 'enabled=true' >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Install COPR client
+        if: steps.credential.outputs.enabled == 'true'
+        run: python3 -m pip install copr-cli
+
+      - name: Configure COPR client
+        if: steps.credential.outputs.enabled == 'true'
+        shell: bash
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+        run: |
+          umask 077
+          mkdir -p "$HOME/.config"
+          printf '%s' "$COPR_CONFIG" >"$HOME/.config/copr"
+
+      - name: Submit COPR build
+        if: steps.credential.outputs.enabled == 'true'
+        id: submit
+        shell: bash
+        env:
+          SRPM_NAME: ${{ steps.srpm.outputs.srpm_name }}
+        run: |
+          set -Eeuo pipefail
+          output=$(copr-cli build --nowait --timeout 18000 \
+            --chroot "$COPR_CHROOT" \
+            "$COPR_PROJECT" "out/$SRPM_NAME")
+          printf '%s\n' "$output"
+          build_id=$(
+            printf '%s\n' "$output" |
+              sed -nE \
+                -e 's#.*coprs/build/([0-9]+)/?.*#\1#p' \
+                -e 's/^Created builds:[[:space:]]*([0-9]+).*$/\1/p' |
+              tail -n 1
+          )
+          [[ $build_id =~ ^[0-9]+$ ]] || {
+            echo 'Could not determine COPR build ID.' >&2
+            exit 1
+          }
+          build_url="https://copr.fedorainfracloud.org/coprs/build/$build_id/"
+          printf '%s\n' "$build_id" >out/copr-build-id
+          echo "build_id=$build_id" >>"$GITHUB_OUTPUT"
+          echo "build_url=$build_url" >>"$GITHUB_OUTPUT"
+
+      - name: Publish build-started comment
+        if: >-
+          github.event_name == 'pull_request'
+          && steps.submit.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_URL: ${{ steps.submit.outputs.build_url }}
+          BASE_KVER: ${{ steps.srpm.outputs.base_kver }}
+          EXPERIMENT: ${{ steps.experiment.outputs.name }}
+          NVR: ${{ steps.srpm.outputs.nvr }}
+          KVER: ${{ steps.srpm.outputs.kver }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -Eeuo pipefail
+          comment=/tmp/kernel-copr-comment.md
+          {
+            echo '<!-- kait2en-copr -->'
+            echo 'COPR test kernel build started.'
+            echo
+            echo "- Experiment: \`$EXPERIMENT\`"
+            echo "- Fedora kernel base: \`$BASE_KVER\`"
+            echo "- Build: $BUILD_URL"
+            echo "- COPR: \`$COPR_PROJECT\`"
+            echo "- Kernel NVR: \`$NVR\`"
+            echo "- Kernel release: \`$KVER\`"
+          } >"$comment"
+          cat "$comment" >>"$GITHUB_STEP_SUMMARY"
+          comment_id=$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("<!-- kait2en-copr -->")) | .id' |
+            tail -n 1)
+          if [[ -n $comment_id ]]; then
+            gh api --method PATCH \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" \
+              -F "body=@$comment" >/dev/null
+          else
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --body-file "$comment"
+          fi
+
+      - name: Wait for COPR build
+        id: wait
+        if: steps.submit.outcome == 'success'
+        shell: bash
+        env:
+          BUILD_ID: ${{ steps.submit.outputs.build_id }}
+          SRPM_NAME: ${{ steps.srpm.outputs.srpm_name }}
+        run: |
+          set -Eeuo pipefail
+          build_id=$BUILD_ID
+          max_attempts=3
+
+          submit_retry() {
+            local output
+            output=$(copr-cli build --nowait --timeout 18000 \
+              --chroot "$COPR_CHROOT" \
+              "$COPR_PROJECT" "out/$SRPM_NAME")
+            printf '%s\n' "$output"
+            build_id=$(
+              printf '%s\n' "$output" |
+                sed -nE \
+                  -e 's#.*coprs/build/([0-9]+)/?.*#\1#p' \
+                  -e 's/^Created builds:[[:space:]]*([0-9]+).*$/\1/p' |
+                tail -n 1
+            )
+            [[ $build_id =~ ^[0-9]+$ ]] || {
+              echo 'Could not determine retry COPR build ID.' >&2
+              exit 1
+            }
+          }
+
+          for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+            printf '%s\n' "$build_id" >out/copr-build-id
+            build_url="https://copr.fedorainfracloud.org/coprs/build/$build_id/"
+            if copr-cli watch-build "$build_id"; then
+              echo "build_id=$build_id" >>"$GITHUB_OUTPUT"
+              echo "build_url=$build_url" >>"$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            import_log="https://copr-dist-git.fedorainfracloud.org/per-task-logs/$build_id.log"
+            import_log_text=$(curl -fsSL \
+              --retry 5 --retry-all-errors --retry-delay 5 "$import_log") || true
+            if ((attempt == max_attempts)) || ! grep -Eq \
+                'IncompleteRead|ChunkedEncodingError|FileDownloadException|Connection broken' \
+                <<<"$import_log_text"; then
+              echo "build_id=$build_id" >>"$GITHUB_OUTPUT"
+              echo "build_url=$build_url" >>"$GITHUB_OUTPUT"
+              exit 1
+            fi
+
+            echo "::warning::COPR Dist-Git import download failed for build $build_id; retrying submission."
+            sleep $((attempt * 30))
+            submit_retry
+          done
+
+      - name: Publish successful build result
+        if: success() && steps.submit.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_URL: ${{ steps.wait.outputs.build_url }}
+          BASE_KVER: ${{ steps.srpm.outputs.base_kver }}
+          EXPERIMENT: ${{ steps.experiment.outputs.name }}
+          NVR: ${{ steps.srpm.outputs.nvr }}
+          KVER: ${{ steps.srpm.outputs.kver }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -Eeuo pipefail
+          comment=/tmp/kernel-copr-comment.md
+          sed \
+            -e "s|@BASE_KVER@|$BASE_KVER|g" \
+            -e "s|@EXPERIMENT@|$EXPERIMENT|g" \
+            -e "s|@COPR_PROJECT@|$COPR_PROJECT|g" \
+            -e "s|@NVR@|$NVR|g" \
+            -e "s|@KVER@|$KVER|g" \
+            -e "s|@BUILD_URL@|$BUILD_URL|g" \
+            scripts/copr/pr-comment.md.in >"$comment"
+          cat "$comment" >>"$GITHUB_STEP_SUMMARY"
+          if [[ $GITHUB_EVENT_NAME == pull_request ]]; then
+            comment_id=$(gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("<!-- kait2en-copr -->")) | .id' |
+              tail -n 1)
+            [[ -n $comment_id ]]
+            gh api --method PATCH \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" \
+              -F "body=@$comment" >/dev/null
+          fi
+
+      - name: Publish failed build result
+        if: failure() && steps.submit.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_URL: ${{ steps.wait.outputs.build_url || steps.submit.outputs.build_url }}
+          BASE_KVER: ${{ steps.srpm.outputs.base_kver }}
+          EXPERIMENT: ${{ steps.experiment.outputs.name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -Eeuo pipefail
+          comment=/tmp/kernel-copr-comment.md
+          {
+            echo '<!-- kait2en-copr -->'
+            echo 'COPR test kernel build failed.'
+            echo
+            echo "- Experiment: \`$EXPERIMENT\`"
+            echo "- Fedora kernel base: \`$BASE_KVER\`"
+            echo "- Build and builder-live.log: $BUILD_URL"
+          } >"$comment"
+          cat "$comment" >>"$GITHUB_STEP_SUMMARY"
+          if [[ $GITHUB_EVENT_NAME == pull_request ]]; then
+            comment_id=$(gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("<!-- kait2en-copr -->")) | .id' |
+              tail -n 1)
+            if [[ -n $comment_id ]]; then
+              gh api --method PATCH \
+                "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" \
+                -F "body=@$comment" >/dev/null
+            else
+              gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+                --body-file "$comment"
+            fi
+          fi
+
+      - name: Cancel interrupted COPR build
+        if: cancelled() && steps.submit.outputs.build_id != ''
+        shell: bash
+        run: |
+          if [[ -s out/copr-build-id ]]; then
+            copr-cli cancel "$(<out/copr-build-id)"
+          fi
