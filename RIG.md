@@ -31,18 +31,6 @@ and decided case by case.
 
 ## What is merged right now
 
-### t2bce/t2bdrm scatter-gather
-
-- Source: `fix/t2bce-t2bdrm-scatter-gather` (`efd0f67`, `fa2a090`, `240003e`)
-- Touches: `t2bce_core`, `t2bce_dma`, `t2bce_vhci`, `t2bdrm`
-- What it does: sends Touch Bar framebuffer updates as chunked
-  scatter-gather transfers instead of one linear buffer.
-- Why it is here: it is the display path for the Touch Bar on this machine
-  and needs real-world runtime before it can be defended upstream.
-- Why not upstream yet: offered to the t2linux Discord for testing on
-  2026-08-16. Nobody has picked it up so far. Follow up on 2026-08-21; the
-  branch is only worth carrying while it is waiting for outside testers.
-
 ### t2-fan-control platform bias
 
 - Source: `feat/fan-platform-bias` (`eb7f7bb`)
@@ -73,10 +61,16 @@ and decided case by case.
   onto v0.05 once the approach has proven itself; until then upstream's
   fan-control changes do not reach this machine.
 
+## Landed upstream
+
+- t2bce/t2bdrm scatter-gather — merged into `main` on 2026-09-02 via PR #72
+  (`3d0276d`, `47e8cd4`), identical to what this branch carried. Unmerged here
+  on the same day; `apps/t2-fan-control` is now the only divergence from `main`.
+
 ## Not merged, deliberately
 
-- `feat/t2bce-vhci-sg-tablesize` (`6aa98ce`) — redundant. Its
-  `sg_tablesize` change is already contained in the scatter-gather branch.
+- `feat/t2bce-vhci-sg-tablesize` (`6aa98ce`) — redundant. Its `sg_tablesize`
+  change is contained in the scatter-gather work that is now upstream.
 
 ## Open questions
 
