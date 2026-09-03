@@ -41,6 +41,10 @@
       "message_id": "1533951148980047994",
       "hash": "b2f71c22002e9cdbde460d55ff76474de3732283f37aa5540dac8181b29e5a13"
     },
+    "ignore-trackpad": {
+      "message_id": "1544974246525280286",
+      "hash": "966f086b46c698264f78a4ba17bbe176768ea682327ebb34c29c397a7775c6d7"
+    },
     "dgpu-wakeup-15-1": {
       "message_id": "1533951152339554465",
       "hash": "33bd7fe78862c6864950497660bc8f0a5786d9b8672b28ae1250a0ac44990186"
