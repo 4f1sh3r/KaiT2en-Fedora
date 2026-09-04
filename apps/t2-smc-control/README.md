@@ -13,9 +13,9 @@ https://github.com/deqrocks/t2-smc
 - Shows all dynamically discovered `P...` SMC power stats below the primary
   battery/adapter values, using known human-readable key descriptions
 - Shows event-driven SMC battery and power-adapter telemetry
-- Shows the `t2smc` RTC when available
-- Reads and writes the battery charge limit through `battery_charge_limit`
-- Saves the selected charge limit and restores it at boot through systemd
+- Shows the `t2smc` RTC (in UTC) when available and can write the current
+  system time to it
+- Shows the battery charge limit read-only
 
 ## Requirements
 
@@ -23,7 +23,7 @@ https://github.com/deqrocks/t2-smc
 - Linux with the `t2smc` kernel module loaded
 - Rust/Cargo
 - GTK 4 and libadwaita development packages
-- `pkexec` for applying the charge limit from the GUI
+- `pkexec` and `hwclock` for writing the hardware clock
 
 ## Build
 
@@ -42,31 +42,16 @@ This installs:
 - `/usr/local/bin/t2-smc-control`
 - `/usr/local/share/applications/org.t2smccontrol.gtk.desktop`
 - `/usr/local/share/icons/hicolor/scalable/apps/org.t2smccontrol.gtk.svg`
-- `/usr/local/lib/systemd/system/kait2en-t2-smc-charge-limit.service`
 
-The systemd service is enabled during install. It applies the saved charge limit
-on boot when `/etc/t2-smc-control/config.txt` exists.
+`scripts/fedora/install-apps.sh` disables and removes the obsolete
+`kait2en-t2-smc-charge-limit.service` left over by earlier versions.
 
-## Persistent charge limit
+## Battery charge limit
 
-When the GUI successfully sets a battery charge limit, it stores the selected
-value in:
+The charge limit is shown here but no longer set here. `t2smc` exposes it as
+`/sys/class/power_supply/BAT0/charge_control_end_threshold`, so the desktop
+environment drives it natively and restores it on its own at every start.
+GNOME puts it under Settings -> Power -> Battery Charging, KDE under Energy
+Saving -> Charge Limit.
 
-```text
-/etc/t2-smc-control/config.txt
-```
-
-The file format is:
-
-```text
-charge_limit=80
-```
-
-The installed binary also supports headless root commands:
-
-```sh
-sudo t2-smc-control --set-charge-limit 80
-sudo t2-smc-control --apply-saved-charge-limit
-```
-
-The app auto-detects `t2smc`/`macsmc` under `/sys/class/hwmon`. Battery charge limit support depends on the loaded driver and the available SMC keys on the machine.
+The app auto-detects `t2smc`/`macsmc` under `/sys/class/hwmon`.

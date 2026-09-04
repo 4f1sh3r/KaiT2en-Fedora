@@ -146,9 +146,11 @@ The attributes `fanN_min` and `fanN_max` are limits reported by the SMC.
 
 ### Battery charge limit
 
-We do offer a GUI program to change the battery charge limit and inspect sensor data:
-(https://github.com/deqrocks/t2-smc-control). 
-Anyways here is how to set battery charge limit manually:
+`t2smc` also attaches the limit to `BAT0` as the standard
+`charge_control_end_threshold` property, so any desktop environment that
+speaks that interface can set it through its own power settings. The value is re-applied after resume if the SMC dropped it.
+
+Manually, through either interface:
 
 ```sh
 # Read current charge limit
@@ -156,6 +158,7 @@ cat "$HWMON/battery_charge_limit"
 
 # Set charge limit to 80 percent
 echo 80 | sudo tee "$HWMON/battery_charge_limit"
+echo 80 | sudo tee /sys/class/power_supply/BAT0/charge_control_end_threshold
 ```
 
 Valid range is 0-100. Persistence across reboot, shutdown, or SMC reset is not
