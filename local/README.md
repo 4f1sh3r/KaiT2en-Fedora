@@ -16,9 +16,11 @@ live here — it goes onto a topic branch and upstream through a pull request.
   holds the A/B power scripts; every one of them resolves its siblings
   relative to its own location, so the directory has to move as a whole.
 - `upstream/` — mail artifacts while they are still being prepared or
-  investigated. Once a series is actually sent, it belongs in
-  `patches/upstream/submitted/` on `main`; only the raw traces, measurements
-  and drafts stay behind here.
+  investigated, split into `sent/`, `pending/`, `drafts/` and `research/`.
+  Once a series is actually sent it also belongs in
+  `patches/upstream/submitted/<series>-vN/` on `main`, with a `notes.md`
+  carrying its status, date and Message-ID. Unsent drafts, raw traces and
+  measurements stay here only.
 - `tools/` — helper scripts for this machine (`sync-to-mac.sh` for the case
   that work happens from a separate development box, `switch-brcmfmac-pm.sh`).
 
