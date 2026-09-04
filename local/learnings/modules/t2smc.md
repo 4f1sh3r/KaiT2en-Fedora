@@ -12,30 +12,95 @@ standard `power_supply` sysfs attributes on the battery device:
 failing that, a `charge_types` attribute). Confirmed via `strings
 /usr/libexec/upowerd`.
 
-BAT0 on the T2 Mac is a plain ACPI battery (`PNP0C0A`, smart-battery chip
-`bq20z451`) via the generic kernel `battery.c` driver. Apple's ACPI tables
-don't provide the vendor extension methods a platform driver would hook to
-add those attributes, so BAT0 never had them - hence GNOME could never show
-the toggle, even though `t2smc`'s own `battery_charge_limit` hwmon attribute
-worked fine via SMC keys directly.
+Neither the `sbs` driver behind BAT0 nor Apple's ACPI tables provide those
+attributes, so BAT0 never had them - hence GNOME could never show the toggle,
+even though `t2smc`'s own `battery_charge_limit` hwmon attribute worked fine
+via SMC keys directly.
 
-## Fix: power_supply extension via battery_hook
+## BAT0 is an SBS battery, so battery_hook never fires
 
-Kernel (verified present at 7.1.3-201.fc44 via `/proc/kallsyms`) provides
-exactly the mechanism needed:
-- `devm_battery_hook_register()` (`include/acpi/battery.h`) to get an
-  `add_battery`/`remove_battery` callback whenever an ACPI battery
-  power_supply appears/disappears.
-- `power_supply_register_extension()` (`include/linux/power_supply.h`) to
-  attach extra core properties (`POWER_SUPPLY_PROP_CHARGE_CONTROL_START/
-  END_THRESHOLD`) directly onto that power_supply device.
+The obvious mechanism, `devm_battery_hook_register()` from `<acpi/battery.h>`,
+does **not** work here, and this cost a full build/reload cycle to find. The
+hook registers fine (`ACPI: battery: new hook: t2smc` in dmesg) but
+`add_battery()` is never called, because `battery_hook_register()` only walks
+`acpi_battery_list`, which is owned by `drivers/acpi/battery.c` and covers
+`PNP0C0A` devices only.
 
-`t2smc` now registers this hook (gated on `has_chls || has_chwa`) and
-attaches the extension to `BAT0`, reusing the exact same
-`t2smc_get/set_charge_limit()` helpers the hwmon attribute already used.
-Single source of truth (the SMC keys) - both interfaces always agree.
+On this MacBookPro16,2 that list is empty:
+
+- `/sys/bus/acpi/devices/PNP0C0A:00` exists but reports `status = 0`, so the
+  built-in ACPI battery driver never registers anything.
+- The real BAT0 comes from `sbs`/`sbshc` (`ACPI0001:00`/`ACPI0002:00`,
+  `CONFIG_ACPI_SBS=m`, smart-battery chip `bq20z451`).
+
+An earlier note here claimed the battery_hook path worked - it does not, at
+least not on this machine and kernel. Do not retry it.
+
+## Fix: power_supply extension attached to BAT0 directly
+
+`t2smc` now takes `power_supply_get_by_name("BAT0")` and calls
+`power_supply_register_extension()` on it, which is driver-agnostic and works
+for the `sbs` battery. Only
+`POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD` is exposed - the SMC has no
+start threshold, and UPower tolerates a missing/failing start write (it only
+errors when *both* writes fail, see `err_count == 2` in
+`up_device_supply_battery_set_battery_charge_thresholds()`).
+
+The attach is deliberately *not* gated on `has_chls`/`has_chwa`. An early
+version was, which would have been a regression against the old app path: the
+hwmon `battery_charge_limit` attribute has no `is_visible` and is always
+present, and `t2smc_write_charge_limit_method()` returns 0 when neither key
+exists, so BCLM alone still gets written - which is how charge limiting worked
+on pre-T2 Intel Macs. A board with neither key would have kept working through
+the app but lost the native path.
+
+Attach happens in probe and, if BAT0 was not there yet, again from the
+existing `power_event_work` - `power_supply_register()` ends with
+`power_supply_changed()`, so a late `sbs` still wakes our notifier. That
+second attempt is not theoretical: on a real boot t2smc probes a full second
+before the battery exists, and the log reads
+
+    00:10:17 t2smc APP0001:00: t2smc 0.0.1 ready (fans=2)
+    00:10:18 ACPI: Smart Battery System [SBS0]: Battery Slot [BAT0]
+    00:10:18 t2smc APP0001:00: charge control attached to BAT0 Detach is a
+devm action registered before the notifier's, so devres unwinds the notifier
+(and cancels the work) first.
+
+The extension shows up as `/sys/class/power_supply/BAT0/extensions/
+t2smc-charge-control` and adds `charge_control_end_threshold`. hwmon's
+`battery_charge_limit` stays and reads/writes the same SMC keys.
+
+## SMC amnesia: UPower alone is enough, no driver-side latch
+
+A first version latched the last requested value in the driver and re-applied
+it from a `t2smc_resume()` PM callback. That was dropped again: the SMC only
+forgets the limit on a drained battery or a T2 crash, and both come with a
+reboot anyway, so a suspend/resume hook guards a case that does not occur. The
+latch plus PM ops cost 37 of 181 added lines in the driver for nothing.
+
+Nothing of ours is needed, which is why the old config file and
+`kait2en-t2-smc-charge-limit.service` could be dropped entirely: UPower
+persists the on/off state in `/var/lib/upower/charging-threshold-status` and
+re-applies it on every coldplug
+(`up_device_battery_recover_battery_charging_threshold()` in
+`src/up-device-battery.c`). Verified on this machine: set 65 by hand,
+`systemctl restart upower`, value came back as 80.
+
+The 80 comes from UPower's hwdb default `CHARGE_LIMIT=75,80` in
+`/usr/lib/udev/hwdb.d/60-upower-battery.hwdb`, which matches every machine.
+GNOME's toggle is on/off only; a different value needs a local override in
+`/etc/udev/hwdb.d/61-battery-local.hwdb` plus `systemd-hwdb update`. KDE's
+PowerDevil lets the user pick the value directly (end-only hardware supported
+since 5.24.1, KDE bug 449997) - untested here, no powerdevil installed.
 
 ## Testing notes
+
+- Full cycle verified on 2026-09-05 with kernel 7.2.2-300.kait2en.i915_psr:
+  GNOME Settings -> Power -> Battery Charging toggled off/on drives
+  `charge_control_end_threshold` 80 -> 100 -> 80. Suspend/resume and reboot
+  both keep the extension attached and the value at 80; the SMC did not drop
+  it in either case - which is what later justified dropping the re-apply
+  path altogether.
 
 - After a **live module reload** (rmmod/insmod or dkms reinstall),
   `upowerd` does not notice the newly-appeared sysfs attributes on its own -
@@ -58,37 +123,33 @@ Single source of truth (the SMC keys) - both interfaces always agree.
   hook/extension re-attach with no dmesg warnings, srcversion matches
   before/after.
 
-## Open problem: two setters, one persistence mechanism
+## Resolved: the two-setters problem
 
-`t2-smc-control` has its own restore-on-boot workaround
-(`kait2en-t2-smc-charge-limit.service` re-applies `/etc/t2-smc-control/
-config.txt` at every boot) because the SMC sometimes forgets the limit,
-e.g. after a T2 crash. That config file is only ever written by the
-t2-smc-control app itself.
+The old conflict (app config file vs. native path overwriting each other) is
+gone because the app no longer sets the limit at all: the slider, the
+`--set-charge-limit`/`--apply-saved-charge-limit` flags,
+`/etc/t2-smc-control/config.txt` and the restore service were removed.
+`make install` now disables and deletes the stale unit; an existing
+`/etc/t2-smc-control/config.txt` is left in place, unread.
 
-Now that GNOME can set the same limit natively via the power_supply
-extension, it never touches `config.txt`. Verified by reproducing it: set
-80% via the app (saved to config.txt), then set 65% via
-`charge_control_end_threshold` (simulating a GNOME change), then reboot -
-the restore service silently reverted the live value back to 80%,
-discarding whatever was last set through the "native" path. Checked whether
-`gsd-power` restores the threshold itself at login (which would sidestep
-this) - it doesn't; `strings /usr/libexec/gsd-power` has zero
-charge-threshold-related code. gnome-control-center's toggle is a one-shot
-D-Bus call with no persistence of its own.
+`t2smc_set_charge_limit()` still calls `power_supply_changed()` after a
+successful write so a BAT0 `change` uevent fires whichever interface was used.
 
-Also checked: writing either the power_supply attribute or the hwmon
-attribute did **not** trigger a uevent on BAT0 (`udevadm monitor` stayed
-silent), so there was no generic way for userspace to notice "the limit
-changed" regardless of which interface changed it.
+The app keeps a read-only readout of `battery_charge_limit` - the upstream
+grid is left exactly as it was, the `Scale` in the right column just became a
+`ProgressBar` with the same `overview-meter` class, so it now mirrors the
+battery bar on the left instead of looking like a disabled slider. It also
+gained a "Sync RTC" button (`pkexec /usr/sbin/hwclock --rtc /dev/rtcN --systohc`, the
+recipe from `modules/t2smc/README.md`). The RTC readout is raw sysfs, which is
+UTC on this machine (`/etc/adjtime` says UTC, `timedatectl` says "RTC in local
+TZ: no"), so the label says "RTC (UTC)" - without that the button looks broken,
+because a correctly synced clock still reads two hours off the wall clock in
+CEST.
 
-Fix applied here (kernel side only): `t2smc_set_charge_limit()` now calls
-`power_supply_changed(t2->battery)` after a successful write, from both the
-hwmon store path and the power_supply extension's `set_property` - verified
-with `udevadm monitor` that a `change` event on BAT0 now fires for both.
-
-Still open (userspace, deliberately left out of this PR to keep it
-minimal): a udev rule reacting to that event to snapshot the current value
-into `config.txt` (e.g. via a new `t2-smc-control --save-current-charge-
-limit` flag), so the boot-time restore always re-applies whatever was last
-actually in effect, regardless of which UI set it.
+The stale `kait2en-t2-smc-charge-limit.service` is retired by
+`remove_obsolete_apps()` in `scripts/fedora/install-apps.sh` (new
+`OBSOLETE_UNITS` array), not by the app Makefile - the Makefile only installs
+this app's own files. `systemctl list-unit-files <unit>` exits 1 when the unit
+is unknown, which is what makes the block silent and idempotent on a fresh
+install. Verified both ways by re-creating and enabling the unit and running
+the real installer twice.
