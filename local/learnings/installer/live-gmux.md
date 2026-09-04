@@ -6,7 +6,7 @@ Started: 2026-08-07
 ## Why this branch exists
 
 On the MacBookPro16,1 that could not boot the installer (see
-`INSTALLER-GRUB-MENU-LEARNINGS.md`), the live system loads `i915` but never
+`local/learnings/installer/grub-menu.md`), the live system loads `i915` but never
 binds the iGPU. The whole dmesg contains exactly one deferred probe and no
 `Initialized i915` at all:
 

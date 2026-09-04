@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-repo=/home/alex/Git/priv/kait2en/KaiT2en-Fedora
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 result=/tmp/cstates-wifi-off-locked.txt
 
 restore_wifi() {
@@ -12,7 +12,7 @@ restore_wifi() {
 trap restore_wifi EXIT INT TERM HUP
 
 nmcli radio wifi off
-bash "$repo/c-states-measure.sh" 120 15 > "$result" 2>&1
+bash "$script_dir/c-states-measure.sh" 120 15 > "$result" 2>&1
 
 restore_wifi
 trap - EXIT INT TERM HUP

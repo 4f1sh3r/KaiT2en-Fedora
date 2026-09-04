@@ -4,13 +4,13 @@
 full. The quirk patch works and PSR saves 0.469 W, but the panel never
 acknowledges PSR entry and the screen goes black. Six configurations were
 ruled out live via MMIO/DPCD. The stock module has been restored. The full
-write-up is in `c-states-learnings.md`, section *"PSR quirk lifted and
+write-up is in `local/learnings/power/c-states.md`, section *"PSR quirk lifted and
 measured: works on the source, dead on the panel (2026-08-23)"* - read that
 before touching this topic again. Two corrections to this plan are recorded
 there: there is a second VBT gate beyond the quirk, and the GRUB escape hatch
 in section 2.3 does not exist on T2 Macs.
 
-**This file stays untracked**, like `c-states-learnings.md` and the
+**This file stays untracked**, like `local/learnings/power/c-states.md` and the
 `*-LEARNINGS.md` documents. Never `git add` it.
 
 ---
@@ -22,7 +22,7 @@ a blanket quirk on the Apple OUI in the DRM core. Without PSR the display
 engine scans out 2560x1600 XR30 from memory continuously, which pins package
 C-state PC2 at ~40 % and keeps `DC5 -> DC6` at 0 since boot.
 
-Full evidence is in `c-states-learnings.md`, section
+Full evidence is in `local/learnings/power/c-states.md`, section
 *"PSR is blocked by a DRM quirk, not by the panel (2026-08-23)"*. Read that
 section before starting — it has the DPCD dump and the decoded quirk table.
 
@@ -149,7 +149,7 @@ next kernel.
 ### 3.3 Build
 
 Out-of-tree against the installed kernel-devel tree, the same pattern the repo
-already uses (see `KERNEL-7.2-LEARNINGS.md`):
+already uses (see `local/learnings/kernel/7.2.md`):
 
 ```
 make -C /usr/src/kernels/7.1.9-200.fc44.x86_64 M=<display-dir> modules
@@ -230,7 +230,7 @@ echo 0 | sudo tee $D/i915_edp_psr_debug   # I915_PSR_DEBUG_DEFAULT (re-enable)
 
 Verify the toggle actually moves `i915_psr_status` before trusting it.
 
-Use the established methodology from `c-states-learnings.md` — do not invent a
+Use the established methodology from `local/learnings/power/c-states.md` — do not invent a
 new one:
 
 - **battery gauge is the primary metric**
@@ -278,7 +278,7 @@ the panel misbehaves, that is the answer, and the quirk was right.
 
 - Report to the user in German: does PSR engage, what does it cost/save in
   watts, and any visual artefacts observed.
-- Write the outcome into `c-states-learnings.md` in **English**, in the same
+- Write the outcome into `local/learnings/power/c-states.md` in **English**, in the same
   style as the existing sections — including a negative result.
 - If it works and is worth keeping: **ask the user** before adding anything to
   `local/rig`. Nothing goes into the rig automatically (`CLAUDE.md`). A kernel
@@ -293,7 +293,7 @@ the panel misbehaves, that is the answer, and the quirk was right.
 
 ## 8. Hard constraints (from `CLAUDE.md` and prior feedback)
 
-- Never `git add` this file or any `*-LEARNINGS.md` / `c-states-learnings.md`.
+- Never `git add` this file or any `*-LEARNINGS.md` / `local/learnings/power/c-states.md`.
 - Never commit to `main`. This work does not belong on `main` anyway.
 - Nothing enters `local/rig` without explicitly asking the user first.
 - Commit messages: subject line only, no body, never AI-sounding, no

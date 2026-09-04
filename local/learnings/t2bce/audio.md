@@ -17,7 +17,7 @@ what turned out to be a dead end.
   trial-and-error commit before it) already resolved headphone crackling/xrun
   issues. This branch is for the *next* set of `t2bce_audio` problems.
 - Related general `t2bce` learnings (clock reliability after resume, ftrace
-  debugging technique) live in `LEARNINGS.md` — consult that file for
+  debugging technique) live in `local/learnings/t2bce/resume.md` — consult that file for
   cross-cutting `t2bce` infrastructure issues that also affect audio.
 
 ## Reproducible symptoms (MacBookPro16,2, reporter: user)

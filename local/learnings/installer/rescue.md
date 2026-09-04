@@ -13,7 +13,7 @@ repo could touch an installed system from the live session before this.
 The Project Owner originally asked for auto-chroot *plus* a backup script hooked
 into kernel updates *plus* restore-from-live. The backup half was dropped on
 2026-08-21 ("should be a user responsibility thing actually"), so only the
-chroot/rescue half was built. `RESCUE-BACKUP-PLAN.md` still holds the full
+chroot/rescue half was built. `local/learnings/installer/rescue-backup-plan.md` still holds the full
 two-phase plan if the backup half is ever revived.
 
 ## What was built
@@ -31,7 +31,7 @@ two-phase plan if the backup half is ever revived.
 ## Learnings
 
 - **The btrfs subvolume name cannot be assumed.** Fedora uses `root`, other
-  layouts use `@` (see `INSTALLER-BLS-DEFAULT-LEARNINGS.md`). The tool mounts
+  layouts use `@` (see `local/learnings/installer/bls-default.md`). The tool mounts
   the file system read-only, checks for `etc/os-release` with `ID=fedora` at the
   top level, and only then walks `btrfs subvolume list -o` and probes each one.
 

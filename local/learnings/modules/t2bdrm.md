@@ -5,7 +5,7 @@
 > whole approach — splitting a frame into row bands to dodge a high-order
 > allocation — is obsolete: `fix/t2bce-t2bdrm-scatter-gather` makes the VHCI
 > accept scatter-gather, so a frame is a single logical URB over ordinary pages
-> again and none of the splitting is needed. See `T2BCE-VHCI-SG-LEARNINGS.md`,
+> again and none of the splitting is needed. See `local/learnings/t2bce/vhci-sg.md`,
 > and "Superseded: scatter-gather removed the need to split" at the end of this
 > file. The analysis below is still worth keeping — the allocation measurements
 > and the wMaxPacketSize root cause are what motivated the sg work.
@@ -836,7 +836,7 @@ message at all.
 ## Superseded: scatter-gather removed the need to split
 
 2026-08-16, branch `fix/t2bce-t2bdrm-scatter-gather`. Full detail in
-`T2BCE-VHCI-SG-LEARNINGS.md`; this section records what it means for the
+`local/learnings/t2bce/vhci-sg.md`; this section records what it means for the
 conclusions above.
 
 The KaiT2en project owner's verdict on the padding was "wrong approach, the vhci

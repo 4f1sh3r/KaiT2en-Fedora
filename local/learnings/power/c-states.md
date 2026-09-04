@@ -101,7 +101,7 @@
 
 | 2026-08-06, Branch-Rebase auf aktuellen Fork-Main | Nach Maintainer-Rebase `origin/main` von `0b0e6a7` auf `c13dfae` aktualisiert und `feat/brcmfmac-pm-max-dkms` konfliktfrei darauf rebased | `git range-diff` bestätigt alle vier Branch-Commits als inhaltlich identisch. Neue IDs: `7a84661` bounded-requests-`t2bdrm`, `8852f59` brcmfmac-DKMS, `01ee0c4` Standalone-Patch, `6931dca` Patch-Provenienz. Installer-Static-Check erfolgreich; isolierte Builds von brcmfmac und t2bdrm gegen `7.1.6-201.fc44` erfolgreich. brcmfmac-Metadaten weiterhin `PM_MAX`, Parameter 1/2 und BCM4377-Alias `14e4:4488`. | Die persönliche Thunderbolt-Deaktivierung ist gegen erneute normale KaiT2en-Installerläufe update-safe: Installer entfernt weder `/etc/modprobe.d/kait2en-disable-thunderbolt.conf` noch `/etc/dracut.conf.d/90-kait2en-disable-thunderbolt.conf` oder die Helfer unter `/usr/local/bin`; Dracut wertet `omit_drivers` beim Rebuild erneut aus. Kein erneuter Disable-Lauf nötig; nach Update optional Module/Bindung und `lsinitrd` verifizieren. | Rebaseten Remote-Branch per `git push --force-with-lease` aktualisieren. |
 
-Branch-Stand nach Rebase: `7a84661` enthält den übernommenen bounded-requests-`t2bdrm`; `8852f59` enthält die geprüfte brcmfmac-PM_MAX-DKMS-Integration samt Restore und Dokumentation; `01ee0c4`/`6931dca` dokumentieren den Standalone-Patch. `c-states-learnings.md` und Messhelfer bleiben absichtlich untracked.
+Branch-Stand nach Rebase: `7a84661` enthält den übernommenen bounded-requests-`t2bdrm`; `8852f59` enthält die geprüfte brcmfmac-PM_MAX-DKMS-Integration samt Restore und Dokumentation; `01ee0c4`/`6931dca` dokumentieren den Standalone-Patch. `local/learnings/power/c-states.md` und Messhelfer bleiben absichtlich untracked.
 
 ## Zwischenfazit und Hypothesen-Rangfolge
 
@@ -657,11 +657,11 @@ Risk: the quirk exists because standard PSR misbehaved on Apple panels
 guarantee.
 
 An executable plan for lifting that quirk and measuring the result lives in
-`PSR-QUIRK-PLAN.md` (untracked, repo root). Not started as of 2026-08-23.
+`local/learnings/kernel/psr-quirk-plan.md` (untracked, repo root). Not started as of 2026-08-23.
 
 ## PSR quirk lifted and measured: works on the source, dead on the panel (2026-08-23)
 
-`PSR-QUIRK-PLAN.md` was executed end to end on `7.1.9-200.fc44.x86_64`.
+`local/learnings/kernel/psr-quirk-plan.md` was executed end to end on `7.1.9-200.fc44.x86_64`.
 Outcome: **negative, and the quirk is justified for this panel.** The stock
 `drm_display_helper` has been restored. Do not repeat this without new
 information - the six configurations below are already ruled out.
@@ -789,7 +789,7 @@ correct.
   rendering. That failure looks exactly like "PSR made the graphics slow and
   reset my scaling" and cost one reboot to diagnose.
 - The GRUB line editor is unusable on T2 Macs (see
-  `INSTALLER-GRUB-MENU-LEARNINGS.md`), so the plan's escape hatch of typing
+  `local/learnings/installer/grub-menu.md`), so the plan's escape hatch of typing
   `i915.enable_psr=0` at boot does not exist here. Any boot-time fallback has
   to be its own BLS entry in `/boot/loader/entries/`, and
   `grub2-editenv - unset menu_auto_hide` is needed to make the menu visible at
@@ -1269,3 +1269,521 @@ our sink reports `0x03`. Investigated and closed the same day; the premise was w
 
 Conclusion: the 0.38 W package / 0.52 W battery already measured is what this panel has to
 give. Do not reopen this without new evidence.
+
+## Two more machines confirm the handshake, and upstream already has the right hook (2026-08-25)
+
+Test kernels with both patches were handed to KaiT2en testers. Two independent reports came
+back, both showing real self-refresh (`DPCD 0x2008 = 03`, `0x2006 = 00`, high `SRDENT`
+residency on an idle desktop).
+
+### The three machines measured so far
+
+| Machine | Panel | Sink device_id (DPCD 0x403..0x408) | hw/sw rev |
+|---|---|---|---|
+| MacBookPro16,2 (Ice Lake, 13") | ours | `65 44 13 67 64 61` | `01 06 03` |
+| MacBookPro15,1 (Coffee Lake, 15", dual GPU) | tester | `65 44 15 67 62 61` | `01 08 04` |
+| MacBookAir9,1 (Ice Lake, 13") | tester | `65 44 13 68 64 61` | `01 09 02` |
+| *(2017 15", already in upstream's quirk table)* | -- | `65 44 15 65 62 61` | -- |
+
+Three distinct panels, two chipset generations, three different TCON firmware revisions --
+all take the identical five-write sequence. The handshake is an Apple TCON family property,
+not a property of one panel.
+
+Every machine reports the same vendor register state: `0x420 = 89`, `0x4cc = 02` before the
+patch, and `0x321 = 3c`, `0x4d1 = 03`, `0x4d2 = 01` after it. `0x070 = 0101` (PSR1, no
+Panel Replay) everywhere.
+
+### Device ID structure (observed, not documented)
+
+Read as ASCII the six bytes are `"eD" <size> <rev> <rev> 'a'`. Byte 3 tracks the display
+diagonal in inches written as hex digits: `0x13` on both 13" machines, `0x15` on both 15"
+machines, including the 2017 panel already known to upstream. Byte 5 tracks the same split
+(`'d'` on 13", `'b'` on 15"). Byte 4 appears to be a supplier/revision letter -- the two
+Ice Lake 13" panels differ only there (`0x67` vs `0x68`).
+
+Useful for sanity-checking tester reports; not something to depend on.
+
+### There is no endianness in this field
+
+Raised in review: whether `device_id` needs a byte swap. It does not. `struct
+drm_dp_dpcd_ident` declares `u8 device_id[6]` and both quirk matchers compare it with plain
+`memcmp()` against the DPCD read order. The existing upstream Apple entry
+`DEVICE_ID(101, 68, 21, 101, 98, 97)` is `65 44 15 65 62 61` -- read order, no swap.
+
+### i915 already has a sink-keyed quirk table; use it, not DMI
+
+`intel_quirks.c` carries `intel_dpcd_quirks[]`, matched in `intel_init_dpcd_quirks()` on:
+
+* sink OUI (mandatory `memcmp`),
+* sink device_id (**skipped when the table entry leaves it zero** -- `mem_is_zero`),
+* PCI device / subsystem vendor / subsystem device (`DEVICE_ID_ANY` / `PCI_ANY_ID` allowed).
+
+So one table supports both "every panel from this vendor" and "exactly these panels", and
+narrowing later is a one-line edit. `quirk_disable_edp_panel_replay` is already in there,
+gated on sink OUI alone -- direct precedent for gating a PSR-family feature this way.
+
+DMI matching is the wrong key here, for a reason the KaiT2en Project Owner supplied himself:
+the A1708 (13" 2016/2017, T1) and the A1990 (15" 2018, T2) carry the same TCON board. One
+panel, two chassis, two Mac generations -- a DMI table needs an entry per machine for a
+property that belongs to the panel, and gets it wrong in the other direction too, since
+Apple mixed panel suppliers inside a single model.
+
+### Existing safety layers, in case a panel does not like the sequence
+
+1. `_psr_enable_sink()` is only reached when the panel advertises PSR in DPCD `0x070`, so
+   pre-PSR Apple panels never see the writes.
+2. `i915.enable_psr=0` disables PSR outright (`_psr_compute_config()`), so testers have a
+   documented off switch without a custom module parameter.
+3. `intel_psr_short_pulse()` already sets `sink_not_reliable` and drops PSR when the sink
+   reports errors, so a panel that accepts the writes but misbehaves degrades to today's
+   behaviour rather than showing corruption.
+4. There is upstream precedent for a quirk that exists purely because the VBT lies about a
+   feature (`quirk_backlight_present`: "Some VBT's incorrectly indicate no backlight is
+   present"). Our VBT override is the PSR equivalent of that.
+
+### What is still missing
+
+Only successes so far. Without a single Apple panel that *fails* the handshake, the boundary
+of the working set is unknown, and a whitelist built from successes alone would just be a
+list of who happened to own a test machine. Failure reports are worth more than further
+confirmations. Specifically wanted: 16" models (expect `0x16` in byte 3), T1 machines, and
+any Intel Mac old enough to advertise PSR but predate this TCON family.
+
+### MacBookPro16,1: not a handshake failure, the panel is not on Intel (2026-08-25)
+
+First non-working report. Reading it correctly matters, because it is not evidence against
+the sequence.
+
+```
+gpu:    00:02.0 Intel CoffeeLake-H GT2 [UHD Graphics 630]
+gpu:    03:00.0 AMD Navi 14 [Radeon RX 5500M]
+cand:   /dev/drm_dp_aux3 -> card2-eDP-1  dpcd000=1214c441
+  070 0100   400 0010fa65441567626101090a
+  321 00     4d1 07    4d2 00    4d4 00    2006 00    2008 00
+grep: /sys/kernel/debug/dri/0000:00:02.0/i915_edp_psr_status: No such device
+SRDENT: 0/15
+```
+
+`i915_edp_psr_status_show()` returns `-ENODEV` only when `HAS_PSR()` is false (impossible on
+Coffee Lake) or when `for_each_intel_encoder_with_psr()` finds nothing. So **i915 has no eDP
+encoder on this machine at all** -- the internal panel is driven by amdgpu (`card2-eDP-1`),
+which the tester confirmed. Corroborating: only one eDP candidate instead of the 15,1's two,
+and `dpcd000 = 1214c441` (DP 1.2, HBR2, 4 lanes) rather than the `110a8441` (DP 1.1, RBR)
+seen on every Intel-driven panel -- the bandwidth the 16" 3072x1920 panel needs.
+
+The vendor registers are at factory defaults (`0x321 = 00`, `0x4d1 = 07`, `0x4d2 = 00`), i.e.
+`_psr_enable_sink()` never ran. The patch is inert here, not broken. PSR on this machine is
+an amdgpu question.
+
+**The size hypothesis is refuted.** A 16" machine reports `0x15` in byte 3. Apple carried the
+15" designation forward into the 16" line. Do not use byte 3 for anything.
+
+**The device_id is not unique, which kills the whitelist idea.** This panel reports
+`65 44 15 67 62 61` -- identical to the working MacBookPro15,1 -- while being a demonstrably
+different panel: different DPCD revision, different max link rate, `0x071 = 00` instead of
+`01`, firmware `sw 09 0a` instead of `08 04`. A table keyed on OUI + device_id cannot
+separate them. This settles the design question in favour of matching the OUI and relying on
+the existing runtime safeguards (`0x070` gating, `sink_not_reliable`, `i915.enable_psr=0`).
+
+Test-method note: a blinking text cursor prevents PSR entry and will read as `SRDENT: 0`.
+Irrelevant in this report, since PSR was never active, but a real false-negative source if
+anyone runs the probe on a VT rather than a desktop.
+
+### MacBookPro16,1 retested on the iGPU: works, and it is a fourth distinct panel (2026-08-26)
+
+Same machine, rebooted with the Intel GPU as primary display adapter. The eDP encoder now
+shows up on i915 (`card1-eDP-1`, aux0; the AMD side becomes the silent `card2-eDP-2`), the
+handshake runs, and PSR reaches the best residency measured on any machine so far:
+
+```
+  321 3c    4d1 03    4d2 01    2006 00    2008 03
+  PSR mode: PSR1 enabled
+  SRDENT: 15/15
+```
+
+This confirms the `ENODEV` reading from the first attempt: nothing was wrong with the panel
+or the sequence, i915 simply had no eDP to work with.
+
+Switching is a boot-time choice via the `gpu-power-prefs` EFI variable, already documented
+in `howto/06-configuring-gpus.md` ("Set the iGPU as primary display adapter"). Any dual-GPU
+tester must do this first, otherwise the probe reports `patch: PATCHED` together with
+`i915_edp_psr_status: No such device` -- which reads like a failure and is not one.
+
+### Panels confirmed working, four for four
+
+| Machine | device_id | hw/sw | DPCD 0x000 | 0x071 |
+|---|---|---|---|---|
+| MacBookPro16,2 (ICL, 13") | `65 44 13 67 64 61` | `01 06 03` | `110a8441` | `01` |
+| MacBookPro15,1 (CFL, 15") | `65 44 15 67 62 61` | `01 08 04` | `110a8441` | `01` |
+| MacBookAir9,1 (ICL, 13") | `65 44 13 68 64 61` | `01 09 02` | `110a8441` | `01` |
+| MacBookPro16,1 (CFL, 16") | `65 44 15 67 62 61` | `01 09 0a` | `1214c441` | `00` |
+
+New in the 16,1: it is the only panel running DP 1.2 / HBR2 rather than DP 1.1 / RBR, and
+the only one that does **not** advertise `DP_PSR_NO_TRAIN_ON_EXIT` (`0x071 = 00`). The
+handshake works regardless, so it depends on neither the link configuration nor that
+capability bit.
+
+Still no case of an Apple panel refusing the sequence. Every non-working report so far has
+turned out to be a panel i915 was not driving.
+
+## The upstream series takes shape: v2 patches (2026-08-26)
+
+The two ad-hoc patches were rebuilt as a three-patch series in the form upstream
+expects. Files: `v2-0000-cover-letter.patch` .. `v2-0003-*.patch` in the repo
+root, generated with `git format-patch`, verified with `git apply` against a
+pristine 7.1.9 tree and `checkpatch.pl --strict` (clean; the only warning is
+"Unknown commit id", an artifact of the Fedora tarball having no git history).
+
+Series order is dictated by bisect safety. Lifting the `NO_PSR` block first would
+create one commit in which i915 drives Apple panels *without* the handshake, i.e.
+the broken state. So the machinery lands first, inert:
+
+1. `drm/i915/psr: add Apple eDP TCON PSR handshake quirk` - new
+   `QUIRK_APPLE_PSR_HANDSHAKE`, hook, `intel_dpcd_quirks[]` entry, handshake,
+   VBT override. No effect yet, `DP_DPCD_QUIRK_NO_PSR` still blocks.
+2. `drm/dp: stop disabling PSR on all Apple panels` - deletes the OUI-wide entry.
+3. `drm/dp: remove unused DP_DPCD_QUIRK_NO_PSR` - the flag has zero producers
+   after 2, and i915 was its only consumer. Split off so it can be dropped if
+   the maintainers want to keep the flag.
+
+The 2018 commit is `1035f4a65f58 ("drm/i915: Disable PSR in Apple panels")` by
+Jose Roberto de Souza - verified against the actual commit, not reconstructed;
+the title is *not* "drm/dp: Add DP_DPCD_QUIRK_NO_PSR" as one might guess from
+the flag name.
+
+Deleting the OUI-wide Apple entry is safe for the second Apple entry (the 2017
+15" panel with `CAN_DO_MAX_LINK_RATE_3_24_GBPS`): `drm_dp_get_quirks()` iterates
+the whole list and ORs every match rather than stopping at the first one
+(`drm_dp_helper.c`, `quirks |= quirk->quirks`).
+
+Two deliberate changes against the v1 code that ran on all four test machines:
+
+- The module parameter `t2_apple_psr` is gone. `i915.enable_psr=0` already
+  disables PSR (`_psr_compute_config()`), so a private parameter would not
+  survive review. Consequence for testers: "is this kernel patched" can no
+  longer be answered via `/sys/module/i915/parameters/t2_apple_psr`. Use the
+  quirk's own `drm_info` line instead: `dmesg | grep "Apple PSR handshake"`.
+- `_psr_enable_sink()` is no longer bypassed by an early return. The handshake is
+  woven into the existing path: unlock writes before the generic block,
+  `DP_PSR_CRC_VERIFICATION` masked off under the quirk, trigger write at the end.
+  **This is untested on hardware.** The generic path writes `DP_PSR_EN_CFG` twice
+  (once without `DP_PSR_ENABLE`, once with); v1 wrote it once. On our panels
+  `has_sel_update` is false and `link_standby` is false, so `val` should be 0x00
+  then 0x01, and the extra 0x00 write lands before the trigger - it *should* be
+  equivalent, but that needs a build plus a re-measurement before anything is
+  sent. If it regresses, fall back to the v1 shape (early return) and justify it
+  in a comment.
+
+Nothing needs to be reset on disable: `intel_psr_disable_locked()` only writes
+`DP_PSR_EN_CFG = 0`, the vendor registers stay latched, and the A/B power
+measurement toggled PSR three times without re-running the handshake.
+
+## The v2 code shape works on hardware (2026-08-26)
+
+The COPR build of the three-patch v2 series succeeded and the resulting kernel
+`7.1.10-200.kait2en.psr.g71437d2.fc44.x86_64` is installed and running on the
+MacBookPro16,2. The open question from the previous section - whether the
+integrated `_psr_enable_sink()` is equivalent to the v1 early-return shape - is
+answered: it is. No fallback is needed, the v1 shape can be dropped for good.
+
+Boot state, nothing done by hand:
+
+```
+[    2.439909] i915 0000:00:02.0: [drm] Applying Apple PSR handshake quirk
+PSR mode: PSR1 enabled
+Source PSR/PanelReplay ctl: enabled [0x81f006e9]
+sink 0x2008 = 03    err 0x2006 = 00
+```
+
+So the double `DP_PSR_EN_CFG` write (0x00 then 0x01) really is harmless on this
+TCON, as predicted: the trigger write to 0x4d4 is what arms it, and it comes
+last either way. The sink OUI at DPCD 0x400 reads `00 10 fa`, which is what the
+new `intel_dpcd_quirks[]` entry keys on - the quirk hook fires 2.4 s into boot,
+before any userspace is up.
+
+Sampling `Source PSR/PanelReplay status` 60 times over 15 s on a live GNOME
+desktop gives 14 hits on `SRDENT` and the rest `IDLE`. That is not a
+contradiction of the earlier 100 % figure: the earlier measurement ran on a
+blank text console with the cursor disabled, this one has a blinking cursor and
+a clock repainting. Entry works, which is all this check was for.
+
+Health of the rest of the machine on the new kernel: all DKMS modules rebuilt
+for 7.1.10 and loaded (`t2bce_*`, `t2bdrm`, `t2touchbar_*`, `t2smc`, `t2smp`,
+`t2hid`, `hid_t2magicmouse`, `t2mfi_fastcharge`), no failed systemd units,
+`react-drm` active, both DRM cards present, audio sinks enumerated. `t2gmux`
+staying unloaded is correct here - the 16,2 has no dGPU and therefore no
+vgaswitcheroo. No i915 or drm errors in dmesg at all.
+
+Still to redo on this kernel: suspend/resume (verified on the v1 shape, not yet
+on this one) and the A/B power measurement.
+
+## COPR test round: five machines, four device IDs, zero failures (2026-08-27)
+
+The COPR kernel `7.1.10-200.kait2en.psr.g71437d2.fc44` was handed to the KaiT2en
+Discord. Two reports came back, both clean, plus the project owner re-testing his
+own two machines on the packaged kernel rather than a self-built one.
+
+| Machine | device_id | hw/sw | quirk | PSR mode | 0x2008 | 0x2006 |
+|---|---|---|---|---|---|---|
+| MacBookPro16,2 (ICL, 13") | `65 44 13 67 64 61` | `01 06 03` | yes | PSR1 | `03` | `00` |
+| MacBookPro16,1 (CFL, 16", iGPU) | `65 44 15 67 62 61` | `01 09 0a` | yes | PSR1 | `03` | `00` |
+| MacBookPro15,2 (CFL, 13") | `65 44 13 67 62 61` | `01 05 04` | yes | PSR1 | `03` | `00` |
+| MacBookPro15,1 (CFL, 15") | `65 44 15 67 62 61` | `01 08 04` | yes | PSR1 | `03` | `00` |
+| MacBookAir9,1 (ICL, 13") | `65 44 13 68 64 61` | `01 09 02` | yes | PSR1 | `03` | `00` |
+
+The 15,2 is a fourth distinct device_id and the oldest firmware seen so far
+(`sw 05 04`). Byte 3 is `0x13` on the 13" machines and `0x15` on the 15"/16"
+ones, but that is a panel-family marker, not a size marker (the 16,1 is a 16"
+reporting `0x15`), and bytes 4..6 vary independently. No usable structure.
+
+### The filter decision, settled by the coupling to patch 2
+
+Narrowing patch 1 to a device_id whitelist looks conservative and is not, because
+patch 2 deletes the OUI-wide `DP_DPCD_QUIRK_NO_PSR` entry unconditionally. A
+whitelist would therefore split Apple panels into three groups instead of two:
+whitelisted panels get the handshake, and every other Apple panel loses the 2018
+block while gaining nothing - i.e. plain i915 PSR with `DP_PSR_CRC_VERIFICATION`
+set, which is exactly the state commit 1035f4a65f58 disabled as broken. The VBT
+usually saves them (`vbt.psr.enable` is clear on these machines, and only the
+quirk overrides it), but the 2018 commit exists precisely because at least one
+Apple machine did reach PSR enablement, so that is not a guarantee.
+
+The conservative shape is therefore either
+
+* OUI-wide quirk + drop `NO_PSR` (one behaviour for all Apple panels), or
+* device_id whitelist + **keep** `NO_PSR`, bypassed only for whitelisted panels
+  (untested panels keep today's behaviour bit for bit, patch 3 disappears).
+
+There is no third option that both narrows the match and keeps the blast radius
+of the series equal to the blast radius of the tested set.
+
+Going with the first. Reasons, in order of weight: `_psr_init_dpcd()` bails on
+`DP_PSR_SUPPORT` before quirks are consulted, so the vendor writes can only ever
+reach an Apple panel that already advertises PSR; the device_id is provably not a
+unique panel key (`65 44 15 67 62 61` is shared by the 15,1 and the 16,1, which
+differ in DPCD revision, link rate and `0x071`); OUI-only matching with
+`DEVICE_ID_ANY` is the idiomatic form in this table, including the Apple entry
+being removed; and five machines across two display generations, two link
+configurations and both values of `DP_PSR_NO_TRAIN_ON_EXIT` have now run it with
+no failure and no sink error. `i915.enable_psr=0` remains the documented off
+switch.
+
+
+### Rebased onto drm-tip and compile checked (2026-08-27)
+
+Shallow clone of `https://gitlab.freedesktop.org/drm/tip.git`, branch `drm-tip`,
+at `108b145a7` (7.2.0 development, integration manifest of the same day). The
+7.1.9-generated patches do not `git am` onto it, so the changes were re-applied
+by hand. Two differences worth remembering:
+
+* `enum intel_quirk_id` has gained `QUIRK_DISABLE_PSR2` since 7.1.9, so the new
+  `QUIRK_APPLE_PSR_HANDSHAKE` goes after that one, not after
+  `QUIRK_DISABLE_EDP_PANEL_REPLAY`.
+* `intel_dpcd_quirks[]` has gained two Dell XPS entries, so the Apple entry moves
+  to the end of a longer table. `psr_global_enabled()`, `_psr_enable_sink()`,
+  `_psr_init_dpcd()`, `intel_init_dpcd_quirks()` and the `dpcd_quirk_list[]`
+  Apple entry are otherwise byte identical to 7.1.9 - the failure was pure line
+  drift, not a semantic change.
+
+Resulting diffstat is identical to the 7.1.9 series: 5 files, 51 insertions, 16
+deletions. `make drivers/gpu/drm/i915/display/intel_psr.o intel_quirks.o
+drivers/gpu/drm/display/drm_dp_helper.o` against the Fedora config builds all
+three objects with no warnings.
+
+`checkpatch.pl --strict` is clean on patches 1 and 3. Patch 2 reports "Unknown
+commit id '1035f4a65f58'", which is an artifact of `--depth=1`: the 2018 commit
+is not in the shallow history. Verified independently against the GitHub mirror
+that both the hash and the subject "drm/i915: Disable PSR in Apple panels" are
+correct, and that the quoted sentence is verbatim from that commit message.
+
+Series lives in `upstream-psr-v1/` in the repo root (untracked), together with
+`send-email-command.txt` holding the recipient list from `get_maintainer.pl`.
+Posted as plain `[PATCH]`, not v2 - the earlier v1/v2 were internal iterations
+that never reached a mailing list.
+
+### The OUI-wide decision was wrong, reversed after review (2026-08-27)
+
+Review feedback from the project owner overturned the reasoning recorded above.
+Recording the mistake, because the flawed argument was persuasive enough to make
+it into a cover letter.
+
+**The device_id argument was a non sequitur.** "The device_id is not a unique
+key, therefore a whitelist is impossible" does not follow. Two *working* panels
+sharing an ID is harmless for a positive list - both are supposed to match. The
+shared ID would only be a problem if an untested *incompatible* panel used it.
+Uniqueness of the key was never the question; coverage of the key was.
+
+**The safety net argument addressed the wrong failure mode.**
+`intel_psr_short_pulse()` catches a sink that reports an error. It does not
+catch a sink that quietly stays inactive without raising one, and more
+importantly it cannot catch anything at all in the case that actually matters:
+`0x321`, `0x4d1`, `0x4d2` and `0x4d4` are vendor defined, so on a TCON
+generation that maps them to something else the damage is done by the write
+itself, before any status can be read back. No runtime safeguard covers that.
+
+**`i915.enable_psr=0` is a recovery path, not a default.** Upstream expects the
+default to be safe without a module parameter.
+
+**"The OUI is Apple's own" proves the vendor, not the behaviour.** True and
+irrelevant to whether the sequence is correct on an untested panel.
+
+The earlier rejection of DMI does not apply to the shape that was proposed.
+That rejection was aimed at `intel_dmi_quirks[]`, which sets display-level
+quirks and carries the comment about systems without meaningful PCI subsystem
+IDs. Calling `dmi_first_match()` *inside* the DPCD quirk hook is a different
+construction: the hook only runs after the sink OUI matched, and it sets a
+per-`intel_dp` quirk. Both objections evaporate. `<linux/dmi.h>` is already
+included in `intel_quirks.c`, and the existing DMI tables there are plain
+`const`, not `__initconst`, so a runtime match is safe.
+
+### Final shape: two patches, i915 only
+
+1. `drm/i915/psr: add Apple eDP TCON PSR handshake quirk` - the handshake, the
+   VBT override, and `apple_psr_handshake_dmi_table[]` with the five tested
+   models. The hook returns early with a `drm_dbg_kms` when DMI does not match.
+2. `drm/i915/psr: allow PSR on Apple panels with the handshake quirk` - the
+   `NO_PSR` check in `_psr_init_dpcd()` gains
+   `&& !intel_has_dpcd_quirk(intel_dp, QUIRK_APPLE_PSR_HANDSHAKE)`.
+
+An unnoticed benefit of the narrow shape: `drm_dp_helper.c` and
+`drm_dp_helper.h` are no longer touched at all, so the series stops being
+cross-tree. It goes to drm-intel alone, `get_maintainer.pl` no longer lists the
+drm-misc maintainers, and the "who takes this" paragraph disappears from the
+cover letter.
+
+Diffstat 3 files, 94 insertions, 2 deletions. Both objects compile warning free
+against the Fedora config; `checkpatch.pl --strict` clean apart from the known
+shallow-clone "Unknown commit id" artifact.
+
+The full T2 model list lives in
+`security/integrity/platform_certs/load_uefi.c` - eleven notebooks plus five
+desktops. The six untested notebook entries are parked in
+`upstream-psr-v1/more-models.txt` rather than in the series.
+
+### Measured: DMI list vs T2 PCI ID as the filter (2026-08-27)
+
+The project owner proposed replacing the five-entry DMI table with a check for
+the Apple T2 on the PCI bus, on the grounds that kernel patches should stay
+small. Both variants were built and measured rather than argued about.
+
+| | source lines added | .rodata | hook text |
+|---|---|---|---|
+| DMI list, 5 models | 94 | 2064 B (`apple_psr_handshake_dmi_table`) | 91 B |
+| T2 PCI 106b:1801 | 73 | none | 111 B, helper inlined |
+
+So the T2 variant really is 21 lines and about 2 KB smaller. For scale, i915.ko
+is roughly 8 MB uncompressed, and the table is `.rodata` read once per connector
+init, not code in any hot path. The size argument is real but small; the actual
+difference between the two is scope, five tested models against eleven possible
+ones.
+
+The T2 device is `106b:1801` ("T2 Bridge Controller"), sitting next to the ANS2
+NVMe controller, the Secure Enclave and the audio device on the same function
+group. `PCI_VENDOR_ID_APPLE` is already in `pci_ids.h`; `0x1801` is not.
+
+**The desktop question is moot either way, and for a stronger reason than the
+machine wiring.** `intel_psr_init()` sets `intel_dp->psr.source_support` only
+inside `if (HAS_PSR(display) && intel_dp_is_edp(intel_dp))`, so PSR, and with it
+`_psr_enable_sink()` and the vendor writes, can only ever run on an internal eDP
+panel. A Mac mini driving an external monitor, an iMac whose panel hangs off the
+dGPU, a MacPro with no iGPU at all: none of them can reach this code, whatever
+the filter says.
+
+Kept the DMI list for submission. The size argument does not survive the
+measurement, the scope question was already decided one round earlier, and DMI
+is the idiom reviewers expect for "this machine model" (see the sixteen-entry
+Apple table in `security/integrity/platform_certs/load_uefi.c`). Following the
+owner's own fallback advice, the trade-off is now stated as an open question in
+the cover letter instead of being settled unilaterally. The T2 variant is parked
+on branch `t2-pci-variant` in `/home/alex/psr-upstream/tip`, one commit on top
+of `psr-apple`.
+
+### Switched to the T2 PCI filter (2026-08-28)
+
+Project owner's call: enable the quirk on all T2 Macs rather than on the five
+tested models, and drop the open question from the cover letter. Reverting is
+cheap if the maintainers want it narrower.
+
+`quirk_apple_psr_handshake()` now gates on `intel_has_apple_t2()`, a
+`pci_get_device(PCI_VENDOR_ID_APPLE, 0x1801, NULL)` lookup with the reference
+released immediately, testing only for presence. `0x1801` is defined locally as
+`PCI_DEVICE_ID_APPLE_T2_BRIDGE`; `pci_ids.h` has the vendor ID but not this
+device.
+
+The `drm_dbg_kms` on the non-matching path was reworded from "not tested on this
+machine" to "needs a T2 Mac, not applying" - the old text belonged to the DMI
+list and would have misled anyone reading it on a non-T2 Mac.
+
+Final series: 2 patches, i915 only, 3 files, 73 insertions, 2 deletions. Both
+objects compile warning free, `checkpatch --strict` clean apart from the known
+shallow-clone artifact. The DMI variant is gone from the working tree but is
+recoverable from this document.
+
+Cover letter now states the scope plainly, including that the remaining T2
+notebooks are covered without having been tested, and the point that the T2
+desktops cannot reach the code at all because `source_support` is only set for
+`intel_dp_is_edp()`.
+
+### Texts cut down before submission (2026-08-28)
+
+The cover letter body had grown to 80 lines against a 73 line patch. Trimmed to
+36. What came out was the "Scope" section, three paragraphs defending the
+matching choice against objections nobody had raised, plus the sentence
+justifying why the panel device ID is not used as a match key. Both commit
+messages lost their justification paragraphs for the same reason.
+
+The rule the project owner set: as short as possible, as long as necessary,
+plain English, no defences and no answers to questions that have not been
+asked. Worth keeping for the reply to review comments as well.
+
+What stayed, because a maintainer needs it: the 2018 commit and its quote, the
+traced register sequence, what each patch does and that patch 1 is inert alone,
+the test base, the power number, and the fact that the untested T2 notebooks
+match too. Plus one closing question about matching granularity, which is what
+the project owner wanted a first submission to lead with.
+
+### Collapsed to a single patch, and its review (2026-08-29)
+
+The two patch series became one patch, `upstream-psr-v2/`. Splitting it was
+never right: patch 1 alone was inert, and a commit that changes no behaviour is
+hard to justify on its own. One patch, three files, no cover letter needed.
+
+Re-verified against drm-tip `108b145a7`: applies cleanly, both objects compile
+without warnings, `checkpatch --strict` reports 0 errors and 0 checks. The one
+warning is still the shallow-clone "Unknown commit id" artifact.
+
+Two things that were open in v1 are now settled:
+
+- `intel_quirks.c` uses `pci_get_device`/`pci_dev_put` while including only
+  `<linux/dmi.h>`. It builds, so `<linux/pci.h>` does arrive transitively. No
+  explicit include added.
+- The `DP_DPCD_QUIRK_NO_PSR` exception is complete. Grepped the whole tree: the
+  flag has exactly one consumer, the check in `_psr_init_dpcd()` that the patch
+  touches. Nothing in xe or any other driver reads it.
+
+Ordering is safe by construction: `intel_dp_is_edp()` reads
+`dig_port->base.type`, which the encoder init sets long before the first DPCD
+read, so the eDP guard in the hook is reliable.
+
+Three points to have an answer ready for in review:
+
+1. Why a `pci_get_device` scan instead of the table's own `subsystem_vendor`
+   field? The iGPU here reports subsystem `106b:0211`, so the table could match
+   Apple natively and the hook would shrink to two lines. The answer: an Apple
+   subsystem vendor means "Mac with an Intel iGPU", not "T2 Mac". It would pull
+   in the 2016/2017 T1 machines, which carry the same panel OUI and which
+   nobody has tested. The PCI scan matches exactly the tested class.
+2. The commit message notes that macOS delays the `0x4d4` trigger by five
+   seconds, while the patch writes it immediately. Tested that way on five
+   machines, boot and suspend/resume.
+3. The PSR2 path is not covered. With `has_sel_update` the CRC skip does not
+   apply, because it sits in the `else` branch, and
+   `DP_PSR_IRQ_HPD_WITH_CRC_ERRORS` would be set. Unreachable on every tested
+   panel, since they are PSR1 only.
+
+Two style worries checked and dropped: mid-file `#define`s are already normal in
+`intel_psr.c` (`PSR_IDLE_TIMEOUT_MS`), and trailer order with `Tested-by` before
+`Signed-off-by` is common enough that nobody blocks on it. The only real style
+nit left is `PCI_DEVICE_ID_APPLE_T2_BRIDGE`, a prefix conventionally reserved
+for `include/linux/pci_ids.h`; plenty of drivers define it locally anyway, and
+it is a one-liner if it comes up.

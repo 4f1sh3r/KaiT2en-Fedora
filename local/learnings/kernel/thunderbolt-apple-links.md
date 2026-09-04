@@ -138,7 +138,7 @@ its own justification regardless of whether the deadlock argument holds.
 
 Patch 3 makes **both** NHIs link to **all four** root ports — eight links —
 which is exactly what this repo's own `t2thunderbolt` already does on Ice Lake.
-That means `c-states-learnings.md` already answers the obvious power objection:
+That means `local/learnings/power/c-states.md` already answers the obvious power objection:
 the eight links are energetically **neutral** (PC8 21.50 % → 21.64 %, inside
 noise, measured 2026-08-06 with a link-only A/B while the generic driver stayed
 bound). The large PC8 regression seen when unloading the whole Thunderbolt stack

@@ -2,7 +2,7 @@
 
 Status: 2026-07-04. Branch `codex/t2bce-resume-port-state-gating`.
 
-This file replaces `T2BCE-LEARNINGS.md` (now untracked/ignored, kept locally
+This file replaces `local/learnings/t2bce/core.md` (now untracked/ignored, kept locally
 for historical reference). It is the working notebook for the ongoing
 `t2bce`/`t2bdrm`/`t2touchbar_kbd` suspend-resume and Touch Bar debugging
 effort. Update it after every test cycle on `mac-t2` so we never have to

@@ -105,7 +105,7 @@ deutlich mehr YAML für einen Fall, den es aktuell nicht gibt.
 
 - `main` von `upstream` aktualisieren (enthält `build.sh` erst seit `ffa54de`),
   Themen-Branch `kernel-copr-ci` davon abzweigen.
-- Learnings-Datei `COPR-KERNEL-CI-LEARNINGS.md` anlegen (untracked, englisch).
+- Learnings-Datei `local/learnings/kernel/copr-ci.md` anlegen (untracked, englisch).
 
 ### 1. `scripts/copr/make-kernel-srpm.sh` (Kernstück, neu)
 
@@ -157,7 +157,7 @@ bestehenden Workflows.
   `scripts/fedora-kernel-build-script/patches/**`,
   `scripts/fedora-kernel-build-script/configs/**`, `scripts/copr/**`,
   `.github/workflows/kernel-copr.yml`; dazu `workflow_dispatch`.
-- Gates, analog `pages.yml` (und konform zu `DOCS-LEARNINGS.md:323`, keine
+- Gates, analog `pages.yml` (und konform zu `local/learnings/repo/docs.md:323`, keine
   toten Fork-Workflows):
   `github.repository == 'kaiT2en/KaiT2en-Fedora'` **und**
   `github.event.pull_request.head.repo.full_name == github.repository`.

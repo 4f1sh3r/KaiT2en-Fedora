@@ -8,7 +8,7 @@
 | `fa2a090` | t2bdrm: send framebuffer updates with scatter-gather |
 
 This supersedes the bounded-request + wMaxPacketSize-padding workaround on
-`fix/t2bdrm-bounded-requests` (see `T2BDRM-LEARNINGS.md`). A full Touch Bar frame
+`fix/t2bdrm-bounded-requests` (see `local/learnings/modules/t2bdrm.md`). A full Touch Bar frame
 is one logical URB again, and `t2bdrm` now allocates it with `vzalloc()` *on
 purpose* — page-fragmented memory is the normal case, not the failure case.
 
@@ -151,7 +151,7 @@ response so a concurrent `appletbdrm_send_msg()` cannot interleave on the wire.
   flush); `ERROR`, `NO_SPACE`, `OVERRUN` are real transport failures and now also
   trigger recovery. Note this reaches the control data phase too, so it is a new
   path by which EP0 can be stalled and reset — worth watching in the journal
-  given the history in `LEARNINGS.md`.
+  given the history in `local/learnings/t2bce/resume.md`.
 - **An OUT URB must not be resumed like an IN URB.** `bce_vhci_urb_resume()` used
   to call `bce_vhci_urb_data_transfer_in()` for *any* URB in
   `WAITING_FOR_COMPLETION`; for a bulk-OUT-only queue `q->sq_in` is NULL, which
@@ -196,7 +196,7 @@ ftrace over four full-frame updates:
 | response read | 2.121 ms |
 | total | **2.876 ms** |
 
-Against the references in `T2BDRM-LEARNINGS.md`: a single linear transfer was
+Against the references in `local/learnings/modules/t2bdrm.md`: a single linear transfer was
 ~3.3 ms, three bounded requests ~5.0 ms. Note the split — the send is only 26 %
 of the frame cost now; the rest is the device answering. Further driver-side
 optimisation has little left to win.
@@ -255,7 +255,7 @@ empty — use the GNU build-id instead:
   the 32 elements within one. `sg_tablesize` is `~0U` today.
 - Nothing here has been offered upstream. Mainline `appletbdrm` still uses
   `kvzalloc()` + `usb_bulk_msg()`, which on this hardware means the DMA API
-  rejects most buffers outright (see `T2BDRM-LEARNINGS.md`).
+  rejects most buffers outright (see `local/learnings/modules/t2bdrm.md`).
 
 ## Handing the branch to external testers (2026-08-16)
 
@@ -345,3 +345,74 @@ machine and every kernel for a given commit. For `fa2a090`:
 
 `cat /sys/module/<m>/srcversion` against that catches a stale initramfs in one
 command. `t2bdrm` carries no `srcversion`; use the GNU build-id as above.
+
+## Rebase onto upstream/main (2026-09-01)
+
+The branch was 3 commits ahead of a merge base 110 commits behind
+`upstream/main`. Rebased to `upstream/main` = `d6ce476`; it is now exactly
+`upstream/main` + 2 commits (`3d0276d` t2bce chunked SG, `47e8cd4` t2bdrm SG).
+Pre-rebase tip is kept as `backup/sg-pre-rebase-20260901`.
+
+### What the rebase had to resolve
+
+Only three upstream commits since the merge base touch the same sources:
+
+- `6894352 modules: fix builds against Linux 7.2` — the branch carried its own
+  copy of the identical change (`240003e`), made before the upstream one
+  landed. Same content, different line offsets because the branch's
+  `t2bdrm.c` already had the SG rewrite, so the patch-ids differ and `git
+  rebase` could not drop it up front. The single conflict was the two
+  neighbouring includes (`linux/version.h` from upstream, `linux/vmalloc.h`
+  from SG); keeping both makes the tree identical to the old branch tip, after
+  which `240003e` was dropped as "patch contents already upstream". All four
+  7.2 compat pieces survive: the include, the
+  `LINUX_VERSION_CODE < KERNEL_VERSION(7,2,0)` `drm_atomic_commit` define, and
+  the three plane-helper signatures.
+- `b1855a0 make module author email adress consistent` — one line each in
+  `t2bce_core/t2bce_main.c` and `t2bce_dma/queue.c`, no conflict, but it does
+  change those modules' `srcversion`.
+- `bdfa6a2 dkms: merge t2bce modules` — see below.
+
+### The DKMS merge removes this branch's biggest hazard
+
+Upstream now ships one DKMS package `t2bce_stack/0.01` that builds
+`t2bce_dma`, `t2bce_core`, `t2bce_vhci` and `t2bce_audio` in a single
+`M=` kernel build (`modules/t2bce_stack/Makefile` with `obj-m += <dir>/`).
+The per-module `dkms.conf` files are gone; `install-dkms-modules.sh` stages all
+four component directories under `/usr/src/t2bce_stack-0.01/` and the old
+hand-copying of a sibling's `Module.symvers` is gone with them.
+
+This matters for this branch specifically. The SG work changes the
+`t2bce_core` <-> `t2bce_vhci` interface, and Fedora builds without
+`CONFIG_MODVERSIONS`, so a half-swapped set used to link silently and corrupt
+memory. With one package that mismatch is no longer constructible: the four are
+built together against one `Module.symvers` and installed or removed as a unit.
+
+The retired split packages are not deleted — `install-dkms-modules.sh` rewrites
+their `dkms.conf` to `AUTOINSTALL="no"` so older kernels keep working modules
+while new kernels only get `t2bce_stack`.
+
+`rebuild-initramfs.sh` also changed: it now skips `/lib/modules/<r>` without a
+matching `/boot/vmlinuz-<r>`, runs `depmod -a` when `modules.dep` is missing,
+and `fail`s instead of warning when a rebuild fails.
+
+### Post-rebase verification
+
+Both packages build clean against the running 7.2.2 kernel — the merged stack
+staged the way DKMS stages it (all four `.ko`, no warnings) and `t2bdrm`
+standalone. The rebased build's `srcversion`s equal the ones loaded on the
+development machine, which is installed from `local/rig` (SG merged), so the
+rebase changed no module content. Current values, replacing the `fa2a090` ones
+above:
+
+    t2bce_dma    58B3878BBEB6199DF55DAF7
+    t2bce_core   00F764B6DB21CFEBF983904
+    t2bce_vhci   EAF5DD6181473C3A838EFC4
+    t2bce_audio  221B5167882912C5DE070D6
+
+### Consequence for the tester instructions
+
+The install and revert commands are unchanged, but the branch that testers had
+been pointed at (`fa2a090`) predates the 7.2 build fix and fails to build on a
+7.2 kernel; the rebased tip carries it via upstream. Testers who already cloned
+must re-clone or hard-reset, since the branch was force-pushed.

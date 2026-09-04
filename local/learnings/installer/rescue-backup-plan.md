@@ -171,7 +171,7 @@ Stand existiert.
 ## Phase 2 — Auto-Chroot und Restore im Live-System
 
 Branch: `feat/live-rescue` von `main`, nach dem Merge von Phase 1.
-Learnings-Datei: `INSTALLER-RESCUE-LEARNINGS.md` (untracked).
+Learnings-Datei: `local/learnings/installer/rescue.md` (untracked).
 
 ### 2.1 `packaging/installer/runtime/kait2en-live-rescue` (neu)
 
@@ -191,7 +191,7 @@ automatisch passieren. Aufruf: `sudo /run/kait2en/kait2en-live-rescue`.
    Mapper-Device erneut prüfen.
 4. Jeden Kandidaten read-only probemounten. Bei btrfs jedes Top-Level-Subvolume
    aus `btrfs subvolume list -o` durchprobieren — der Subvolume-Name ist **nicht**
-   fix `root`; `INSTALLER-BLS-DEFAULT-LEARNINGS.md` dokumentiert einen Nutzer
+   fix `root`; `local/learnings/installer/bls-default.md` dokumentiert einen Nutzer
    mit `@`. Fedora-Root ist, was `etc/os-release` mit `ID=fedora` und
    `etc/fstab` hat. Wieder aushängen.
 5. Nummeriertes Menü der Fundstellen, Format wie `select_disk()`
@@ -204,7 +204,7 @@ automatisch passieren. Aufruf: `sudo /run/kait2en/kait2en-live-rescue`.
   `findmnt --fstab -F "$target/etc/fstab" -no TARGET,SOURCE,FSTYPE,OPTIONS`,
   nach Pfadtiefe sortiert mounten, `swap` und Netz-Dateisysteme überspringen.
   Das erledigt beide `/boot`-Layouts (eigene Partition *oder* Verzeichnis im
-  Root-Subvolume, siehe `INSTALLER-BLS-DEFAULT-LEARNINGS.md`) und jeden
+  Root-Subvolume, siehe `local/learnings/installer/bls-default.md`) und jeden
   Subvolume-Namen, ohne dass wir raten.
 - Bind-Mounts: `/dev`, `/dev/pts`, `/proc`, `/sys`, `/run`, und
   `/sys/firmware/efi/efivars` rw (sonst kann `grub2-install`/`efibootmgr` im
@@ -220,7 +220,7 @@ automatisch passieren. Aufruf: `sudo /run/kait2en/kait2en-live-rescue`.
 |---|---|---|
 | 1 | `--shell` | `chroot` in eine interaktive Bash |
 | 2 | `--rebuild-initramfs` | `dracut --regenerate-all --force` im chroot, danach `lsinitrd`-Verifikation der vier Input-Module (Muster aus `kait2en-prepare:259-263`) |
-| 3 | `--repair-boot` | `grubby --info=ALL` anzeigen, Default per `grubby --set-default-index` setzen (**nicht** per Pfad — `--set-default <pfad>` scheitert bei `/@/boot/...`-Layouts, siehe `INSTALLER-BLS-DEFAULT-LEARNINGS.md`); `boot_entry_index()` aus `kait2en-prepare:73` wiederverwenden; leeres `GRUB_CMDLINE_LINUX` über die Logik von `repair_empty_grub_cmdline()` aus `scripts/fedora/install-kernel-args.sh:42` reparieren |
+| 3 | `--repair-boot` | `grubby --info=ALL` anzeigen, Default per `grubby --set-default-index` setzen (**nicht** per Pfad — `--set-default <pfad>` scheitert bei `/@/boot/...`-Layouts, siehe `local/learnings/installer/bls-default.md`); `boot_entry_index()` aus `kait2en-prepare:73` wiederverwenden; leeres `GRUB_CMDLINE_LINUX` über die Logik von `repair_empty_grub_cmdline()` aus `scripts/fedora/install-kernel-args.sh:42` reparieren |
 | 4 | `--restore` | `kait2en-backup --root /mnt/kait2en-rescue list`, Auswahl, dann `restore` |
 | 5 | `--reinstall` | `bash /usr/local/src/KaiT2en-Fedora/scripts/fedora/install.sh` im chroot; nur anbieten, wenn der Checkout existiert und Netz da ist |
 | 6 | `--diagnostics` | `kait2en-live-diagnostics` laufen lassen und zusätzlich den Zustand des Ziels einsammeln |
@@ -266,7 +266,7 @@ Zwei Punkte, die zwingend so sein müssen:
   Tastatur, also ausgerechnet im Rescue-Fall nichts.
 - Kein GUI: `systemd.unit=multi-user.target`. Genau dann braucht man das
   Rescue, wenn der Desktop nicht kommt. Und laut
-  `INSTALLER-GRUB-MENU-LEARNINGS.md` kann man auf einem T2-Mac Boot-Optionen
+  `local/learnings/installer/grub-menu.md` kann man auf einem T2-Mac Boot-Optionen
   nicht editieren (Apples EFI liefert kein `EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL`,
   also kein Ctrl-X/F10) — jede Variante braucht ihren eigenen Eintrag.
 
