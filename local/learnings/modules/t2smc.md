@@ -153,3 +153,22 @@ this app's own files. `systemctl list-unit-files <unit>` exits 1 when the unit
 is unknown, which is what makes the block silent and idempotent on a fresh
 install. Verified both ways by re-creating and enabling the unit and running
 the real installer twice.
+
+## Lock order: battery_lock never nests inside extensions_sem
+
+`power_supply_set_property()` holds the psy's `extensions_sem` for reading
+while it calls our `set_property`, which then takes `battery_lock`. So
+`battery_lock` is always acquired *below* `extensions_sem`, and any path that
+takes `battery_lock` first must not call into the extension API, which grabs
+`extensions_sem` for writing.
+
+`t2smc_detach_battery()` violated that: it held `battery_lock` across
+`power_supply_unregister_extension()`. A concurrent write to
+`charge_control_end_threshold` during rmmod/unbind deadlocks both sides. The
+fix is to take the battery pointer out under the lock, NULL it, drop the lock,
+and only then unregister and put the reference.
+
+`t2smc_attach_battery()` still registers under the lock and is fine: it only
+reaches `power_supply_register_extension()` while `t2->battery` is NULL, i.e.
+while no extension of ours is registered, so no setter of ours can be in
+flight on that psy.
