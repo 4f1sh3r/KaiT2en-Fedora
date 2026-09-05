@@ -1175,17 +1175,22 @@ out:
 	mutex_unlock(&t2->battery_lock);
 }
 
+/* unregister outside battery_lock: the setter runs under the psy extensions_sem */
 static void t2smc_detach_battery(void *data)
 {
 	struct t2smc_device *t2 = data;
+	struct power_supply *psy;
 
 	mutex_lock(&t2->battery_lock);
-	if (t2->battery) {
-		power_supply_unregister_extension(t2->battery, &t2smc_psy_ext);
-		power_supply_put(t2->battery);
-		t2->battery = NULL;
-	}
+	psy = t2->battery;
+	t2->battery = NULL;
 	mutex_unlock(&t2->battery_lock);
+
+	if (!psy)
+		return;
+
+	power_supply_unregister_extension(psy, &t2smc_psy_ext);
+	power_supply_put(psy);
 }
 
 enum t2smc_power_attr {
