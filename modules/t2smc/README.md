@@ -148,9 +148,11 @@ The attributes `fanN_min` and `fanN_max` are limits reported by the SMC.
 
 `t2smc` also attaches the limit to `BAT0` as the standard
 `charge_control_end_threshold` property, so any desktop environment that
-speaks that interface can set it through its own power settings. The value is re-applied after resume if the SMC dropped it.
+speaks that interface can set it through its own power settings.
 
-Manually, through either interface:
+We do offer a GUI program to inspect sensor data and the battery charge limit:
+(https://github.com/deqrocks/t2-smc-control).
+Anyways here is how to set battery charge limit manually:
 
 ```sh
 # Read current charge limit

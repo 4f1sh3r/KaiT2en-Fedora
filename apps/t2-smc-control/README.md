@@ -43,12 +43,9 @@ This installs:
 - `/usr/local/share/applications/org.t2smccontrol.gtk.desktop`
 - `/usr/local/share/icons/hicolor/scalable/apps/org.t2smccontrol.gtk.svg`
 
-`scripts/fedora/install-apps.sh` disables and removes the obsolete
-`kait2en-t2-smc-charge-limit.service` left over by earlier versions.
-
 ## Battery charge limit
 
-The charge limit is shown here but no longer set here. `t2smc` exposes it as
+The charge limit is shown here. `t2smc` exposes it as
 `/sys/class/power_supply/BAT0/charge_control_end_threshold`, so the desktop
 environment drives it natively and restores it on its own at every start.
 GNOME puts it under Settings -> Power -> Battery Charging, KDE under Energy
