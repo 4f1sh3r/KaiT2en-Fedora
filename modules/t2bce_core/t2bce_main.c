@@ -187,7 +187,7 @@ static int t2bce_probe(struct pci_dev *dev, const struct pci_device_id *id)
     }
 
     global_bce = bce;
-    pr_info("t2bce_core: initialized\n");
+    pr_info("t2bce_core: device initialized\n");
 
     return 0;
 
@@ -580,14 +580,16 @@ static int t2bce_suspend(struct device *dev)
     struct t2bce_device *bce = pci_get_drvdata(to_pci_dev(dev));
     int status;
 
-    pr_debug("t2bce_core: suspend: entry\n");
+    pr_info("t2bce_core: suspend: entry\n");
     mutex_lock(&bce->pm_lock);
 
     bce->stateful_suspend_valid = false;
     bce->no_state_fallback = false;
     bce->no_state_resume = false;
     t2bce_core_clients_pm_reset(bce);
-    t2bce_core_clients_pm_prepare(bce);
+    status = t2bce_core_clients_pm_prepare(bce);
+    if (status)
+        goto out_unlock;
 
     status = bce_pm_suspend_prepare(bce);
     if (status)
@@ -641,7 +643,7 @@ static int t2bce_resume(struct device *dev)
     int status;
     bool used_stateful;
 
-    pr_debug("t2bce_core: resume: entry\n");
+    pr_info("t2bce_core: resume: entry\n");
     mutex_lock(&bce->pm_lock);
 
     pci_set_master(bce->pci);
@@ -649,7 +651,7 @@ static int t2bce_resume(struct device *dev)
 
     /* Resume follows the suspend result, not a preselected policy. */
     used_stateful = bce_stateful_supported(bce) && bce->stateful_suspend_valid;
-    pr_debug("t2bce_core: resume path: %s\n", used_stateful ? "stateful" : "no-state");
+    pr_info("t2bce_core: resume path: %s\n", used_stateful ? "stateful" : "no-state");
     if (used_stateful)
         status = bce_pm_resume_stateful(bce);
     else
@@ -766,7 +768,7 @@ static void __exit t2bce_module_exit(void)
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@kait2en.org>");
 MODULE_DESCRIPTION("T2 BCE core driver");
-MODULE_VERSION("0.06");
+MODULE_VERSION("0.07");
 MODULE_SOFTDEP("post: t2bce_vhci");
 module_init(t2bce_module_init);
 module_exit(t2bce_module_exit);

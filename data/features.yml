@@ -208,6 +208,19 @@ items:
     link: "https://lore.kernel.org/linux-input/20260722141221.13844-1-dev@deq.rocks/"
     updated: "2026-07-22"
 
+  - id: ignore-trackpad
+    title: "Trackpad on T2 Macs is incorrectly bound by the hid-apple driver"
+    state: available
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: HID / Input
+    authors:
+      - AdityaGarg8
+    link: "https://lore.kernel.org/linux-input/20260903064407.27755-1-aditya.garg@linux.dev/"
+    updated: "2026-09-03"
+    notes: Trackpad and keyboard share the same VID/PID. Use the existing APPLE_IGNORE_MOUSE quirk.
+
   - id: dgpu-wakeup-15-1
     title: "dGPU wakes up on MacBookPro15,1"
     state: available

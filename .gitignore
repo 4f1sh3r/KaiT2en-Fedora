@@ -34,6 +34,8 @@ build/
 compile_commands.json
 .vscode/settings.json
 /website/build/
+/tmp
+/temp
 
 # Local agent instructions
 /AGENTS.md
