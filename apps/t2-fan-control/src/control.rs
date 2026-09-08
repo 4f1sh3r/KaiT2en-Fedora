@@ -33,6 +33,8 @@ pub struct Controller {
     last_ramp: Instant,
     last_tick: Instant,
     last_sensor_log: Option<Instant>,
+    /// Set while the emergency latch pins the fans to 100 %.
+    emergency_since: Option<Instant>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -168,7 +170,46 @@ impl Controller {
             last_ramp: Instant::now(),
             last_tick: Instant::now() - CONTROL_INTERVAL,
             last_sensor_log: None,
+            emergency_since: None,
         }
+    }
+
+    /// Latches at emergency_skin_c and releases only below emergency_release_c after
+    /// emergency_hold_s, so a chassis that is still soaked keeps full airflow.
+    fn update_emergency(&mut self, config: &PlatformBiasConfig, skin_c: Option<f32>) -> bool {
+        if !config.emergency_enabled {
+            self.emergency_since = None;
+            return false;
+        }
+        let Some(skin) = skin_c else {
+            self.emergency_since = None;
+            return false;
+        };
+        match self.emergency_since {
+            None => {
+                if skin >= config.emergency_skin_c {
+                    eprintln!(
+                        "emergency: skin {:.2} >= {:.2}, pinning fans to 100%",
+                        skin, config.emergency_skin_c
+                    );
+                    self.emergency_since = Some(Instant::now());
+                }
+            }
+            Some(since) => {
+                if skin < config.emergency_release_c
+                    && since.elapsed().as_secs_f32() >= config.emergency_hold_s
+                {
+                    eprintln!(
+                        "emergency: skin {:.2} < {:.2} after {:.0}s, releasing fans to the curve",
+                        skin,
+                        config.emergency_release_c,
+                        since.elapsed().as_secs_f32()
+                    );
+                    self.emergency_since = None;
+                }
+            }
+        }
+        self.emergency_since.is_some()
     }
 
     pub fn tick(
@@ -214,7 +255,10 @@ impl Controller {
         let bias = compute_platform_bias(&config.platform_bias, &snapshot, self.system_temp_avg);
         let effective_temp = smoothed_temp.map(|temp| apply_platform_bias(temp, bias.bias_c));
         let curve = curve_for_preset(config);
-        let target_percent = effective_temp.map(|temp| interpolate_percent(&curve, temp));
+        let mut target_percent = effective_temp.map(|temp| interpolate_percent(&curve, temp));
+        if self.update_emergency(&config.platform_bias, bias.skin_temp_c) {
+            target_percent = Some(100);
+        }
 
         let mut commanded_percent = target_percent;
         if config.automatic_control_enabled {
@@ -342,7 +386,7 @@ impl Controller {
             .collect::<Vec<_>>()
             .join(" ");
         eprintln!(
-            "sensors: base={} system={} (raw={}, n={}) skin={} battery={} bias={:.2} effective={} target={} fan={} {}",
+            "sensors: base={} system={} (raw={}, n={}) skin={} battery={} bias={:.2} effective={} emergency={} target={} fan={} {}",
             format_opt_u8(base_temp_c),
             format_opt_f32(bias.system_temp_c),
             format_opt_f32(raw_system_temp_c),
@@ -351,6 +395,7 @@ impl Controller {
             format_opt_f32(bias.battery_temp_c),
             bias.bias_c,
             format_opt_u8(effective_temp_c),
+            self.emergency_since.is_some(),
             format_opt_u8(target_percent),
             format_opt_u8(commanded_percent),
             sensors

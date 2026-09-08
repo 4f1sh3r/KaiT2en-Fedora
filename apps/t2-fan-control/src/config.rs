@@ -75,6 +75,12 @@ pub struct PlatformBiasConfig {
     pub battery_threshold_c: f32,
     pub battery_factor: f32,
     pub battery_max_bias_c: f32,
+    /// Last-resort latch: skin at or above this pins both fans to 100 %, whatever the
+    /// die temperature says. Exists because a power clamp cools the die but not the chassis.
+    pub emergency_enabled: bool,
+    pub emergency_skin_c: f32,
+    pub emergency_release_c: f32,
+    pub emergency_hold_s: f32,
 }
 
 impl Default for PlatformBiasConfig {
@@ -94,6 +100,10 @@ impl Default for PlatformBiasConfig {
             battery_threshold_c: 38.0,
             battery_factor: 2.0,
             battery_max_bias_c: 6.0,
+            emergency_enabled: true,
+            emergency_skin_c: 44.5,
+            emergency_release_c: 43.5,
+            emergency_hold_s: 300.0,
         }
     }
 }
@@ -174,7 +184,8 @@ impl AppConfig {
              platform_bias_enabled={}\nsystem_threshold_c={}\nsystem_factor={}\n\
              system_max_bias_c={}\nsystem_rise_time_s={}\nsystem_fall_time_s={}\nskin_sensors={}\nskin_threshold_c={}\nskin_factor={}\n\
              skin_max_bias_c={}\nbattery_sensors={}\nbattery_threshold_c={}\nbattery_factor={}\n\
-             battery_max_bias_c={}\n",
+             battery_max_bias_c={}\nemergency_enabled={}\nemergency_skin_c={}\n\
+             emergency_release_c={}\nemergency_hold_s={}\n",
             self.active_preset.as_str(),
             self.automatic_control_enabled,
             self.autostart_enabled,
@@ -197,7 +208,11 @@ impl AppConfig {
             format_labels(&bias.battery_sensors),
             bias.battery_threshold_c,
             bias.battery_factor,
-            bias.battery_max_bias_c
+            bias.battery_max_bias_c,
+            bias.emergency_enabled,
+            bias.emergency_skin_c,
+            bias.emergency_release_c,
+            bias.emergency_hold_s
         )
     }
 }
@@ -322,6 +337,16 @@ fn parse_config(raw: &str) -> Option<AppConfig> {
             }
             "battery_factor" => assign_f32(&mut config.platform_bias.battery_factor, value),
             "battery_max_bias_c" => assign_f32(&mut config.platform_bias.battery_max_bias_c, value),
+            "emergency_enabled" => {
+                if let Ok(flag) = value.trim().parse() {
+                    config.platform_bias.emergency_enabled = flag;
+                }
+            }
+            "emergency_skin_c" => assign_f32(&mut config.platform_bias.emergency_skin_c, value),
+            "emergency_release_c" => {
+                assign_f32(&mut config.platform_bias.emergency_release_c, value)
+            }
+            "emergency_hold_s" => assign_f32(&mut config.platform_bias.emergency_hold_s, value),
             _ => {}
         }
     }

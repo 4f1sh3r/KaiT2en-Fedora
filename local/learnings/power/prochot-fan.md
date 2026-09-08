@@ -507,3 +507,277 @@ This also let the 92 C emergency bypass go. It never fired -- `effective` is a
 smoothed, biased number that rarely reaches 92 -- and a bypass that jumps straight to
 the target is precisely the acoustic behaviour we are trying to remove. A gap-
 proportional ramp reaches full speed in about two seconds anyway, without the jump.
+
+## Steeper, later-starting bias, and thermald on the skin sensors (2026-09-04)
+
+Field report: warm room, external PROCHOT events during a video call, CPU only
+65-70 C, fan 50-70 %. The journal (`t2-fancontrol.service`, 16:44-17:12) confirms
+the shape exactly:
+
+```
+base=67 system=42.24 skin=45.25 bias=13.00 effective=80 target=79 fan=83
+base=65 system=41.90 skin=44.75 bias=11.00 effective=76 target=70 fan=68
+```
+
+So the skin term dominated (system contributed ~9 K, skin 11-13 K) but it was
+still too weak: skin sat at 44.75-45.25 C for half an hour and the fan settled
+around 66-72 %. The old skin ramp `(skin - 42) * 4` capped at 20 K only from
+47 C upward, which this machine never reaches — the whole PROCHOT window lives
+in the single degree between 44 and 45.5 C, where the ramp is at its shallowest.
+
+Retuned to "start later, then climb harder" (live config only, code defaults
+untouched):
+
+| key | old | new |
+|---|---|---|
+| `system_threshold_c` | 40 | 41 |
+| `system_factor` | 4 | 8 |
+| `system_max_bias_c` | 25 | 30 |
+| `skin_threshold_c` | 42 | 43 |
+| `skin_factor` | 4 | 8 |
+| `skin_max_bias_c` | 20 | 26 |
+
+Doubling the factor while raising the threshold by 1 K makes the two ramps cross
+at exactly the old threshold + 1 K (skin 44 C, system 42 C): below the crossing
+point the new ramp is *lower* than the old one (quieter idle — at skin 43 C the
+bias is now 0 instead of 4), above it the bias climbs twice as fast. Replaying
+the 16:44 sample through the new numbers gives bias 18 instead of 13, effective
+85 instead of 80, and a curve target of 89 % instead of 79 %.
+
+The caps were raised in proportion so the steeper ramp is not clipped
+immediately: skin now saturates at 46.25 C (was 47.0), system at 44.75 C.
+
+Nothing was changed on the acoustic side — the rate limit, the ramp and both
+temperature low-passes are what make this quiet, and they already work.
+
+### thermald now watches the skin sensors too
+
+`/etc/thermald/thermal-conf.xml` only ever had `x86_pkg_temp` trips at 90/93 C,
+which on this machine are unreachable in the PROCHOT scenario: the die sits at
+65-70 C while the chassis soaks. thermald therefore did nothing at all during
+the incident (it was in fact stopped at 16:44:41, right when the trouble
+started).
+
+Added two zones driven by t2smc sensors, both pulling `rapl_controller` with a
+10 s sampling period so the power limit glides instead of stepping:
+
+- `t2_skin` — `Ts1S` and `Ts0S`, passive trip at 45.0 C
+- `t2_system` — `Th2H`, passive trip at 62.0 C
+
+45 C is deliberately just above the 44.75-45.25 C plateau that preceded the
+throttling: the point is to shave sustained package power slightly *before* the
+SMC asserts BD_PROCHOT, since BD_PROCHOT collapses the clock to 200 MHz whereas
+RAPL backs off gracefully. This is the pre-PROCHOT idea the config was already
+named after, now with sensors that can actually reach their trip.
+
+**hwmon numbering is the trap here.** thermald's `<Path>` needs an absolute
+`tempN_input` path, but `t2smc` is a DKMS module, so both its `hwmonN` index and
+the `tempN` index for a given label can move between boots. Solved with a
+template plus a generator:
+
+- `/etc/thermald/thermal-conf.xml.in` — the actual config, with `@Ts1S@`,
+  `@Ts0S@`, `@Th2H@` placeholders. This is the file to edit.
+- `/usr/local/bin/t2-thermald-genconf` — finds the hwmon whose `name` is
+  `t2smc`, maps each label to its `tempN_input` via the `tempN_label` files, and
+  expands the template into `/run/thermald/thermal-conf.xml`. It fails loudly if
+  the sensor is missing rather than emitting a config with a dead path.
+- `/etc/systemd/system/thermald.service.d/kait2en-manual.conf` — the pre-existing
+  drop-in, extended with `ExecStartPre=` for the generator and pointed at
+  `/run/thermald/thermal-conf.xml`.
+
+Note the drop-in ordering: a first attempt added a separate `10-t2-skin.conf`,
+which lost to `kait2en-manual.conf` because systemd applies drop-ins in
+lexical order and the later `ExecStart=` wins. Extend the existing drop-in
+instead of adding a new one.
+
+Verifying that thermald actually bound the zones is awkward because
+`DbusControl` is 0 in `thermald-features.xml`, so `GetSensorInformation` over
+D-Bus is refused. The workable check is to stop the service and run a throwaway
+instance for a few seconds:
+
+```
+sudo systemctl stop thermald
+sudo timeout 6 /usr/bin/thermald --no-daemon --loglevel=debug \
+    --config-file=/run/thermald/thermal-conf.xml --ignore-default-control
+sudo systemctl start thermald
+```
+
+which prints `Zone 2: t2_skin, Active:1 Bind:1 Sensor_cnt:2` and then the live
+`Sensor t2_skin_ts1s :temp 39250` lines. `Bind:1` is the part that matters — an
+unresolvable path binds silently as 0 and the zone is simply never evaluated.
+
+Still unproven: whether the RAPL trips actually prevent the assertions, or
+whether the fan bias alone would have. Both changes went in at once, so a
+recurrence needs the journal checked for which of the two reacted first.
+
+### Measured: how the RAPL trips actually behave (2026-09-04, same day)
+
+`Th2H` was dropped again on request — its normal range and its physical location
+are unknown, so a 62 C trip on it was a guess. The zone is skin-only now, and
+the trip moved to **44.8 C**, just under the 45.0-45.5 C band where the user
+observes BD_PROCHOT starting.
+
+Three measured runs (`local/experiments/` scripts kept out of the repo; trip
+temporarily lowered to ~1 K under the current reading, all cores loaded, PL1
+sampled at 3 Hz). Two testbed traps cost a run each before anything worked:
+
+- **thermald silently ignores `--config-file` outside `/run` or `/etc`.** No
+  error, no "Config file does not exist" — it just falls back to its built-in
+  zones. The tell is the sensor list: the custom sensors are missing from the
+  `sensor index:N` lines. Put throwaway configs in `/run/thermald/`.
+- **The service must be fully stopped before the throwaway starts.** `systemctl
+  stop` returns before the process is gone; the second instance then dies on
+  `Couldn't get lock file` and the log looks confusingly truncated. Poll
+  `systemctl is-active` and add a couple of seconds.
+- **At idle nothing happens even far above the trip.** Package draw is ~5 W, so
+  clamping PL1 to 29 W changes nothing and the controller stays put. Any test of
+  this path needs real load.
+
+Run A, two trip points (Ts1S + Ts0S), both violated:
+
+```
+t= 0s PL1=30W   t=12s PL1=26W   t=32s PL1=20W   t=51s PL1=15W
+t= 2s PL1=28W   t=22s PL1=22W   t=41s PL1=16W
+```
+
+Run B, a single trip point (Ts1S only), same load:
+
+```
+t= 0s PL1=30W   t=11s PL1=24W   t=31s PL1=18W   t=51s PL1=15W
+t= 2s PL1=28W   t=21s PL1=22W   t=41s PL1=16W
+```
+
+**Two trip points do not throttle twice as hard.** The ramp is essentially
+identical, so the step logic lives on the cooling device, not on the trip point.
+Two sensors in one zone are therefore two independent watchers of one shared
+`rapl_controller`: whichever crosses its trip first starts the ramp, and the
+second one crossing adds nothing. Functionally that is a `max()` over the two
+sensors, which is what was wanted — but it is worth knowing it is not literally
+implemented as a zone-level maximum, because that assumption would break as soon
+as two trips pull *different* cooling devices.
+
+Also measured, and not what the config file suggests: the ramp is **not** the
+`StepSize 1000` (1 W) from the PPCC block. Observed steps are 2-4 W per ~10 s
+cycle, reaching the 15 W `PowerLimitMinimum` floor after roughly 50 s of
+continuous violation. So the descent from 30 W to the floor takes about a
+minute, not the ten minutes a literal 1 W/10 s reading would predict.
+
+### The release path is slow, and that is the real risk here
+
+Run C loaded the machine for 40 s and then idled for 90 s, with the trip 1 K
+below the starting skin temperature:
+
+```
+t= 0s LOAD PL1=30W  Ts1S=41500      <- trip at 40750
+t=37s LOAD PL1=15W  Ts1S=41750      <- floor reached
+t=80s idle PL1=16W  Ts1S=41750      <- one step back up ...
+t=81s idle PL1=15W  Ts1S=41500      <- ... immediately taken again
+```
+
+Ninety seconds of complete idle did not bring the skin sensor back under a trip
+only 1 K below where it started. The chassis time constant is minutes, not
+seconds — which is consistent with everything else in this document, but it has
+a consequence the trip design has to account for:
+
+**Once the skin trip is crossed, PL1 can stay at the floor for a long time**,
+because the quantity that releases it cools far more slowly than the quantity
+that triggered it. This is the mirror image of the fan bias problem: there the
+slow skin sensor is an advantage (it sees the soak the die cannot), here it is a
+liability (it holds the clamp on long after the load is gone).
+
+The single step to 16 W at t=80 is the only evidence collected that the upward
+path works at all; a clean release was never observed, because the temperature
+never actually fell under the trip. Do not claim the release is verified.
+
+Mitigation to consider: raise `PowerLimitMinimum` from 15000 to ~20000. The floor
+is what bounds the worst case, and 20 W is still ample for a video call while
+15 W is noticeably slow. That trades some throttling authority for a guaranteed
+usable machine — probably the right trade given that the whole point is to keep
+calls working. Not applied yet, pending a decision.
+
+## Hot-room video call: the floor is what matters, and 12 W is the sweet spot (2026-09-08)
+
+Live session under the real failure condition for once: 28 C room, video
+conference plus synthetic load, fans already at hardware maximum. thermald was
+sitting exactly on its `PowerLimitMinimum` of 20000 (PL1 = 20 W) and PROCHOT
+kept firing, so the floor was measured directly by sweeping it, 150 s per phase,
+MSR 0x1B1 bit 2 sampled at 20 Hz and counted per second:
+
+| Floor | Skin trip | Seconds with PROCHOT |
+|---|---|---|
+| 15 W | 44.8 C | 15 / 78 (19 %) |
+| 15 W | 43.5 C | 30 / 136 (22 %) |
+| **12 W** | 43.5 C | **0 / 140 (0 %)** |
+| 10 W | 43.5 C | 8 / 134 (6 %) |
+
+Two results worth keeping:
+
+- **12 W is clean, 10 W is not.** Lower is not monotonically better, so do not
+  treat the floor as "as low as possible". 12 W is now the live setting; the
+  user's own report at that setting was that the machine felt *more* fluid than
+  at 20 W, because the 3300 -> 200 MHz collapses had stopped.
+- **The trip point barely matters, the floor decides.** 44.8 vs 43.5 changed the
+  rate by 3 points at the same floor. The 2026-09-04 note that suggested raising
+  the floor back to 20 W is therefore wrong for this scenario and is superseded
+  by this measurement.
+
+### No sensor is the trigger — the SMC threshold moves with soak
+
+All ~90 t2smc channels plus every SMC power rail were logged at 1 Hz and
+correlated against the assertions, including 1 and 2 seconds of lead time:
+
+- Every channel that differs is a **power rail, and it drops during** the
+  assertion. That is the consequence, not the cause.
+- `Ts1S` sat at a constant 45.000 while PROCHOT switched on and off repeatedly.
+  Skin temperature is the **regime**, not the trigger.
+- What does precede an assertion is a load step: package 72.25 C at t-1s against
+  69.5 C in quiet samples, with `PDTR` (total input) around 30 W — nowhere near
+  the 52 W adapter ceiling of the 2026-08-10 stress run. **This is a different
+  mechanism from that one.**
+- dTj at assertion was 32-36, i.e. **64-68 C die**. Non-thermal again, as before.
+- Confirmed live at skin 44.7 C, i.e. *below* the 44.8 trip. The old assumption
+  that PROCHOT starts above 45 C skin is wrong: once the chassis is soaked, a
+  short power burst suffices, so the SMC's threshold is itself soak-dependent.
+
+So do not go looking for the one causal sensor again. There isn't one at this
+timescale.
+
+### The power clamp and the fan curve fight each other
+
+Observed live: `base=71 system=42.58 skin=44.75 bias=14.00 effective=85
+target=69 fan=72`. The fan curve's `base` is the CPU die temperature, and that
+is exactly what the PL1 clamp pushes down — 64-72 C instead of 78-80 C. The
+better the clamp works, the less the fan cools the chassis, while the skin
+sensor has not moved at all. The user saw this as "fan at 70 %, or even 50 % at
+45.2 C skin, while the machine desperately needs cooling".
+
+Fixed with an emergency latch in `apps/t2-fan-control` (`Controller::update_emergency`),
+deliberately additive and outside the bias path:
+
+- `emergency_skin_c` (44.5) latches `target_percent` to 100, whatever the curve says.
+- Release needs skin below `emergency_release_c` (43.5) **and** at least
+  `emergency_hold_s` (300 s) latched, because the chassis time constant is minutes.
+- `emergency_enabled` turns it off; all four are config keys, and the
+  `sensors:` journal line now carries `emergency=true|false`.
+- The ramp and rate limits are untouched, so it still rises smoothly and normal
+  use never reaches 44.5 C skin.
+
+### Rejected: a separate PL1 guard daemon
+
+A `t2-prochot-guard` service was built first: it watched MSR 0x1B1 and stepped
+PL1 below thermald's floor only while PROCHOT was actually asserting, handing
+control back on any foreign write. It worked (20 -> 18 -> 16 -> 15 W, released
+cleanly), but it was rejected as unnecessary complexity once the sweep showed a
+plain 12 W floor in thermald removes the assertions outright. Two things learned
+before it was removed, in case something like it is ever needed again:
+
+- thermald oscillates around its trip (30 W <-> floor) and a second controller
+  must treat any unexpected PL1 value as "thermald owns this again" or the two
+  fight.
+- A bash poll loop calling `rdmsr` at 5 Hz burned **9.4 s of CPU in 113 s**. A
+  fork per sample is unaffordable in a power-saving context; `os.pread` on
+  `/dev/cpu/0/msr` from one long-lived process costs essentially nothing.
+
+Method note: `pkill -f <pattern>` matches the invoking shell's own command line
+when the pattern appears in it, so it kills the tool call itself. Use a bracket
+pattern *and* keep the plain string out of the rest of the command.
