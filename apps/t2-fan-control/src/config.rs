@@ -102,7 +102,7 @@ impl Default for PlatformBiasConfig {
             battery_max_bias_c: 6.0,
             emergency_enabled: true,
             emergency_skin_c: 44.5,
-            emergency_release_c: 43.5,
+            emergency_release_c: 43.0,
             emergency_hold_s: 300.0,
         }
     }
