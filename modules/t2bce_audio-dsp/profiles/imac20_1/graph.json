@@ -842,7 +842,7 @@
                 "plugin": "http://lsp-plug.in/plugins/lv2/mb_compressor_stereo",
                 "name": "Comp",
                 "control": {
-                    "mode": 1,
+                    "mode": 0,
                     "g_in": 0.44668359215096315,
                     "g_out": 2.2387211385683394,
                     "envb": 0,
@@ -3313,6 +3313,28 @@
                 }
             },
             {
+                "type": "builtin",
+                "label": "delay",
+                "name": "Delay_2",
+                "config": {
+                    "max-delay": 0.05
+                },
+                "control": {
+                    "Delay (s)": 0.005
+                }
+            },
+            {
+                "type": "builtin",
+                "label": "delay",
+                "name": "Delay_3",
+                "config": {
+                    "max-delay": 0.05
+                },
+                "control": {
+                    "Delay (s)": 0.005
+                }
+            },
+            {
                 "type": "lv2",
                 "plugin": "http://lsp-plug.in/plugins/lv2/limiter_stereo",
                 "name": "ControlFreakLF_0_1",
@@ -3649,6 +3671,14 @@
                 "input": "Tone3_c3_f8_0:In"
             },
             {
+                "output": "Tone3_c2_f8_0:Out",
+                "input": "Delay_2:In"
+            },
+            {
+                "output": "Tone3_c3_f8_0:Out",
+                "input": "Delay_3:In"
+            },
+            {
                 "output": "Tone3_c0_f16_0:Out",
                 "input": "ControlFreakLF_0_1:in_l"
             },
@@ -3657,11 +3687,11 @@
                 "input": "ControlFreakLF_0_1:in_r"
             },
             {
-                "output": "Tone3_c2_f8_0:Out",
+                "output": "Delay_2:Out",
                 "input": "ControlFreakHF_2_3:in_l"
             },
             {
-                "output": "Tone3_c3_f8_0:Out",
+                "output": "Delay_3:Out",
                 "input": "ControlFreakHF_2_3:in_r"
             }
         ],

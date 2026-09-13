@@ -7308,7 +7308,7 @@
                 "plugin": "http://lsp-plug.in/plugins/lv2/mb_compressor_stereo",
                 "name": "Comp",
                 "control": {
-                    "mode": 1,
+                    "mode": 0,
                     "g_in": 1.3690385716208107,
                     "g_out": 1.2589254117941673,
                     "envb": 0,
@@ -8070,6 +8070,62 @@
             },
             {
                 "type": "lv2",
+                "plugin": "http://lsp-plug.in/plugins/lv2/mb_compressor_stereo",
+                "name": "Buzz_0_1",
+                "control": {
+                    "mode": 0,
+                    "envb": 0,
+                    "cbe_1": 1,
+                    "sf_1": 54.44013673808454,
+                    "cbe_2": 1,
+                    "sf_2": 80.5809104119107,
+                    "ce_0": 0,
+                    "cm_0": 0,
+                    "al_0": 0.251188643150958,
+                    "cr_0": 8.0,
+                    "at_0": 2.0,
+                    "rt_0": 50.0,
+                    "sla_0": 8.0,
+                    "ce_1": 1,
+                    "cm_1": 0,
+                    "al_1": 0.251188643150958,
+                    "cr_1": 8.0,
+                    "at_1": 2.0,
+                    "rt_1": 50.0,
+                    "sla_1": 8.0,
+                    "ce_2": 0,
+                    "cm_2": 0,
+                    "al_2": 0.251188643150958,
+                    "cr_2": 8.0,
+                    "at_2": 2.0,
+                    "rt_2": 50.0,
+                    "sla_2": 8.0
+                }
+            },
+            {
+                "type": "builtin",
+                "label": "delay",
+                "name": "Delay_2",
+                "config": {
+                    "max-delay": 0.05
+                },
+                "control": {
+                    "Delay (s)": 0.008
+                }
+            },
+            {
+                "type": "builtin",
+                "label": "delay",
+                "name": "Delay_3",
+                "config": {
+                    "max-delay": 0.05
+                },
+                "control": {
+                    "Delay (s)": 0.008
+                }
+            },
+            {
+                "type": "lv2",
                 "plugin": "http://lsp-plug.in/plugins/lv2/limiter_stereo",
                 "name": "ControlFreakLF_0_1",
                 "control": {
@@ -8822,18 +8878,34 @@
             },
             {
                 "output": "NBandEQLeftLow_4:Out",
-                "input": "ControlFreakLF_0_1:in_l"
+                "input": "Buzz_0_1:in_l"
             },
             {
                 "output": "NBandEQRightLow_4:Out",
-                "input": "ControlFreakLF_0_1:in_r"
+                "input": "Buzz_0_1:in_r"
             },
             {
                 "output": "NBandEQLeftHigh_2:Out",
-                "input": "ControlFreakHF_2_3:in_l"
+                "input": "Delay_2:In"
             },
             {
                 "output": "NBandEQRightHigh_2:Out",
+                "input": "Delay_3:In"
+            },
+            {
+                "output": "Buzz_0_1:out_l",
+                "input": "ControlFreakLF_0_1:in_l"
+            },
+            {
+                "output": "Buzz_0_1:out_r",
+                "input": "ControlFreakLF_0_1:in_r"
+            },
+            {
+                "output": "Delay_2:Out",
+                "input": "ControlFreakHF_2_3:in_l"
+            },
+            {
+                "output": "Delay_3:Out",
                 "input": "ControlFreakHF_2_3:in_r"
             }
         ],

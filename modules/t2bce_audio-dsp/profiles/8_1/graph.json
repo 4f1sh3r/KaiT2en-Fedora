@@ -1623,7 +1623,7 @@
                 "plugin": "http://lsp-plug.in/plugins/lv2/mb_compressor_stereo",
                 "name": "Comp",
                 "control": {
-                    "mode": 1,
+                    "mode": 0,
                     "g_in": 1.5848931924611136,
                     "g_out": 1.2589254117941673,
                     "envb": 0,

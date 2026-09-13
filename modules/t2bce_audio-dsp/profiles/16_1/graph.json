@@ -993,7 +993,7 @@
                 "plugin": "http://lsp-plug.in/plugins/lv2/mb_compressor_stereo",
                 "name": "Comp",
                 "control": {
-                    "mode": 1,
+                    "mode": 0,
                     "g_in": 1.2589254117941673,
                     "g_out": 1.0,
                     "envb": 0,
@@ -4455,6 +4455,132 @@
             },
             {
                 "type": "lv2",
+                "plugin": "http://lsp-plug.in/plugins/lv2/mb_compressor_stereo",
+                "name": "Buzz_0_1",
+                "control": {
+                    "mode": 0,
+                    "envb": 0,
+                    "cbe_1": 1,
+                    "sf_1": 110.06300509269268,
+                    "cbe_2": 1,
+                    "sf_2": 144.57591880397013,
+                    "cbe_3": 1,
+                    "sf_3": 125.50674939796879,
+                    "cbe_4": 1,
+                    "sf_4": 251.0134987959376,
+                    "ce_0": 0,
+                    "cm_0": 0,
+                    "al_0": 0.251188643150958,
+                    "cr_0": 8.0,
+                    "at_0": 2.0,
+                    "rt_0": 50.0,
+                    "sla_0": 5.0,
+                    "ce_1": 1,
+                    "cm_1": 0,
+                    "al_1": 0.251188643150958,
+                    "cr_1": 8.0,
+                    "at_1": 2.0,
+                    "rt_1": 50.0,
+                    "sla_1": 5.0,
+                    "ce_2": 0,
+                    "cm_2": 0,
+                    "al_2": 0.251188643150958,
+                    "cr_2": 8.0,
+                    "at_2": 2.0,
+                    "rt_2": 50.0,
+                    "sla_2": 5.0,
+                    "ce_3": 1,
+                    "cm_3": 0,
+                    "al_3": 0.251188643150958,
+                    "cr_3": 8.0,
+                    "at_3": 2.0,
+                    "rt_3": 50.0,
+                    "sla_3": 5.0,
+                    "ce_4": 0,
+                    "cm_4": 0,
+                    "al_4": 0.251188643150958,
+                    "cr_4": 8.0,
+                    "at_4": 2.0,
+                    "rt_4": 50.0,
+                    "sla_4": 5.0
+                }
+            },
+            {
+                "type": "lv2",
+                "plugin": "http://lsp-plug.in/plugins/lv2/mb_compressor_stereo",
+                "name": "Buzz_3_4",
+                "control": {
+                    "mode": 0,
+                    "envb": 0,
+                    "cbe_1": 1,
+                    "sf_1": 110.06300509269268,
+                    "cbe_2": 1,
+                    "sf_2": 144.57591880397013,
+                    "cbe_3": 1,
+                    "sf_3": 125.50674939796879,
+                    "cbe_4": 1,
+                    "sf_4": 251.0134987959376,
+                    "ce_0": 0,
+                    "cm_0": 0,
+                    "al_0": 0.251188643150958,
+                    "cr_0": 8.0,
+                    "at_0": 2.0,
+                    "rt_0": 50.0,
+                    "sla_0": 5.0,
+                    "ce_1": 1,
+                    "cm_1": 0,
+                    "al_1": 0.251188643150958,
+                    "cr_1": 8.0,
+                    "at_1": 2.0,
+                    "rt_1": 50.0,
+                    "sla_1": 5.0,
+                    "ce_2": 0,
+                    "cm_2": 0,
+                    "al_2": 0.251188643150958,
+                    "cr_2": 8.0,
+                    "at_2": 2.0,
+                    "rt_2": 50.0,
+                    "sla_2": 5.0,
+                    "ce_3": 1,
+                    "cm_3": 0,
+                    "al_3": 0.251188643150958,
+                    "cr_3": 8.0,
+                    "at_3": 2.0,
+                    "rt_3": 50.0,
+                    "sla_3": 5.0,
+                    "ce_4": 0,
+                    "cm_4": 0,
+                    "al_4": 0.251188643150958,
+                    "cr_4": 8.0,
+                    "at_4": 2.0,
+                    "rt_4": 50.0,
+                    "sla_4": 5.0
+                }
+            },
+            {
+                "type": "builtin",
+                "label": "delay",
+                "name": "Delay_2",
+                "config": {
+                    "max-delay": 0.05
+                },
+                "control": {
+                    "Delay (s)": 0.005
+                }
+            },
+            {
+                "type": "builtin",
+                "label": "delay",
+                "name": "Delay_5",
+                "config": {
+                    "max-delay": 0.05
+                },
+                "control": {
+                    "Delay (s)": 0.005
+                }
+            },
+            {
+                "type": "lv2",
                 "plugin": "http://lsp-plug.in/plugins/lv2/limiter_stereo",
                 "name": "ControlFreakLF_0_1",
                 "control": {
@@ -4942,26 +5068,50 @@
             },
             {
                 "output": "analytical_c0_f16_0:Out",
-                "input": "ControlFreakLF_0_1:in_l"
+                "input": "Buzz_0_1:in_l"
             },
             {
                 "output": "analytical_c1_f18_0:Out",
-                "input": "ControlFreakLF_0_1:in_r"
+                "input": "Buzz_0_1:in_r"
             },
             {
                 "output": "analytical_c3_f16_0:Out",
-                "input": "ControlFreakLF_3_4:in_l"
+                "input": "Buzz_3_4:in_l"
             },
             {
                 "output": "analytical_c4_f18_0:Out",
-                "input": "ControlFreakLF_3_4:in_r"
+                "input": "Buzz_3_4:in_r"
             },
             {
                 "output": "analytical_c2_f16_0:Out",
-                "input": "ControlFreakHF_2_5:in_l"
+                "input": "Delay_2:In"
             },
             {
                 "output": "analytical_c5_f16_0:Out",
+                "input": "Delay_5:In"
+            },
+            {
+                "output": "Buzz_0_1:out_l",
+                "input": "ControlFreakLF_0_1:in_l"
+            },
+            {
+                "output": "Buzz_0_1:out_r",
+                "input": "ControlFreakLF_0_1:in_r"
+            },
+            {
+                "output": "Buzz_3_4:out_l",
+                "input": "ControlFreakLF_3_4:in_l"
+            },
+            {
+                "output": "Buzz_3_4:out_r",
+                "input": "ControlFreakLF_3_4:in_r"
+            },
+            {
+                "output": "Delay_2:Out",
+                "input": "ControlFreakHF_2_5:in_l"
+            },
+            {
+                "output": "Delay_5:Out",
                 "input": "ControlFreakHF_2_5:in_r"
             }
         ],
