@@ -43,3 +43,10 @@ dependency installer:
 - `lv2-triforce`
 - `lsp-plugins-lv2`
 - `lv2-swh-plugins`
+
+## Copyright
+
+Copyright (C) 2026 André Eikmeyer, KAIT2EN: speaker profiles,
+GPL-3.0-or-later with the attribution term of `LICENSING.md`.
+Copyright (C) 2025 lemmyg: microphone graphs and the original DSP integration
+this module grew out of, MIT, see `LICENSE`.

@@ -2,7 +2,7 @@
 name = "t2-biometrickit"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "BiometricKit protocol for the Apple T2 Touch ID sensor over BridgeXPC"
 
 [dependencies]
