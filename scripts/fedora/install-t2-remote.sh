@@ -12,6 +12,8 @@ readonly CONNECTION="kait2en-t2-ncm"
 readonly OBSOLETE_SERVICE="kait2en-t2-ncm-down.service"
 readonly OBSOLETE_SERVICE_FILE="/etc/systemd/system/$OBSOLETE_SERVICE"
 readonly OBSOLETE_HELPER="/usr/local/libexec/kait2en/kait2en-t2-ncm-down.sh"
+# Fixed address of the T2 bridge CDC-NCM interface, the same on every T2 Mac.
+readonly T2_NCM_MAC="ac:de:48:00:11:22"
 
 [[ -x /usr/local/bin/t2remote ]] || fail "t2remote is not installed; run install-apps.sh first"
 
@@ -40,9 +42,11 @@ if [[ -n "$INTERFACE" ]]; then
 fi
 
 # Prefer Apple T2 Bridge even when the accidentally created profile is active.
+# Collect every profile that belongs to the NCM device so the duplicates
+# NetworkManager auto-creates can be removed, keeping only the best one.
 profile=""
 best_rank=0
-legacy_profiles=()
+ncm_profiles=()
 
 	uuids="$(nmcli --get-values UUID connection show)"
 	for uuid in $uuids; do
@@ -52,14 +56,17 @@ legacy_profiles=()
 		bound_if="$(nmcli --get-values connection.interface-name connection show uuid "$uuid")"
 		bound_mac="$(nmcli --get-values 802-3-ethernet.mac-address connection show uuid "$uuid")"
 		rank=0
-		if [[ "$name" == "$CONNECTION" ]]; then
-			legacy_profiles+=("$uuid")
+		if [[ "$name" == "Apple T2 Bridge" ]]; then
+			rank=3
+		elif [[ "$name" == "$CONNECTION" ]]; then
 			rank=1
 		elif [[ ( -n "$INTERFACE" && "$bound_if" == "$INTERFACE" ) ||
-		        ( -n "$MAC" && "${bound_mac,,}" == "${MAC,,}" ) ]]; then
+		        "$bound_if" == t2_ncm ||
+		        ( -n "$MAC" && "${bound_mac,,}" == "${MAC,,}" ) ||
+		        "${bound_mac,,}" == "$T2_NCM_MAC" ]]; then
 			rank=2
 		fi
-		[[ "$name" != "Apple T2 Bridge" ]] || rank=3
+		(( rank == 0 )) || ncm_profiles+=("$uuid")
 		if (( rank > best_rank )); then
 			profile="$uuid"
 			best_rank=$rank
@@ -74,6 +81,15 @@ rm -f "$OBSOLETE_SERVICE_FILE" "$OBSOLETE_HELPER"
 rm -f /etc/udev/rules.d/90-kait2en-t2-network.rules \
 	/etc/udev/rules.d/90-kait2en-t2-network-managed.rules \
 	/etc/NetworkManager/conf.d/99-network-t2-ncm.conf
+
+# Stop NetworkManager auto-creating a fresh generic profile every time the NCM
+# device re-enumerates. Without this it accumulates duplicate wired profiles.
+install -d -o root -g root -m 0755 /etc/NetworkManager/conf.d
+no_auto_default="$(mktemp)"
+printf '[main]\nno-auto-default=%s\n' "$T2_NCM_MAC" >"$no_auto_default"
+install -o root -g root -m 0644 "$no_auto_default" \
+	/etc/NetworkManager/conf.d/10-kait2en-t2-no-auto-default.conf
+rm -f "$no_auto_default"
 
 # The OS installer prepares the next boot. Do not trigger udev, change live
 # device management, or wait for carrier/IPv6 here.
@@ -107,9 +123,10 @@ nmcli connection modify uuid "$profile" \
 	connection.autoconnect-retries 0 \
 	ipv4.method disabled ipv6.method link-local
 
-# Only remove profiles created by the old installer, after the replacement
-# profile has been saved successfully. An active connection may end here.
-for uuid in "${legacy_profiles[@]}"; do
+# Remove the other NCM profiles (NetworkManager's auto-created generics and
+# old-name leftovers), after the replacement profile has been saved. An active
+# connection may end here.
+for uuid in "${ncm_profiles[@]}"; do
 	[[ "$uuid" != "$profile" ]] || continue
 	nmcli connection delete uuid "$uuid"
 done
