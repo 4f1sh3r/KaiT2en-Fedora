@@ -98,15 +98,13 @@ index e5f26e5..2175743 100644
  	u32 max_MBps;
  	int tmp;
  
-@@ -4144,11 +4164,12 @@ fence_driver_init:
+@@ -4214,10 +4234,11 @@ fence_driver_init:
  		vga_client_register(adev->pdev, amdgpu_device_vga_set_decode);
  
  	px = amdgpu_device_supports_px(adev);
 +	gmux = amdgpu_device_supports_gmux(adev);
  
- 	if (px || (!dev_is_removable(&adev->pdev->dev) &&
--				apple_gmux_detect(NULL, NULL)))
-+		   apple_gmux_detect(NULL, NULL)))
+ 	if (amdgpu_device_should_register_switcheroo(adev, px))
  		vga_switcheroo_register_client(adev->pdev,
 -					       &amdgpu_switcheroo_ops, px);
 +					       &amdgpu_switcheroo_ops, px || gmux);
@@ -114,7 +112,7 @@ index e5f26e5..2175743 100644
 -	if (px)
 +	if (px || gmux)
  		vga_switcheroo_init_domain_pm_ops(adev->dev, &adev->vga_pm_domain);
-@@ -4276,7 +4297,7 @@ void amdgpu_device_fini_hw(struct amdgpu_device *adev)
+@@ -4344,7 +4365,7 @@ void amdgpu_device_fini_hw(struct amdgpu_device *adev)
  void amdgpu_device_fini_sw(struct amdgpu_device *adev)
  {
  	int i, idx;
@@ -123,14 +121,13 @@ index e5f26e5..2175743 100644
  
  	amdgpu_device_ip_fini(adev);
  	amdgpu_fence_driver_sw_fini(adev);
-@@ -4307,12 +4328,13 @@ void amdgpu_device_fini_sw(struct amdgpu_device *adev)
+@@ -4375,11 +4396,12 @@ void amdgpu_device_fini_sw(struct amdgpu_device *adev)
  	adev->xcp_mgr = NULL;
  
  	px = amdgpu_device_supports_px(adev);
 +	gmux = amdgpu_device_supports_gmux(adev);
  
- 	if (px || (!dev_is_removable(&adev->pdev->dev) &&
- 				apple_gmux_detect(NULL, NULL)))
+ 	if (amdgpu_device_should_register_switcheroo(adev, px))
  		vga_switcheroo_unregister_client(adev->pdev);
  
 -	if (px)

@@ -152,7 +152,8 @@ if ! modinfo -k "$KVER" t2gmux >/dev/null 2>&1; then
 	fail "t2gmux is not installed for $KVER"
 fi
 
-workdir=$(mktemp -d)
+info "using /var/tmp for kernel sources and module build"
+workdir=$(mktemp -d /var/tmp/kait2en-gpu-runtime-pm.XXXXXXXXXX)
 trap 'rm -rf "$workdir"' EXIT
 if ((local_kernel_tree)); then
 	kernel_tree=$build_tree
