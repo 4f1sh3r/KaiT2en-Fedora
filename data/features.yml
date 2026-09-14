@@ -52,7 +52,6 @@ items:
       Model-specific speaker DSP: equalization, crossovers, compressor,
       limiters and crosstalk cancellation as PipeWire filter-chain graphs.
       Tied to Apple's hardware, so this stays downstream.
-    help: >-
 
   - id: package-c-states
     title: "Package C-states"

@@ -56,8 +56,17 @@ the DSP output automatically when the profile is first created.
 
 ## Profile origins and support
 
-The speaker graphs are KAIT2EN's own work and are generated per model.
-The license information lives in the DSP module of the repository.
+The speaker and microphone graphs are KAIT2EN's own work and are generated
+per model. The license information lives in the DSP module of the repository.
+
+Thanks to [lemmyg](https://github.com/lemmyg/t2-apple-audio-dsp) for the
+pioneering work: the first PipeWire DSP graphs for T2 Macs were his, and they
+were the template KAIT2EN's audio DSP started from.
+
+Problems with these profiles must be reported to the
+[KAIT2EN issue tracker](https://github.com/kaiT2en/KaiT2en-Fedora/issues),
+not to lemmyg's project: the current graphs, routing and UCM integration are
+maintained here.
 
 ## Check the active output
 

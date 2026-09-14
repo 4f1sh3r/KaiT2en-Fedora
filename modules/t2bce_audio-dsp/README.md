@@ -46,7 +46,11 @@ dependency installer:
 
 ## Copyright
 
-Copyright (C) 2026 André Eikmeyer, KAIT2EN: speaker profiles,
-GPL-3.0-or-later with the attribution term of `LICENSING.md`.
-Copyright (C) 2025 lemmyg: microphone graphs and the original DSP integration
-this module grew out of, MIT, see `LICENSE`.
+Copyright (C) 2026 André Eikmeyer, KAIT2EN. GPL-3.0-or-later with the
+attribution term of `LICENSING.md`.
+
+## Thanks
+
+lemmyg's [t2-apple-audio-dsp](https://github.com/lemmyg/t2-apple-audio-dsp)
+did the pioneering work: the first PipeWire DSP graphs for T2 Macs, and the
+template this module started from.

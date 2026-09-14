@@ -36,7 +36,5 @@ requirement and adds no restriction beyond section 7(b).
 ## Other owners
 
 - `apps/react-drm` carries its own license.
-- The microphone graphs (`mic.json`) in the DSP profiles are lemmyg's, MIT,
-  see `modules/t2bce_audio-dsp/LICENSE`.
 - Vendored third-party code (e.g. `apps/t2-journal/vendor/`,
   `third_party/hex2hcd/`) keeps its upstream license.
