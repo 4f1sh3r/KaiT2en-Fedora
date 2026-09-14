@@ -79,8 +79,11 @@ repair_origin_url() {
 validate_repository() {
 	[[ -d "$repository/.git" ]] ||
 		die "The KaiT2en Git checkout is missing: $repository"
-	[[ -z $(repository_git status --porcelain) ]] ||
-		die "The KaiT2en checkout has local changes. They were not discarded. Resolve them in $repository and log in again."
+	# System-managed checkout: users work in their own clone, and the installer
+	# builds in-tree. Force it clean before updating rather than refusing on the
+	# installer's own build leftovers.
+	repository_git reset --hard
+	repository_git clean -fd
 	repair_origin_url
 }
 

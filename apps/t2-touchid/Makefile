@@ -11,7 +11,7 @@ BIN_DIR := $(PREFIX)/bin
 all: build
 
 build:
-	$(CARGO) build --release
+	$(CARGO) build --release --locked
 
 install: $(BIN_SRC)
 	$(INSTALL) -d -o root -g root -m 0755 $(DESTDIR)$(BIN_DIR)
