@@ -197,8 +197,8 @@ items:
   - id: fn-double-press-layer-switch
     title: "Fn double press switches F-keys and media controls"
     state: available
-    upstream: submitted
-    version: v3
+    upstream: merged
+    version: v5
     project: Linux kernel
     subsystem: HID / Touch Bar
     authors:
