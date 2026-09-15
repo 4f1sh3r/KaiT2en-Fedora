@@ -8,9 +8,10 @@ panel-specific enable sequence. These panels need three vendor DPCD setup
 writes, `DP_PSR_CRC_VERIFICATION` left clear, and a capture trigger at DPCD
 0x4d4.
 
-The patch adds that handling as an i915 DPCD quirk. It is limited to internal
-eDP sinks with the Apple OUI 00:10:fa on systems containing an Apple T2 (PCI
-106b:1801). Pre-T2 panels and external Apple sinks retain the existing PSR
+The patch adds that handling as an i915 DPCD quirk. Apple iGPUs report
+0x106b as their PCI subsystem vendor, which the quirk table uses to select
+the Apple sink entries; the quirk then applies only to internal eDP sinks
+with the Apple OUI 00:10:fa. External Apple sinks retain the existing PSR
 block. The same sink-side protocol may also be present on T1 and Apple silicon
 systems, but those systems remain unchanged because they have not been tested.
 
@@ -22,5 +23,7 @@ suspend/resume.
 On dual-GPU machines the internal panel must be driven by the Intel GPU; see
 `howto/06-configuring-gpus.md`.
 
-The test build uses the drm-tip-based submission copy unchanged. It also
-applies cleanly to Fedora's patched Linux 7.2.2 source tree.
+The test build uses the drm-tip-based v3 submission copy unchanged. It
+applies cleanly with `patch -p1` to Fedora's Linux 7.2.2 source tree
+(vanilla and Red Hat 7.2 patches do not touch i915), so the COPR kernel
+build picks it up on the 7.2 base.

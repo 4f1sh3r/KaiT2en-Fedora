@@ -1,7 +1,7 @@
-From 09328792610249dec2451e6cd244747e4a9e8236 Mon Sep 17 00:00:00 2001
+From e8e4b80d1ce9831acbb7b44572cba5816986df81 Mon Sep 17 00:00:00 2001
 From: Alexander Fischer <alexander.fischer@kait2en.org>
-Date: Sat, 29 Aug 2026 11:32:47 +0200
-Subject: [PATCH] drm/i915/psr: enable PSR on Apple T2 eDP panels
+Date: Tue, 15 Sep 2026 21:50:00 +0200
+Subject: [PATCH v3] drm/i915/psr: enable PSR on Apple T2 eDP panels
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -26,10 +26,12 @@ With the three setup writes, CRC verification disabled, and the 0x4d4
 trigger added to i915's existing PSR enable sequence, the tested panels
 enter PSR1.
 
-Implement this handling as an i915 DPCD quirk. Limit it to Apple-OUI
-eDP sinks on systems containing an Apple T2. All other Apple sinks
-retain the existing NO_PSR quirk. Override the VBT PSR flag for matching
-panels because Apple leaves it clear.
+Implement this handling as an i915 DPCD quirk. Apple iGPUs report
+0x106b (Apple) as their PCI subsystem vendor, so match that in the
+quirk table to select the Apple sink entries, and limit the quirk to
+eDP sinks with the Apple OUI. All other Apple sinks retain the
+existing NO_PSR quirk. Override the VBT PSR flag for matching panels
+because Apple leaves it clear.
 
 The same sink-side protocol may also be present on T1 and Apple silicon
 systems, but leave those systems unchanged until it has been tested
@@ -44,13 +46,21 @@ Tested-by: André Eikmeyer <andre.eikmeyer@kait2en.org>
 Tested-by: Yossef Osman <yossef.osman@proton.me>
 Signed-off-by: Alexander Fischer <alexander.fischer@kait2en.org>
 ---
- drivers/gpu/drm/i915/display/intel_psr.c    | 28 +++++++++++++++++--
- drivers/gpu/drm/i915/display/intel_quirks.c | 30 +++++++++++++++++++++
+Changes in v3:
+- Match the Apple PCI subsystem vendor in the DPCD quirk table and
+  drop the T2 PCI device probe from the hook (Lukas Wunner)
+
+Changes in v2:
+- Use pci_dev_present() instead of pci_get_device()/pci_dev_put(),
+  which also drops the local PCI_DEVICE_ID define (Lukas Wunner)
+---
+ drivers/gpu/drm/i915/display/intel_psr.c    | 28 +++++++++++++++++++--
+ drivers/gpu/drm/i915/display/intel_quirks.c | 24 ++++++++++++++++++
  drivers/gpu/drm/i915/display/intel_quirks.h |  1 +
- 3 files changed, 57 insertions(+), 2 deletions(-)
+ 3 files changed, 51 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
-index 5283649..be4c05e 100644
+index f490beb66..4e902aa76 100644
 --- a/drivers/gpu/drm/i915/display/intel_psr.c
 +++ b/drivers/gpu/drm/i915/display/intel_psr.c
 @@ -228,6 +228,9 @@ static bool psr_global_enabled(struct intel_dp *intel_dp)
@@ -122,7 +132,7 @@ index 5283649..be4c05e 100644
  
  static void intel_psr_enable_sink(struct intel_dp *intel_dp,
 diff --git a/drivers/gpu/drm/i915/display/intel_quirks.c b/drivers/gpu/drm/i915/display/intel_quirks.c
-index 33245f4..f289161 100644
+index 33245f44c..959b5fde1 100644
 --- a/drivers/gpu/drm/i915/display/intel_quirks.c
 +++ b/drivers/gpu/drm/i915/display/intel_quirks.c
 @@ -9,6 +9,7 @@
@@ -133,26 +143,20 @@ index 33245f4..f289161 100644
  #include "intel_quirks.h"
  
  static void intel_set_quirk(struct intel_display *display, enum intel_quirk_id quirk)
-@@ -100,6 +101,27 @@ static void quirk_disable_psr2(struct intel_display *display)
+@@ -100,6 +101,21 @@ static void quirk_disable_psr2(struct intel_display *display)
  	drm_info(display->drm, "PSR2 support not currently available for this setup, applying disable PSR2 quirk\n");
  }
  
-+#define PCI_DEVICE_ID_APPLE_T2_BRIDGE	0x1801
-+
 +static void quirk_apple_psr_handshake(struct intel_dp *intel_dp)
 +{
 +	struct intel_display *display = to_intel_display(intel_dp);
-+	struct pci_dev *t2;
 +
++	/*
++	 * intel_init_dpcd_quirks() is also called for external DP/USB4
++	 * ports; the Apple OUI is only relevant on internal eDP panels.
++	 */
 +	if (!intel_dp_is_edp(intel_dp))
 +		return;
-+
-+	t2 = pci_get_device(PCI_VENDOR_ID_APPLE,
-+			    PCI_DEVICE_ID_APPLE_T2_BRIDGE, NULL);
-+	if (!t2)
-+		return;
-+
-+	pci_dev_put(t2);
 +
 +	intel_set_dpcd_quirk(intel_dp, QUIRK_APPLE_PSR_HANDSHAKE);
 +	drm_info(display->drm, "Applying Apple PSR handshake quirk\n");
@@ -161,14 +165,14 @@ index 33245f4..f289161 100644
  struct intel_quirk {
  	int device;
  	int subsystem_vendor;
-@@ -286,6 +308,14 @@ static const struct intel_dpcd_quirk intel_dpcd_quirks[] = {
+@@ -286,6 +302,14 @@ static const struct intel_dpcd_quirk intel_dpcd_quirks[] = {
  		.sink_oui = SINK_OUI(0x00, 0x22, 0xb9),
  		.hook = quirk_disable_edp_panel_replay,
  	},
-+	/* Apple T2 eDP panels */
++	/* Apple eDP panels */
 +	{
 +		.device = DEVICE_ID_ANY,
-+		.subsystem_vendor = PCI_ANY_ID,
++		.subsystem_vendor = PCI_VENDOR_ID_APPLE,
 +		.subsystem_device = PCI_ANY_ID,
 +		.sink_oui = SINK_OUI(0x00, 0x10, 0xfa),
 +		.hook = quirk_apple_psr_handshake,
@@ -177,7 +181,7 @@ index 33245f4..f289161 100644
  
  void intel_init_quirks(struct intel_display *display)
 diff --git a/drivers/gpu/drm/i915/display/intel_quirks.h b/drivers/gpu/drm/i915/display/intel_quirks.h
-index 970a4fe..7b863d4 100644
+index 970a4fe52..7b863d408 100644
 --- a/drivers/gpu/drm/i915/display/intel_quirks.h
 +++ b/drivers/gpu/drm/i915/display/intel_quirks.h
 @@ -23,6 +23,7 @@ enum intel_quirk_id {
@@ -188,7 +192,6 @@ index 970a4fe..7b863d4 100644
  };
  
  void intel_init_quirks(struct intel_display *display);
-
-base-commit: 046bcac5ed22b09812cec3b0aef678195f1eae71
 -- 
 2.55.0
+
