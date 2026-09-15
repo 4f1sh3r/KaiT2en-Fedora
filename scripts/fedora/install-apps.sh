@@ -405,6 +405,7 @@ if [[ "$install_mode" == all ]]; then
 	install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
 	install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
 	install_rust_app "$REPO_ROOT/apps/t2-journal" "t2journal"
+	install_rust_app "$REPO_ROOT/apps/t2-remote" "t2-remote"
 	install_gpu_control
 	if ! "$REPO_ROOT/apps/t2-cpu-control/install.sh"; then
 		warn "t2-cpu-control installation failed; continuing"

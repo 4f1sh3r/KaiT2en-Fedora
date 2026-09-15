@@ -2,7 +2,7 @@ CARGO ?= cargo
 INSTALL ?= install
 PREFIX ?= /usr/local
 
-BIN_NAMES := t2journal
+BIN_NAMES := t2remote
 BIN_DIR := $(PREFIX)/bin
 
 .PHONY: build test check-build install uninstall clean
