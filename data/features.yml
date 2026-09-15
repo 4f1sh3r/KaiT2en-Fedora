@@ -7,8 +7,6 @@
 # state:    in-progress | planned | available    — what a user gets today
 # upstream: downstream | preparing | submitted | merged | revoked | rejected | stale
 #
-# The two are independent: audio DSP is worked on but will never go upstream, and
-# a merged kernel patch may not be user-visible at all.
 #
 # `link` makes both the title and the upstream label clickable. It is either an
 # https:// URL or a page below docs/, e.g. post-install/audio-dsp.md. Once
@@ -21,7 +19,6 @@
 # are announced at all.
 
 items:
-  # --- Being worked on -------------------------------------------------------
 
   - id: brcmfmac-pm-max-power-management
     title: "Wi-Fi PM_MAX power management"
@@ -40,22 +37,20 @@ items:
 
   - id: audio-dsp
     title: "Audio DSP"
-    state: in-progress
+    state: available
     upstream: downstream
     project: KAIT2EN Fedora
     subsystem: t2bce_audio
     authors:
       - deqrocks
     link: post-install/audio-dsp.md
-    updated: "2026-09-12"
+    updated: "2026-09-15"
     notes: >-
-      Model-specific speaker DSP: equalization, crossovers, compressor,
-      limiters and crosstalk cancellation as PipeWire filter-chain graphs.
-      Tied to Apple's hardware, so this stays downstream.
+      Reverse engineered T2 input/output audio DSP and exposed it to ALSA.
 
   - id: package-c-states
     title: "Package C-states"
-    state: in-progress
+    state: available
     upstream: downstream
     project: KAIT2EN Fedora
     subsystem: Power management
@@ -65,8 +60,6 @@ items:
     notes: >-
       Getting the platform into deep package C-states so idle power draw and
       battery life come closer to macOS.
-    help: >-
-      Powertop and turbostat readings from different T2 models.
 
   - id: apple-t2-panel-self-refresh
     title: "Panel Self Refresh on Apple T2 displays"
@@ -83,9 +76,6 @@ items:
       Enables PSR on Apple T2 eDP panels using the sink-specific DPCD setup
       and capture sequence, reducing idle display power and enabling deeper
       package C-states up to PC10.
-
-
-  # --- Available -------------------------------------------------------------
 
   - id: keyboard-backlight-reenumeration
     title: "Keyboard backlight after re-enumeration"
@@ -221,7 +211,7 @@ items:
     notes: Trackpad and keyboard share the same VID/PID. Use the existing APPLE_IGNORE_MOUSE quirk.
 
   - id: dgpu-wakeup-15-1
-    title: "dGPU wakes up on MacBookPro15,1"
+    title: "dGPU dies up on MacBookPro15,1"
     state: available
     upstream: merged
     version: v1
