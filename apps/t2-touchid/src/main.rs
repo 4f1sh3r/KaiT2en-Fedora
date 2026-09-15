@@ -176,6 +176,15 @@ fn main() -> Result<()> {
         log("fprintd is asking for a finger");
         prompt.set(State::Waiting);
 
+        // The SEP reports an empty inventory while its biometric keybag is
+        // still locked (no password has unlocked it since the T2 last
+        // powered on). That can clear without the bridge restarting, so an
+        // empty result is retried on every prompt instead of being cached
+        // for the life of the session.
+        if identities.is_empty() {
+            (user_id, identities) = find_fingers(session.as_mut().unwrap(), user_id);
+        }
+
         // One touch is enough: the finger is already enrolled in the SEP.
         // Sent once per opening; repeating it mid-enrolment resets its progress.
         if !stages_set {
@@ -196,7 +205,13 @@ fn main() -> Result<()> {
 /// that has some when none was configured or the configured one has none.
 fn find_fingers(session: &mut Session, configured: u32) -> (u32, Vec<Identity>) {
     let read = |session: &mut Session, uid: u32| -> Vec<Identity> {
-        session.read_identities(uid).map(<[Identity]>::to_vec).unwrap_or_default()
+        match session.read_identities(uid) {
+            Ok(found) => found.to_vec(),
+            Err(error) => {
+                log(&format!("could not read the identity inventory for uid {uid}: {error:#}"));
+                Vec::new()
+            }
+        }
     };
     if configured != 0 {
         let found = read(session, configured);
@@ -213,7 +228,11 @@ fn find_fingers(session: &mut Session, configured: u32) -> (u32, Vec<Identity>) 
             return (uid, found);
         }
     }
-    log("no macOS user on this Mac has a finger enrolled");
+    log(
+        "no macOS user on this Mac has a finger enrolled, or the SEP is \
+         still locked because no password has unlocked it since the T2 \
+         last powered on; log into macOS once to fix that",
+    );
     (configured, Vec::new())
 }
 

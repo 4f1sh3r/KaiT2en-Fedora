@@ -60,3 +60,13 @@ have Touch ID, and then to the **macOS** id (501 and up), not the Linux one.
 
 Nothing else is needed from macOS. The keybag and catacomb path is a separate
 matter: it releases keys, and a login only needs the SEP's verdict.
+
+## Empty inventory on an otherwise enrolled Mac
+
+`USER_IDENTITIES` answers empty and `SKS_LOCK_STATE` reads locked until the
+account password has unlocked the SEP's biometric keybag once since the T2
+itself last powered on, the same before-first-unlock gate iOS and macOS use.
+Rebooting or shutting down the x86 side does not power-cycle the T2; it only
+sleeps bridgeOS, so this survives Linux reboots and only needs doing again
+after a real T2 power loss. Log into macOS once and the bridge picks it up on
+the next prompt, no restart needed.
