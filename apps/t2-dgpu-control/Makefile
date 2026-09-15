@@ -42,7 +42,7 @@ define install_unit
 endef
 
 build:
-	$(CARGO) build --release
+	$(CARGO) build --release --locked
 
 check-build:
 	@test -x "$(BIN_SRC)" || { echo "error: $(BIN_SRC) is missing; run 'make build' as your normal user first" >&2; exit 1; }

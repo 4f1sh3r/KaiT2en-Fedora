@@ -7,8 +7,6 @@
 # state:    in-progress | planned | available    — what a user gets today
 # upstream: downstream | preparing | submitted | merged | revoked | rejected | stale
 #
-# The two are independent: audio DSP is worked on but will never go upstream, and
-# a merged kernel patch may not be user-visible at all.
 #
 # `link` makes both the title and the upstream label clickable. It is either an
 # https:// URL or a page below docs/, e.g. post-install/audio-dsp.md. Once
@@ -21,7 +19,6 @@
 # are announced at all.
 
 items:
-  # --- Being worked on -------------------------------------------------------
 
   - id: brcmfmac-pm-max-power-management
     title: "Wi-Fi PM_MAX power management"
@@ -40,23 +37,20 @@ items:
 
   - id: audio-dsp
     title: "Audio DSP"
-    state: in-progress
+    state: available
     upstream: downstream
     project: KAIT2EN Fedora
     subsystem: t2bce_audio
     authors:
       - deqrocks
     link: post-install/audio-dsp.md
-    updated: "2026-08-03"
+    updated: "2026-09-15"
     notes: >-
-      Speaker protection and FIR filter profiles that make the internal speakers
-      usable at full volume. Tied to Apple's hardware, so this stays downstream.
-    help: >-
-      FIRs from machines not yet supported.
+      Reverse engineered T2 input/output audio DSP and exposed it to ALSA.
 
   - id: package-c-states
     title: "Package C-states"
-    state: in-progress
+    state: available
     upstream: downstream
     project: KAIT2EN Fedora
     subsystem: Power management
@@ -66,27 +60,22 @@ items:
     notes: >-
       Getting the platform into deep package C-states so idle power draw and
       battery life come closer to macOS.
-    help: >-
-      Powertop and turbostat readings from different T2 models.
 
   - id: apple-t2-panel-self-refresh
     title: "Panel Self Refresh on Apple T2 displays"
     state: in-progress
     upstream: submitted
-    version: v1
+    version: v2
     project: Linux kernel
     subsystem: DRM / i915
     authors:
       - 4f1sh3r
-    link: "https://lore.kernel.org/all/20260829161622.11396-1-alexander.fischer@kait2en.org/"
-    updated: "2026-08-29"
+    link: "https://lore.kernel.org/all/20260907083753.41393-1-alexander.fischer@kait2en.org/"
+    updated: "2026-09-07"
     notes: >-
       Enables PSR on Apple T2 eDP panels using the sink-specific DPCD setup
       and capture sequence, reducing idle display power and enabling deeper
       package C-states up to PC10.
-
-
-  # --- Available -------------------------------------------------------------
 
   - id: keyboard-backlight-reenumeration
     title: "Keyboard backlight after re-enumeration"
@@ -136,7 +125,7 @@ items:
   - id: touchbar-runtime-pm-deadlock
     title: "Touch Bar suspend and resume without PM deadlock"
     state: available
-    upstream: submitted
+    upstream: merged
     version: v1
     project: Linux kernel
     subsystem: HID / Touch Bar
@@ -198,8 +187,8 @@ items:
   - id: fn-double-press-layer-switch
     title: "Fn double press switches F-keys and media controls"
     state: available
-    upstream: submitted
-    version: v3
+    upstream: merged
+    version: v5
     project: Linux kernel
     subsystem: HID / Touch Bar
     authors:
@@ -222,7 +211,7 @@ items:
     notes: Trackpad and keyboard share the same VID/PID. Use the existing APPLE_IGNORE_MOUSE quirk.
 
   - id: dgpu-wakeup-15-1
-    title: "dGPU wakes up on MacBookPro15,1"
+    title: "dGPU dies up on MacBookPro15,1"
     state: available
     upstream: merged
     version: v1
@@ -291,3 +280,33 @@ items:
     notes: >-
       Runtime GPU switching is available downstream on MacBookPro15,1. The
       apple-gmux, amdgpu and ALSA HDA changes were submitted upstream as v3.
+
+  - id: t2-ave-hardware-encode
+    title: "Hardware video encoding (T2 AVE)"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2bce_ave
+    authors:
+      - deqrocks
+    link: post-install/hardware-video-encoding.md
+    updated: "2026-09-11"
+    notes: >-
+      Exposes the T2 Apple Video Encoder for hardware HEVC encoding.
+      Usable today through the t2-ave HandBrake build https://github.com/deqrocks/HandBrake
+      or ffmpeg.
+
+  - id: touch-id
+    title: "Touch ID login"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2-touchid / BiometricKit
+    authors:
+      - deqrocks
+    link: post-install/touch-id.md
+    updated: "2026-09-11"
+    notes: >-
+      The finger enrolled under macOS unlocks login and sudo on Linux through
+      stock fprintd, with nothing patched. Aimed at a libfprint driver upstream.
+      Enrollment on Linux is prepared through T2sep, but not implemented.

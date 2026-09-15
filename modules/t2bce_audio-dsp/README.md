@@ -1,39 +1,36 @@
 # Apple T2 Audio DSP
 
-PipeWire/WirePlumber DSP graphs and FIR files for Apple T2 Macs using t2bce_audio as a driver on KaiT2en Fedora.
+PipeWire/WirePlumber DSP graphs for the internal speakers of Apple T2 Macs
+using t2bce_audio as a driver on KaiT2en Fedora.
 
-The profiles in `firs/` are installed by `scripts/fedora/install-dsp.sh`.
-FIR files originate from lemmyg's `t2-apple-audio-dsp`, Asahi Linux's
-[`asahi-audio`](https://github.com/AsahiLinux/asahi-audio) project and our own measurements.
-The corresponding MIT license is included with each profile.
+The speaker graphs reproduce the model-specific processing that macOS applies
+to the internal speakers: equalization and crossovers as `bq_raw` biquads,
+the multiband compressor as lsp `mb_compressor_stereo`, the limiters as lsp
+`limiter_stereo`, crosstalk cancellation as a side channel FIR
+(`xtc-side-*.wav`) and virtual bass as bankstown. The graphs are generated;
+edit them only through the KaiT2en maintainers.
 
-Supported profiles:
+The profiles in `profiles/` are installed by `scripts/fedora/install-dsp.sh`
+to `/usr/share/kait2en/audio-dsp/<profile>/`, which also writes the
+WirePlumber configuration
+`/etc/wireplumber/wireplumber.conf.d/51-kait2en-t2-dsp.conf`.
 
-- `MacBookAir8,1` -> `8_1`
-- `MacBookAir8,2` -> `8_2`
-- `MacBookAir9,1` -> `9_1`
-- `MacBookPro15,1` -> `15_1`
-- `MacBookPro15,2` -> `15_2`
-- `MacBookPro15,4` -> `15_4`
-- `MacBookPro16,1` -> `16_1`
-- `MacBookPro16,2` -> `16_2`
-- `MacBookPro16,3` -> `16_3`
-- `MacBookPro16,4` -> `16_4`
+| Product | Profile |
+|---|---|
+| MacBookAir8,1 | `8_1` |
+| MacBookAir8,2 | `8_2` |
+| MacBookAir9,1 | `9_1` |
+| MacBookPro15,1 | `15_1` |
+| MacBookPro15,2 | `15_2` |
+| MacBookPro15,3 | `15_3` |
+| MacBookPro15,4 | `15_4` |
+| MacBookPro16,1 | `16_1` |
+| MacBookPro16,2 | `16_2` |
+| MacBookPro16,3 | `16_3` |
+| MacBookPro16,4 | `16_4` |
+| iMac20,1 | `imac20_1` |
+| iMacPro1,1 | `imacpro1_1` |
 
-The installer copies the matching files to:
-
-```text
-/usr/share/kait2en/audio-dsp/<profile>/
-```
-
-It generates a WirePlumber configuration at:
-
-```text
-/etc/wireplumber/wireplumber.conf.d/51-kait2en-t2-dsp.conf
-```
-
-The graph target is rewritten at install time to match the detected Apple T2
-audio PCI device and KaiT2en UCM sink/source names.
 
 Required Fedora packages are installed by `install-dsp.sh`, not by the common
 dependency installer:
@@ -47,4 +44,13 @@ dependency installer:
 - `lsp-plugins-lv2`
 - `lv2-swh-plugins`
 
-License: see `LICENSE`.
+## Copyright
+
+Copyright (C) 2026 André Eikmeyer, KAIT2EN. GPL-3.0-or-later with the
+attribution term of `LICENSING.md`.
+
+## Thanks
+
+lemmyg's [t2-apple-audio-dsp](https://github.com/lemmyg/t2-apple-audio-dsp)
+did the pioneering work: the first PipeWire DSP graphs for T2 Macs, and the
+template this module started from.

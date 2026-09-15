@@ -28,7 +28,7 @@ USER_ICON_THEME_DIR := $(USER_PREFIX)/share/icons/hicolor
 all: build
 
 build:
-	$(CARGO) build --release
+	$(CARGO) build --release --locked
 
 install:
 	@if systemctl list-unit-files t2fanrd.service >/dev/null 2>&1; then systemctl disable --now t2fanrd.service || true; fi

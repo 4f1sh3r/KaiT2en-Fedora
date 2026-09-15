@@ -1,8 +1,9 @@
 # KAIT2EN applications
 
-KAIT2EN includes several desktop applications for monitoring and configuring
-T2 Mac hardware. The installer selects hardware-specific applications where
-necessary. The apps show up in the app drawer after installation.
+KAIT2EN includes several applications for monitoring and configuring T2 Mac
+hardware. The installer selects hardware-specific applications where
+necessary. Graphical apps show up in the app drawer after installation. T2
+Journal is used from a terminal.
 
 ## T2 Fan Control
 
@@ -37,6 +38,29 @@ Presents the kernel device hierarchy together with runtime power-management
 state and diagnostics. It helps identify devices that remain active and keep
 the system from reaching deeper power-saving states.
 
+## T2 Journal
+
+Fetches Apple T2 bridgeOS logs over the internal `Apple T2 Bridge` network
+link and merges them chronologically with the Linux journal. It can select one
+boot or all retained boots, filter by regular expression or source, and emit
+text or JSONL. The first query downloads a BridgeOS snapshot automatically; use
+`t2journal refresh` to replace it explicitly.
+
+The link is set up by the installer and managed by `kait2en-t2-remote`, the
+same service that holds the T2 video encoder open. It is disconnected before
+suspend and reconnected after resume, so there is nothing to configure.
+
+Typical queries are:
+
+```bash
+t2journal -b
+t2journal -b -1 --grep 'suspend|watchdog'
+t2journal --allboots --source t2
+t2journal -b --output jsonl > merged.jsonl
+```
+
+Run `t2journal --help` for all filtering and refresh options.
+
 ## T2 Power Tune
 
 Scans for available PCIe ASPM, runtime power-management, wakeup, LTR, and other
@@ -68,4 +92,3 @@ Replaces the standard Touch Bar interface with a configurable control center.
 It provides function and media keys, brightness and volume controls,
 application-aware actions, system information, and optional widgets.
 Touchbar Configurator is a GUI app that can be used for in-depth customization.
-

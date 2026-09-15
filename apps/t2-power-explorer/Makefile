@@ -22,7 +22,7 @@ POLICY_DIR ?= /usr/share/polkit-1/actions
 .PHONY: build check-build install uninstall clean
 
 build:
-	$(CARGO) build --release
+	$(CARGO) build --release --locked
 
 check-build:
 	@test -x "$(BIN_SRC)" || { echo "error: $(BIN_SRC) is missing; run 'make build' as your normal user first" >&2; exit 1; }

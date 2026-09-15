@@ -2,6 +2,7 @@
 name = "t2-fancontrol-gtk"
 version = "0.0.1-afi"
 edition = "2024"
+license = "GPL-3.0-or-later"
 
 [dependencies.adw]
 package = "libadwaita"

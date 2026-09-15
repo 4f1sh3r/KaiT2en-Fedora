@@ -4,21 +4,13 @@ t2-journal can fetch Apple T2 bridgeOS logs and merge them with a selected
 Linux boot. The application keeps one parsed BridgeOS snapshot until you run
 `t2journal refresh`. A refresh atomically replaces the kept T2 logs. 
 
-## Manage NCM Connection
+## T2 link
 
-Run `scripts/fedora/install-networkmanager-rules.sh` to remove services we 
-implemented to keep ncm hidden. The run 
-```bash
-sudo rm /etc/udev/rules.d/90-kait2en-t2-network.rules
-reboot
-```
-
-After reboot go to your network settings and connect ncm with IPv6 link local.
-Deactivate IPv4 for ncm. Since this t2-journal is still WIP, problems are
-expected. Like the computer refusing to suspend because t2bce is not yet
-prepared. Release or deactivate the connection to be able to suspend.
-Or revert to previous state by running `scripts/fedora/install-networkmanager-rules.sh`.
-It will reinstall the udev rule to unmanage ncm.
+The T2 is reached over the `Apple T2 Bridge` NetworkManager profile that
+`scripts/fedora/install-t2-remote.sh` creates on the internal CDC-NCM
+interface. `t2remote`, built from this crate and run by
+`kait2en-t2-remote.service`, holds the RemoteXPC services and disconnects
+the link around suspend. No manual network setup is needed.
 
 ## Build & Install
 
@@ -61,6 +53,6 @@ The default snapshot is
 `~/.local/state/t2-journal/bridgeos.jsonl`. A refresh verifies this destination
 before contacting the T2, writes one fixed `bridgeos.jsonl.partial`, and
 atomically replaces the snapshot after a successful parse.
-The ten most recently successful RemoteXPC discovery and service ports are kept
-in `remote-ports` beside the snapshot. They are tried before a full port scan
-and replaced in most-recently-used order.
+RemoteXPC discovery first connects directly to the T2's fixed port `59602`
+and reads the current sysdiagnose service port from its service directory.
+If direct discovery fails, it falls back to a dynamic-port scan because we don't know yet if `59602` is universal.

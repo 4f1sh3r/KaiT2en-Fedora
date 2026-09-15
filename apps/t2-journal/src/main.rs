@@ -1,17 +1,14 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 André Eikmeyer <andre.eikmeyer@kait2en.org>
 
 mod archive;
-mod discovery;
 mod historical;
 mod journal;
 mod noise;
-mod port_cache;
 mod progress;
 mod record;
-mod remote;
 mod store;
 mod unified;
-mod xpc;
 
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -19,6 +16,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use regex::{Regex, RegexBuilder};
+use t2_bridgexpc::{discovery, remote};
 
 use record::Record;
 
@@ -115,22 +113,14 @@ fn refresh(args: &Refresh, state_file: PathBuf) -> Result<()> {
     } else {
         let interface = discovery::interface(args.interface.clone())?;
         let host = discovery::host(&interface, args.host.clone())?;
-        let cache_path = port_cache::path_for(&state_file)?;
-        let cached = port_cache::read(&cache_path)
-            .with_context(|| format!("read {}", cache_path.display()))?;
-        let mut discovered = None;
-        if !cached.is_empty() {
-            eprintln!("Trying {} cached RemoteXPC ports", cached.len());
-            for &candidate in &cached {
-                if let Ok(found) = remote::discover_cached_service(&interface, host, candidate) {
-                    discovered = Some(found);
-                    break;
-                }
-            }
-        }
-        let discovered = match discovered {
-            Some(found) => found,
-            None => {
+        eprintln!(
+            "Trying T2 RemoteXPC discovery on [{host}%{interface}]:{}",
+            remote::DISCOVERY_PORT
+        );
+        let discovered = match remote::discover_direct_service(&interface, host) {
+            Ok(found) => found,
+            Err(error) => {
+                eprintln!("Direct RemoteXPC discovery failed: {error:#}");
                 eprintln!("Scanning T2 RemoteXPC services on [{host}%{interface}]");
                 let mut scan = progress::Bar::new("RemoteXPC scan");
                 let found = remote::discover_service(&interface, host, |current, total| {
@@ -140,12 +130,10 @@ fn refresh(args: &Refresh, state_file: PathBuf) -> Result<()> {
                 found
             }
         };
-        port_cache::remember(
-            &cache_path,
-            &cached,
-            &[discovered.discovery_port, discovered.service_port],
-        )
-        .with_context(|| format!("write {}", cache_path.display()))?;
+        eprintln!(
+            "RemoteXPC discovery succeeded on port {}",
+            discovered.discovery_port
+        );
         let port = discovered.service_port;
         eprintln!("Fetching com.apple.sysdiagnose.remote from port {port}");
         let path = work.path().join("sysdiagnose.tar.gz");
@@ -247,7 +235,7 @@ fn matches_source(record: &Record, source: Option<Source>) -> bool {
 
 fn run() -> Result<i32> {
     let cli = Cli::parse();
-    let state_file = discovery::state_file(cli.state_file.clone())?;
+    let state_file = t2_journal::state::state_file(cli.state_file.clone())?;
     if cli.list_boots {
         return journal::list_boots();
     }
