@@ -1,0 +1,14 @@
+Source: t2-touchid
+Section: admin
+Priority: optional
+Maintainer: KaiT2en maintainers <andre.eikmeyer@kait2en.org>
+Build-Depends: debhelper-compat (= 13), cargo, rustc
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+
+Package: t2-touchid
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, t2-services-common (>= 0.1.0), fprintd, libfprint-2-2
+Description: Apple T2 Touch ID bridge for fprintd
+ Independently packaged T2 functionality. See /usr/share/doc/t2-touchid
+ for hardware and integration requirements.

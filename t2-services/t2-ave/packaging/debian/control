@@ -1,0 +1,14 @@
+Source: t2-ave
+Section: admin
+Priority: optional
+Maintainer: KaiT2en maintainers <andre.eikmeyer@kait2en.org>
+Build-Depends: debhelper-compat (= 13), cargo, rustc
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+
+Package: t2-ave
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, t2-services-common (>= 0.1.0), kmod
+Description: Apple T2 AVE service
+ Independently packaged T2 functionality. See /usr/share/doc/t2-ave
+ for hardware and integration requirements.

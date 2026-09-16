@@ -1,0 +1,14 @@
+Source: t2-services-common
+Section: admin
+Priority: optional
+Maintainer: KaiT2en maintainers <andre.eikmeyer@kait2en.org>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+
+Package: t2-services-common
+Architecture: all
+Depends: ${misc:Depends}, ${shlibs:Depends}, network-manager, systemd, iproute2, iputils-ping, coreutils, bash
+Description: Shared Apple T2 network and suspend integration
+ Independently packaged T2 functionality. See /usr/share/doc/t2-services-common
+ for hardware and integration requirements.

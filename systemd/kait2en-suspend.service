@@ -1,7 +1,7 @@
 [Unit]
 Description=Kait2en T2 suspend and resume hardware fixes
 Before=sleep.target
-After=NetworkManager.service kait2en-t2-remote.service
+After=NetworkManager.service t2-services-suspend.service
 StopWhenUnneeded=yes
 
 [Service]

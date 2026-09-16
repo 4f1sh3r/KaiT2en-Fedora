@@ -1,0 +1,16 @@
+#!/bin/sh
+if [ "$1" = configure ]; then
+    if [ -r /usr/libexec/t2-services/package-actions ]; then
+        . /usr/libexec/t2-services/package-actions
+        if [ -d /run/systemd/system ]; then
+            t2_run systemctl daemon-reload
+            if [ -z "${2:-}" ]; then t2_run systemctl preset kait2en-t2-touchid.service; fi
+            t2_run systemctl try-restart kait2en-t2-touchid.service
+        fi
+        t2_summary
+    else
+        echo '[t2-services] missing package reporter; service activation skipped' >&2
+    fi
+fi
+#DEBHELPER#
+exit 0

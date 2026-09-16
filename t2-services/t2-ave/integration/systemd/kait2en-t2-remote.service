@@ -1,0 +1,16 @@
+[Unit]
+Description=KaiT2en T2 AVE service
+After=NetworkManager.service network-online.target
+Wants=NetworkManager.service network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/sbin/modprobe t2bce_ave
+ExecStart=@BINDIR@/t2remote daemon
+Restart=on-failure
+RestartSec=2
+UMask=0007
+Group=root
+
+[Install]
+WantedBy=multi-user.target

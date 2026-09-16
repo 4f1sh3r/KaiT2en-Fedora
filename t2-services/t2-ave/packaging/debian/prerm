@@ -1,0 +1,12 @@
+#!/bin/sh
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    if [ -r /usr/libexec/t2-services/package-actions ]; then
+        . /usr/libexec/t2-services/package-actions
+        t2_run systemctl disable --now kait2en-t2-remote.service
+        t2_summary
+    else
+        echo '[t2-services] missing package reporter; service cleanup skipped' >&2
+    fi
+fi
+#DEBHELPER#
+exit 0

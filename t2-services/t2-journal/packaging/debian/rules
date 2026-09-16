@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+override_dh_auto_build:
+	$(MAKE) -C t2-services/t2-journal build CARGO_FLAGS=--frozen
+override_dh_auto_test:
+	$(MAKE) -C t2-services/t2-journal test CARGO_FLAGS=--frozen
+override_dh_auto_install:
+	$(MAKE) -C t2-services/t2-journal install PREFIX=/usr DESTDIR=$(CURDIR)/debian/t2-journal 
+override_dh_auto_clean:
+	$(MAKE) -C t2-services/t2-journal clean
+# Lifecycle actions are explicit and collect errors rather than aborting.
+override_dh_installsystemd:
+	dh_installsystemd --no-scripts

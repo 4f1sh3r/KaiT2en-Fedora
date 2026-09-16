@@ -5,16 +5,80 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
 
+# One error ledger for the complete installation, inherited by child scripts.
+# A failing atomic step stops only that step; run_step continues its siblings.
+INSTALL_REPORT_OWNER=0
+if [[ -z "${KAIT2EN_INSTALL_ERRORS:-}" ]]; then
+	KAIT2EN_INSTALL_ERRORS=$(mktemp /tmp/kait2en-install-errors.XXXXXX)
+	export KAIT2EN_INSTALL_ERRORS
+	INSTALL_REPORT_OWNER=1
+fi
+
+record_error() {
+	local message="$*"
+	printf '[kait2en] error: %s\n' "$message" >&2
+	if ! printf '%s: %s\n' "${0##*/}" "$message" >>"$KAIT2EN_INSTALL_ERRORS"; then
+		printf '[kait2en] error: cannot append to error report %s\n' "$KAIT2EN_INSTALL_ERRORS" >&2
+	fi
+}
+
+installation_summary() {
+	if [[ -s "$KAIT2EN_INSTALL_ERRORS" ]]; then
+		printf '[kait2en] installation completed with errors/warnings:\n' >&2
+		cat "$KAIT2EN_INSTALL_ERRORS" >&2
+		printf '[kait2en] saved report: %s\n' "$KAIT2EN_INSTALL_ERRORS" >&2
+		return 1
+	fi
+	info "installation completed without recorded errors"
+}
+
+installer_exit() {
+	local status=$1
+	trap - ERR EXIT
+	if (( INSTALL_REPORT_OWNER )); then
+		installation_summary || status=1
+	fi
+	exit "$status"
+}
+
+trap 'record_error "command failed (status $?) at ${BASH_SOURCE[0]:-$0}:$LINENO: $BASH_COMMAND"' ERR
+trap 'installer_exit "$?"' EXIT
+
+run_step() {
+	local label=$1
+	shift
+	info "$label"
+	# Do not put the subshell in an if/! expression: Bash would then disable
+	# errexit inside shell functions and execute unsafe dependent commands.
+	set +e
+	(
+		set -Eeuo pipefail
+		INSTALL_REPORT_OWNER=0
+		# Parent cleanup (e.g. restoring the DKMS transaction hook) belongs to
+		# the whole installer, not to each individual step.
+		trap 'installer_exit "$?"' EXIT
+		"$@"
+	)
+	STEP_STATUS=$?
+	set -e
+	if (( STEP_STATUS != 0 )); then
+		record_error "$label failed (status $STEP_STATUS); continuing with independent steps"
+	fi
+	return 0
+}
+
 info() {
 	printf '[kait2en] %s\n' "$*"
 }
 
 warn() {
 	printf '[kait2en] warning: %s\n' "$*" >&2
+	printf '%s: warning: %s\n' "${0##*/}" "$*" >>"$KAIT2EN_INSTALL_ERRORS" ||
+		printf '[kait2en] error: cannot write warning report\n' >&2
 }
 
 fail() {
-	printf '[kait2en] error: %s\n' "$*" >&2
+	record_error "$*"
 	exit 1
 }
 

@@ -1,0 +1,14 @@
+Source: t2-journal
+Section: admin
+Priority: optional
+Maintainer: KaiT2en maintainers <andre.eikmeyer@kait2en.org>
+Build-Depends: debhelper-compat (= 13), cargo, rustc
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+
+Package: t2-journal
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, t2-services-common (>= 0.1.0), systemd
+Description: Apple T2 bridgeOS and Linux journal reader
+ Independently packaged T2 functionality. See /usr/share/doc/t2-journal
+ for hardware and integration requirements.

@@ -55,7 +55,6 @@ disable_dkms_post_transaction() {
 	printf 'post_transaction=""\n' >"$tmp"
 	install -o root -g root -m 0644 "$tmp" "$DKMS_POST_TRANSACTION_OVERRIDE"
 	rm -f "$tmp"
-	trap restore_dkms_post_transaction EXIT
 }
 
 install_dkms_kernel_hook() {
@@ -215,11 +214,15 @@ copy_module_source() {
 		-cf - . | tar -C "$dst" -xf -
 
 	if [[ "$name" == "t2bce_stack" ]]; then
-		local component
+		local component component_src
 		for component in t2bce_dma t2bce_core t2bce_vhci t2bce_audio t2bce_ave; do
+			component_src="$REPO_ROOT/modules/$component"
+			if [[ "$component" == t2bce_ave ]]; then
+				component_src="$REPO_ROOT/t2-services/t2-ave/kernel/t2bce_ave"
+			fi
 			info "staging $component in $dst"
 			install -d -o root -g root -m 0755 "$dst/$component"
-			tar -C "$REPO_ROOT/modules/$component" \
+			tar -C "$component_src" \
 				--exclude='.git' \
 				--exclude='*.ko' \
 				--exclude='*.o' \
@@ -248,26 +251,31 @@ install_module() {
 		info "registering $name/$version with DKMS"
 		dkms add -m "$name" -v "$version"
 	fi
-	dkms build -m "$name" -v "$version" -k "$kernel"
+	# Rebuild same-version source updates without uninstalling the working module
+	# before the replacement has compiled successfully.
+	dkms build --force -m "$name" -v "$version" -k "$kernel"
 	dkms install --no-depmod --force -m "$name" -v "$version" -k "$kernel"
 	if ! dkms_module_version_installed "$name" "$version"; then
 		fail "DKMS did not install $name/$version for kernel $(kernel_release)"
 	fi
 }
 
-install_dkms_kernel_hook
-disable_dkms_post_transaction
-migrate_keyboard_backlight_state
-remove_legacy_dkms_modules
-remove_repo_dkms_modules
+run_step "install DKMS kernel hook" install_dkms_kernel_hook
+run_step "defer DKMS post-transaction hook" disable_dkms_post_transaction
+trap 'status=$?; restore_dkms_post_transaction || record_error "could not restore DKMS post-transaction hook"; installer_exit "$status"' EXIT
+run_step "migrate keyboard backlight state" migrate_keyboard_backlight_state
+# Do not remove working modules before their replacements have built.
 
 for module in "${MODULES[@]}"; do
-	install_module "$module"
+	run_step "install DKMS module $module" install_module "$module"
+	if [[ "$module" == t2bce_stack ]] && (( STEP_STATUS == 0 )); then
+		run_step "retire old DKMS packages" remove_legacy_dkms_modules
+	fi
 done
 
-depmod -a "$(kernel_release)"
-restore_dkms_post_transaction
-trap - EXIT
+run_step "refresh module dependencies" depmod -a "$(kernel_release)"
+run_step "restore DKMS post-transaction hook" restore_dkms_post_transaction
+trap 'installer_exit "$?"' EXIT
 
 info "DKMS modules installed"
 info "initramfs rebuild is handled by rebuild-initramfs.sh"

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import dbus, { MessageBus } from 'dbus-next';
 
-// State broadcast by the T2 Touch ID bridge (apps/t2-touchid) on the system
+// State broadcast by the T2 Touch ID bridge (t2-services/t2-touchid) on the system
 // bus while fprintd is asking for a finger. 'idle' means no prompt is active.
 export type TouchIdState = 'idle' | 'waiting' | 'scanning' | 'matched' | 'retry' | 'failed';
 
