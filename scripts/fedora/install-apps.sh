@@ -174,7 +174,7 @@ install_react_drm() {
 	local missing_groups=()
 	local service_dir service_file temporary_file env_q workdir_q start_q detach_q
 	local app_dir launcher_file launcher_tmp
-	local desktop extension_uuid extension_src extension_dst
+	local desktop extension_uuid extension_src extension_base extension_dst
 	if ! has_t2_touchbar_model; then
 		return
 	fi
@@ -226,13 +226,16 @@ install_react_drm() {
 	)
 	if [[ "$desktop" == *gnome* ]]; then
 		require_command gnome-extensions gsettings
-		extension_dst="$target_home/.local/share/gnome-shell/extensions/$extension_uuid"
+		extension_base="$target_home/.local/share/gnome-shell/extensions"
+		extension_dst="$extension_base/$extension_uuid"
 		info "installing Window Monitor Pro for react-drm"
+		install -d -o "$target_user" -g "$target_group" -m 0755 "$extension_base"
 		install -d -o "$target_user" -g "$target_group" -m 0755 "$extension_dst"
 		install -o "$target_user" -g "$target_group" -m 0644 \
 			"$extension_src/extension.js" \
 			"$extension_src/metadata.json" \
 			"$extension_dst/"
+		chown -R "$target_user:$target_group" "$target_home/.local/share/gnome-shell"
 		run_as_target gsettings set org.gnome.shell disable-user-extensions false
 		if ! run_as_target gnome-extensions enable "$extension_uuid"; then
 			info "Window Monitor Pro will be enabled after the next login"
