@@ -38,4 +38,4 @@ requirement and adds no restriction beyond section 7(b).
 
 - `third-party/react-drm` carries its own license.
 - Vendored third-party code (e.g. `t2-services/t2-journal/libs/macos-unifiedlogs/`,
-  `third_party/hex2hcd/`) keeps its upstream license.
+  `third-party/hex2hcd/`) keeps its upstream license.
