@@ -262,7 +262,16 @@ install_module() {
 
 run_step "install DKMS kernel hook" install_dkms_kernel_hook
 run_step "defer DKMS post-transaction hook" disable_dkms_post_transaction
-trap 'status=$?; restore_dkms_post_transaction || record_error "could not restore DKMS post-transaction hook"; installer_exit "$status"' EXIT
+installer_exit_trap() {
+	local status=$?
+
+	restore_dkms_post_transaction ||
+		record_error "could not restore DKMS post-transaction hook"
+
+	installer_exit "$status"
+}
+
+trap installer_exit_trap EXIT
 run_step "migrate keyboard backlight state" migrate_keyboard_backlight_state
 # Do not remove working modules before their replacements have built.
 
