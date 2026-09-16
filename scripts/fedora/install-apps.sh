@@ -194,7 +194,7 @@ install_react_drm() {
 	[[ -n "$target_home" && -d "$target_home" ]] ||
 		fail "unable to determine home directory for $target_user"
 
-	src="$REPO_ROOT/apps/react-drm"
+	src="$REPO_ROOT/third-party/react-drm"
 	dst="$target_home/react-drm"
 	for package in package.json package-lock.json .env.example.kait2en system/99-react-drm-kait2en.rules system/react-drm.service system/react-drm-tb-detach; do
 		[[ -r "$src/$package" ]] || fail "react-drm deployment file is missing: $package"

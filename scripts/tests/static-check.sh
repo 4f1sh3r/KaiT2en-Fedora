@@ -119,7 +119,7 @@ grep -Fq 'Path(f"/boot/initramfs-{release}.img").is_file()' \
 ! grep -Fq '["dracut", "--force"' \
 	apps/t2-kernel-builder/t2-kernel-builder-cleanup
 grep -Fq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl,gmux_backlight,intel_backlight,acpi_video0' \
-	apps/react-drm/.env.example.kait2en
+	third-party/react-drm/.env.example.kait2en
 grep -Fq "grep -Fxq 'REACT_DRM_DISP_BACKLIGHT_NAMES=apple-panel-bl'" \
 	scripts/fedora/install-apps.sh
 for symbol in MFD_MACSMC_CORE MACSMC_ACPI SENSORS_MACSMC_HWMON \
