@@ -1,0 +1,5 @@
+t2-dsp (0.1.0-1) unstable; urgency=medium
+
+  * Package host-side DSP independently with udev/WirePlumber model selection.
+
+ -- André Eikmeyer <andre.eikmeyer@kait2en.org>  Wed, 16 Sep 2026 18:00:00 +0000

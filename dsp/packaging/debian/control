@@ -1,0 +1,16 @@
+Source: t2-dsp
+Section: sound
+Priority: optional
+Maintainer: KaiT2en maintainers <andre.eikmeyer@kait2en.org>
+Build-Depends: debhelper-compat (= 13), python3
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/kaiT2en/KaiT2en-Fedora
+
+Package: t2-dsp
+Architecture: all
+Depends: ${misc:Depends}, pipewire, pipewire-pulse, wireplumber (>= 0.5.8), libspa-0.2-modules, bankstown-lv2, lsp-plugins-lv2, udev, bash, coreutils, grep
+Description: Model-specific host-side audio DSP for Apple T2 Macs
+ Speaker and microphone graphs with automatic runtime profile selection.
+ Requires a compatible T2 audio driver and AppleT2x2/x4/x6 UCM profiles.
+ No BridgeXPC or T2 service dependency.

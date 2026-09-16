@@ -17,7 +17,7 @@ Everything that is not a kernel module and not vendored third-party code:
 - all programs and tools below `apps/`
 - userspace programs and integration below `t2-services/`
 - `t2-services/shared/protocols/t2-bridgexpc`, `t2-services/t2-touchid/protocols/t2-biometrickit`
-- the audio DSP profiles below `modules/t2bce_audio-dsp/profiles/` (each
+- host-side DSP integration and profiles below `dsp/` (each profile
   folder carries a README.md with the notice; the installer copies it next to
   the installed files)
 - the root scripts, howto docs and project text (root `LICENSE`)

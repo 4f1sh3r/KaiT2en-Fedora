@@ -1,0 +1,10 @@
+#!/bin/bash
+if [ "$1" = remove ]; then
+    if [ -d /run/udev ] && ! udevadm control --reload-rules; then
+        echo '[t2-dsp] error: udev rule reload failed. Reboot required' >&2
+        echo 'udev rule reload after removal failed' >> /var/log/t2-dsp-install.log || echo '[t2-dsp] error: cannot save failure report' >&2
+    fi
+    echo '[t2-dsp] Reboot to finish removing DSP. Migration backups were preserved.'
+fi
+#DEBHELPER#
+exit 0

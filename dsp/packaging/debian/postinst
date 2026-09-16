@@ -1,0 +1,9 @@
+#!/bin/bash
+if [ "$1" = configure ]; then
+    if ! bash /usr/libexec/t2-dsp/package-actions configure; then
+        echo '[t2-dsp] error: lifecycle helper failed. Review DSP configuration before reboot' >&2
+        echo 'configure helper failed' >> /var/log/t2-dsp-install.log || echo '[t2-dsp] error: cannot save failure report' >&2
+    fi
+fi
+#DEBHELPER#
+exit 0

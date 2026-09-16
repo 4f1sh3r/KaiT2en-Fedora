@@ -124,17 +124,21 @@ The ALSA UCM profiles define the T2 speaker, microphone and headset paths:
 /usr/share/alsa/ucm2/conf.d/AppleT2x6/AppleT2x6.conf
 ```
 
-The installer deploys model-specific FIR filters and a generated WirePlumber
-rule on these models: `MacBookAir8,1`, `MacBookAir8,2`, `MacBookAir9,1`,
-`MacBookPro15,1`, `MacBookPro15,2`, `MacBookPro15,4`, `MacBookPro16,1`, `MacBookPro16,2`,
-`MacBookPro16,3` and `MacBookPro16,4`.
+The installer and the independent `t2-dsp` package deploy all model-specific
+graphs and FIR data. udev and WirePlumber select the matching profile at runtime.
 
 ```text
-/usr/share/kait2en/audio-dsp/<profile>/
-/etc/wireplumber/wireplumber.conf.d/51-kait2en-t2-dsp.conf
+/usr/share/t2-dsp/profiles/<profile>/
+/usr/share/wireplumber/wireplumber.conf.d/51-t2-dsp.conf
+/usr/share/pipewire/pipewire.conf.d/50-kait2en-quantum.conf
+/usr/lib/udev/rules.d/89-t2-dsp.rules
+/usr/libexec/t2-dsp/package-actions
+/usr/share/licenses/t2-dsp/
 ```
 
-Every other model exits the DSP step without creating these files.
+Unlisted models receive no DSP graph at runtime. Former generated `/etc`
+fragments are backed up under `/var/lib/t2-dsp/migration/`. Migration errors
+are collected in `/var/log/t2-dsp-install.log` and the installer summary.
 See [Audio DSP](../post-install/audio-dsp.md) for the supported-model table,
 audio behavior and diagnostics.
 
