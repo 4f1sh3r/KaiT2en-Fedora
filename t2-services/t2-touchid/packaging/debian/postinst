@@ -2,14 +2,18 @@
 if [ "$1" = configure ]; then
     if [ -r /usr/libexec/t2-services/package-actions ]; then
         . /usr/libexec/t2-services/package-actions
+        t2_run python3 /usr/libexec/t2-services/lifecycle.py t2-touchid migrate
+        migration_status=$t2_last_status
         if [ -d /run/systemd/system ]; then
             t2_run systemctl daemon-reload
-            if [ -z "${2:-}" ]; then t2_run systemctl preset kait2en-t2-touchid.service; fi
-            t2_run systemctl try-restart kait2en-t2-touchid.service
+            if [ "$migration_status" -eq 0 ]; then
+                if [ -z "${2:-}" ] && ! systemctl is-enabled --quiet kait2en-t2-touchid.service; then t2_run systemctl preset kait2en-t2-touchid.service; fi
+                t2_run systemctl try-restart kait2en-t2-touchid.service
+            fi
         fi
         t2_summary
     else
-        echo '[t2-services] missing package reporter; service activation skipped' >&2
+        echo '[t2-services] error: missing lifecycle reporter. Migration skipped' >&2
     fi
 fi
 #DEBHELPER#

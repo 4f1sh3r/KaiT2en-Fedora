@@ -14,6 +14,7 @@ Requires: iproute
 Requires: iputils
 Requires: coreutils
 Requires: bash
+Requires: python3
 
 %description
 Shared Apple T2 network and suspend integration. This package does not require any other T2 feature package.
@@ -31,23 +32,36 @@ bash -n t2-services/shared/integration/libexec/t2-ncm-sleep
 make -C t2-services/shared install PREFIX=/usr DESTDIR=%{buildroot} SYSTEMD_UNIT_DIR=%{_unitdir} LIBEXECDIR=%{_libexecdir}
 
 %post -p /bin/bash
-if ! source %{_libexecdir}/t2-services/package-actions; then
-    echo '[t2-services] cannot load package error reporter; service activation skipped' >&2
-else
+if source %{_libexecdir}/t2-services/package-actions; then
+    t2_run python3 %{_libexecdir}/t2-services/lifecycle.py t2-services-common migrate
+    migration_status=$t2_last_status
     t2_run systemctl daemon-reload
-    if [ "$1" -eq 1 ]; then t2_run systemctl preset t2-services-suspend.service; fi
-    t2_run systemctl try-restart t2-services-suspend.service
+    if [ "$migration_status" -eq 0 ]; then
+        if [ "$1" -eq 1 ] && ! systemctl is-enabled --quiet t2-services-suspend.service; then t2_run systemctl preset t2-services-suspend.service; fi
+        # Never execute suspend/resume hooks during a package transaction.
+    fi
     t2_summary
+else
+    echo '[t2-services] error: package reporter unavailable. Migration skipped' >&2
 fi
 exit 0
 
 %preun -p /bin/bash
 if [ "$1" -eq 0 ]; then
     if source %{_libexecdir}/t2-services/package-actions; then
-        t2_run systemctl disable --now t2-services-suspend.service
+        t2_run python3 %{_libexecdir}/t2-services/lifecycle.py t2-services-common remove
         t2_summary
     else
-        echo '[t2-services] cannot load package error reporter; service cleanup skipped' >&2
+        echo '[t2-services] error: package reporter unavailable. Cleanup skipped' >&2
+    fi
+fi
+exit 0
+
+%postun -p /bin/bash
+if [ -d /run/systemd/system ]; then
+    if ! systemctl daemon-reload; then
+        echo '[t2-services] error: systemd reload after removal failed' >&2
+        echo 't2-services-common: systemd reload after removal failed' >> /var/log/t2-services-install.log || echo '[t2-services] error: cannot save report' >&2
     fi
 fi
 exit 0
@@ -57,6 +71,8 @@ exit 0
 %doc t2-services/README.md
 %{_libexecdir}/t2-services/t2-ncm-sleep
 %{_libexecdir}/t2-services/package-actions
+%{_libexecdir}/t2-services/lifecycle.py
+%{_libexecdir}/t2-services/migration/
 %{_unitdir}/t2-services-suspend.service
 %config(noreplace) /etc/NetworkManager/conf.d/10-t2-services.conf
 %config(noreplace) %attr(0600,root,root) /etc/NetworkManager/system-connections/t2-ncm.nmconnection

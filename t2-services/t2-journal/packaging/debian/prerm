@@ -2,7 +2,7 @@
 if [ "$1" = remove ]; then
     if [ -r /usr/libexec/t2-services/package-actions ]; then
         . /usr/libexec/t2-services/package-actions
-        t2_run python3 /usr/libexec/t2-services/lifecycle.py t2-services-common remove
+        t2_run python3 /usr/libexec/t2-services/lifecycle.py t2-journal remove
         t2_summary
     else
         echo '[t2-services] error: missing lifecycle reporter. Cleanup skipped' >&2

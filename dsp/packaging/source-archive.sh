@@ -10,4 +10,4 @@ tar -C "$repo" --sort=name --mtime="@${SOURCE_DATE_EPOCH:-1789581600}" \
     --owner=0 --group=0 --numeric-owner \
     --exclude=dsp/build --exclude='__pycache__' \
     --transform='s,^,t2-dsp-0.1.0/,' \
-    -cf - LICENSE LICENSING.md LICENSES dsp | gzip -n >"$1"
+    -cf - LICENSE LICENSING.md LICENSES dsp packaging/lifecycle | gzip -n >"$1"

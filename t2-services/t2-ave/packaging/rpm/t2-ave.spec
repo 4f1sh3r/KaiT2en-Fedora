@@ -30,23 +30,36 @@ make -C t2-services/t2-ave test CARGO_FLAGS='--frozen'
 make -C t2-services/t2-ave install PREFIX=/usr DESTDIR=%{buildroot} SYSTEMD_UNIT_DIR=%{_unitdir} LIBEXECDIR=%{_libexecdir}
 
 %post -p /bin/bash
-if ! source %{_libexecdir}/t2-services/package-actions; then
-    echo '[t2-services] cannot load package error reporter; service activation skipped' >&2
-else
+if source %{_libexecdir}/t2-services/package-actions; then
+    t2_run python3 %{_libexecdir}/t2-services/lifecycle.py t2-ave migrate
+    migration_status=$t2_last_status
     t2_run systemctl daemon-reload
-    if [ "$1" -eq 1 ]; then t2_run systemctl preset kait2en-t2-remote.service; fi
-    t2_run systemctl try-restart kait2en-t2-remote.service
+    if [ "$migration_status" -eq 0 ]; then
+        if [ "$1" -eq 1 ] && ! systemctl is-enabled --quiet kait2en-t2-remote.service; then t2_run systemctl preset kait2en-t2-remote.service; fi
+        t2_run systemctl try-restart kait2en-t2-remote.service
+    fi
     t2_summary
+else
+    echo '[t2-services] error: package reporter unavailable. Migration skipped' >&2
 fi
 exit 0
 
 %preun -p /bin/bash
 if [ "$1" -eq 0 ]; then
     if source %{_libexecdir}/t2-services/package-actions; then
-        t2_run systemctl disable --now kait2en-t2-remote.service
+        t2_run python3 %{_libexecdir}/t2-services/lifecycle.py t2-ave remove
         t2_summary
     else
-        echo '[t2-services] cannot load package error reporter; service cleanup skipped' >&2
+        echo '[t2-services] error: package reporter unavailable. Cleanup skipped' >&2
+    fi
+fi
+exit 0
+
+%postun -p /bin/bash
+if [ -d /run/systemd/system ]; then
+    if ! systemctl daemon-reload; then
+        echo '[t2-services] error: systemd reload after removal failed' >&2
+        echo 't2-ave: systemd reload after removal failed' >> /var/log/t2-services-install.log || echo '[t2-services] error: cannot save report' >&2
     fi
 fi
 exit 0

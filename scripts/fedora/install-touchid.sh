@@ -15,7 +15,8 @@ build_touchid() {
 
 install_policy() {
 	make -C "$COMPONENT/integration/selinux"
-	semodule -i "$COMPONENT/integration/selinux/kait2en-t2-touchid.pp"
+	install -D -m 0644 "$COMPONENT/integration/selinux/kait2en-t2-touchid.pp" /usr/share/selinux/packages/kait2en-t2-touchid.pp
+	python3 "$REPO_ROOT/packaging/lifecycle/kait2en-lifecycle.py" t2-touchid install-policy
 }
 
 install_touchid() {
@@ -27,6 +28,7 @@ install_touchid() {
 	if (( new_config )) && [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
 		sed -i "s/^T2_TOUCHID_BIND_USER=.*/T2_TOUCHID_BIND_USER=$SUDO_USER/" "$CONFIG_DST"
 	fi
+	python3 "$REPO_ROOT/packaging/lifecycle/kait2en-lifecycle.py" t2-touchid record-source
 }
 
 activate_touchid() {
@@ -59,7 +61,7 @@ if (( build_status == 0 )); then
 			run_step "activate t2-touchid" activate_touchid
 			if (( STEP_STATUS == 0 )); then
 				run_step "restart active fprintd" systemctl try-restart fprintd.service
-				run_step "enable fingerprint PAM feature" authselect enable-feature with-fingerprint
+					run_step "enable fingerprint PAM feature with ownership receipt" python3 "$REPO_ROOT/packaging/lifecycle/kait2en-lifecycle.py" t2-touchid enable-pam
 			fi
 		else
 			record_error "Touch ID activation skipped because its SELinux policy failed"

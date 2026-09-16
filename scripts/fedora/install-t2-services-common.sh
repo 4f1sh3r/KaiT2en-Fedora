@@ -16,6 +16,7 @@ readonly T2_NCM_MAC="ac:de:48:00:11:22"
 
 install_shared() {
 	make -C "$REPO_ROOT/t2-services/shared" install SYSTEMD_UNIT_DIR=/etc/systemd/system INSTALL_NETWORK_PROFILE=no
+	python3 "$REPO_ROOT/packaging/lifecycle/kait2en-lifecycle.py" t2-services-common record-source
 	if [[ -f /usr/local/libexec/kait2en/kait2en-suspend.sh ]] &&
 		grep -q '^unbind_t2_ncm()' /usr/local/libexec/kait2en/kait2en-suspend.sh; then
 		fail "old suspend helper still owns NCM; rerun install-suspend-service.sh before enabling the common unit"

@@ -18,6 +18,7 @@ Requires: systemd-udev
 Requires: bash
 Requires: coreutils
 Requires: grep
+Requires: python3
 
 %description
 Host-side speaker and microphone DSP graphs, FIR data and automatic model
@@ -41,6 +42,15 @@ make -C dsp install PREFIX=%{_prefix} DATADIR=%{_datadir} LIBEXECDIR=%{_libexecd
 if ! bash %{_libexecdir}/t2-dsp/package-actions configure; then
     echo '[t2-dsp] error: lifecycle helper failed. Review DSP configuration before reboot' >&2
     echo 'configure helper failed' >> /var/log/t2-dsp-install.log || echo '[t2-dsp] error: cannot save failure report' >&2
+fi
+exit 0
+
+%preun -p /bin/bash
+if [ "$1" -eq 0 ]; then
+    if ! bash %{_libexecdir}/t2-dsp/package-actions removed; then
+        echo '[t2-dsp] error: cleanup helper failed' >&2
+        echo 'cleanup helper failed' >> /var/log/t2-dsp-install.log || echo '[t2-dsp] error: cannot save report' >&2
+    fi
 fi
 exit 0
 

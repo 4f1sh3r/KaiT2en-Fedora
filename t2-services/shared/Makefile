@@ -8,6 +8,9 @@ INSTALL_NETWORK_PROFILE ?= yes
 all:
 	@echo 'Shared transport is linked by consumers; integration needs no build.'
 install:
+	install -D -m 0755 ../../packaging/lifecycle/kait2en-lifecycle.py $(DESTDIR)$(LIBEXECDIR)/t2-services/lifecycle.py
+	install -d $(DESTDIR)$(LIBEXECDIR)/t2-services/migration
+	install -m 0644 integration/migration/* $(DESTDIR)$(LIBEXECDIR)/t2-services/migration/
 	install -D -m 0755 integration/libexec/t2-ncm-sleep $(DESTDIR)$(LIBEXECDIR)/t2-services/t2-ncm-sleep
 	install -D -m 0644 integration/libexec/package-actions $(DESTDIR)$(LIBEXECDIR)/t2-services/package-actions
 	install -d $(DESTDIR)$(SYSTEMD_UNIT_DIR)

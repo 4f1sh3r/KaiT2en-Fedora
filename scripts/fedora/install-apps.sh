@@ -89,6 +89,9 @@ install_rust_app() {
 		warn "$name installation failed; continuing with the remaining apps"
 		return 0
 	fi
+	if [[ "$name" == t2-journal ]]; then
+		python3 "$REPO_ROOT/packaging/lifecycle/kait2en-lifecycle.py" t2-journal record-source || warn "could not record t2-journal installation ownership"
+	fi
 }
 
 systemd_escape_path() {

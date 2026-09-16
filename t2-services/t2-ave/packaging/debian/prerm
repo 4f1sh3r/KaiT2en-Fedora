@@ -1,11 +1,11 @@
 #!/bin/sh
-if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+if [ "$1" = remove ]; then
     if [ -r /usr/libexec/t2-services/package-actions ]; then
         . /usr/libexec/t2-services/package-actions
-        t2_run systemctl disable --now kait2en-t2-remote.service
+        t2_run python3 /usr/libexec/t2-services/lifecycle.py t2-ave remove
         t2_summary
     else
-        echo '[t2-services] missing package reporter; service cleanup skipped' >&2
+        echo '[t2-services] error: missing lifecycle reporter. Cleanup skipped' >&2
     fi
 fi
 #DEBHELPER#
