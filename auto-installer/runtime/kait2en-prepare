@@ -195,7 +195,7 @@ if [[ ${KAIT2EN_SKIP_BOOTSTRAP:-0} != 1 ]]; then
 	bootstrap_repository
 fi
 [[ -d "$repository/.git" ]] || die "$repository is not a Git checkout"
-[[ -x "$transition_source/packaging/installer/build-input-kmod.sh" ]] ||
+[[ -x "$transition_source/auto-installer/build-input-kmod.sh" ]] ||
 	die 'transition module builder is missing'
 [[ -r "$transition_source/source-date-epoch" ]] ||
 	die 'transition source timestamp is missing'
@@ -249,7 +249,7 @@ mkdir -p "$work/rpm" "$work/extracted"
 printf '[kait2en] building unmodified temporary input modules for %s\n' "$target_kernel"
 rpm_path=$(
 	SOURCE_DATE_EPOCH=$transition_epoch \
-	"$transition_source/packaging/installer/build-input-kmod.sh" \
+	"$transition_source/auto-installer/build-input-kmod.sh" \
 		"$transition_source" "$target_kernel" "$work/rpm" |
 		tail -n 1
 )

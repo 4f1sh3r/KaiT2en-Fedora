@@ -60,7 +60,7 @@ if [ "$1" -eq 0 ]; then
         echo '[t2-dsp] error: udev rule reload failed. Reboot required' >&2
         echo 'udev rule reload after removal failed' >> /var/log/t2-dsp-install.log || echo '[t2-dsp] error: cannot save failure report' >&2
     fi
-    echo '[t2-dsp] Reboot to finish removing DSP. Migration backups were preserved.'
+    echo '[t2-dsp] Reboot to finish removing DSP. Verified migration backups were cleaned. Review any reported leftovers.'
 fi
 exit 0
 

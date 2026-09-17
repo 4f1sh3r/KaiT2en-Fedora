@@ -6,6 +6,7 @@ License: GPL-3.0-or-later
 URL: https://github.com/kaiT2en/KaiT2en-Fedora
 Source0: t2-services-%{version}.tar.gz
 BuildRequires: make
+BuildRequires: python3
 BuildRequires: systemd-rpm-macros
 BuildArch: noarch
 Requires: NetworkManager
@@ -27,6 +28,7 @@ Shared Apple T2 network and suspend integration. This package does not require a
 
 %check
 bash -n t2-services/shared/integration/libexec/t2-ncm-sleep
+python3 -m unittest discover -s packaging/lifecycle -v
 
 %install
 make -C t2-services/shared install PREFIX=/usr DESTDIR=%{buildroot} SYSTEMD_UNIT_DIR=%{_unitdir} LIBEXECDIR=%{_libexecdir}
@@ -35,10 +37,12 @@ make -C t2-services/shared install PREFIX=/usr DESTDIR=%{buildroot} SYSTEMD_UNIT
 if source %{_libexecdir}/t2-services/package-actions; then
     t2_run python3 %{_libexecdir}/t2-services/lifecycle.py t2-services-common migrate
     migration_status=$t2_last_status
-    t2_run systemctl daemon-reload
-    if [ "$migration_status" -eq 0 ]; then
-        if [ "$1" -eq 1 ] && ! systemctl is-enabled --quiet t2-services-suspend.service; then t2_run systemctl preset t2-services-suspend.service; fi
-        # Never execute suspend/resume hooks during a package transaction.
+    if [ -d /run/systemd/system ]; then
+        t2_run systemctl daemon-reload
+        if [ "$migration_status" -eq 0 ]; then
+            if [ "$1" -eq 1 ] && ! systemctl is-enabled --quiet t2-services-suspend.service; then t2_run systemctl preset t2-services-suspend.service; fi
+            # Never execute suspend/resume hooks during a package transaction.
+        fi
     fi
     t2_summary
 else

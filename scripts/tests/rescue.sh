@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-script="$repo_root/packaging/installer/runtime/kait2en-rescue"
+script="$repo_root/auto-installer/runtime/kait2en-rescue"
 work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-rescue-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 

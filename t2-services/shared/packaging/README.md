@@ -10,7 +10,8 @@ must supply the matching BCE/AVE kernel stack.
 ## Source preparation
 
 Create a source directory named `t2-services-0.1.0` containing the repository's
-`LICENSE`, `LICENSING.md`, `LICENSES/`, and `t2-services/` tree. Exclude Cargo
+`LICENSE`, `LICENSING.md`, `LICENSES/`, `packaging/lifecycle/`, and the
+`t2-services/` tree. Exclude Cargo
 `target/` directories and generated SELinux/kernel output. Preserve component
 lockfiles. Before an isolated build, prepare the locked Rust dependencies like:
 
@@ -55,10 +56,34 @@ Lifecycle actions collect errors, continue, and print a summary. Failures are
 also appended to `/var/log/t2-services-install.log`. An activation error still
 requires administrator attention.
 
-When migrating an existing source installation, first update its old
-`kait2en-suspend.sh` through `scripts/fedora/install-suspend-service.sh` so it no
-longer binds/unbinds NCM. Remove obsolete `/etc/systemd/system` overrides before
-switching to vendor units. Otherwise they override the package's `/usr` paths.
-Use the source installer's common-network migration to consolidate old NCM
-profiles before introducing the package-owned profile. Package scripts do not
-delete administrator network profiles or replace local units automatically.
+## Source installation migration and removal
+
+Package installation retires recognized source-installed binaries from
+`/usr/local/bin`, matching local service units and the fprintd drop-in before
+activating vendor units. Existing enablement is repaired without running the
+common suspend unit. Package upgrades never invoke sleep hooks.
+
+The common package migrates known combined suspend helpers to the current
+Wi-Fi/Bluetooth-only implementation. That independent helper stays with the
+OS installation, it is not removed together with the T2 services. NCM profiles
+are consolidated on disk while preserving the selected source profile's UUID.
+Unrelated profiles are untouched. No live network disconnect is issued.
+
+Ownership receipts live in `/var/lib/kait2en/ownership/<package>.json`.
+Recoverable migration backups live in `/var/lib/kait2en/migration/<package>/`.
+Removal cleans unchanged, verified migration backups and generated files.
+It never restores obsolete files that would shadow another package install.
+Administrator-modified files, unrecognized local units and symlinks are
+preserved and reported. Package-manager configuration-file retention still
+applies. Logs are retained for diagnosis.
+
+Touch ID records the checksum of its installed SELinux module and removes
+only that unchanged module at removal. The source installer records whether
+it introduced the authselect fingerprint feature and the resulting profile.
+Removal disables it only if the owned profile is still unchanged. Packages
+do not enable fingerprint PAM themselves. An older source installation with
+an already enabled fingerprint feature but no receipt cannot prove who enabled
+it. That setting is reported and preserved, never retrospectively claimed.
+
+The migration engine is shared as source under `packaging/lifecycle/`.
+It is unrelated to the live-image/OS installer under `auto-installer/`.

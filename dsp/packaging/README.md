@@ -12,7 +12,7 @@ From the repository root, create a source archive:
 bash dsp/packaging/source-archive.sh /tmp/t2-dsp-0.1.0.tar.gz
 ```
 
-The archive contains `dsp/`, `LICENSE`, `LICENSING.md` and `LICENSES/` under
+The archive contains `dsp/`, `packaging/lifecycle/`, `LICENSE`, `LICENSING.md` and `LICENSES/` under
 `t2-dsp-0.1.0/`. Generated files and Python caches are excluded.
 
 For RPM, put the archive in the builder's `SOURCES/` directory and run:
@@ -66,17 +66,22 @@ ensures udev model IDs exist before ALSA/PipeWire opens the card.
 
 Package-owned configuration lives under `/usr`, with administrator overrides
 under `/etc`. The former generated `/etc` DSP and quantum fragments are
-backed up to `/var/lib/t2-dsp/migration/` before retirement. Unknown local
-files are preserved and reported for manual review to avoid duplicate DSP
-graphs. Former profile data under `/usr/share/kait2en/audio-dsp/` is left
-untouched. Backups remain after removal and purge. Restore them deliberately
-only if reverting to the old source installation.
+backed up to `/var/lib/kait2en/migration/t2-dsp/` before retirement. Ownership
+receipts live in `/var/lib/kait2en/ownership/t2-dsp.json`. Matching former
+profile data under `/usr/share/kait2en/audio-dsp/` is retired too. Removal
+deletes verified, unchanged backups and the completed migration receipt.
+Backups from the earlier migration helper are also adopted when their
+generated-file marker is present. Modified or unrecognized files are preserved
+and reported, not silently deleted. Logs remain available for diagnosis.
 
 Lifecycle failures are collected, printed in a final summary and logged to
 `/var/log/t2-dsp-install.log`. The source installer also receives these errors
 in its shared ledger. An activation failure does not interrupt independent
 installation steps or the package transaction. Build and staging failures,
 in contrast, fail the package build so incomplete packages are not produced.
+
+The independently shipped lifecycle engine requires Python 3. Its source
+lives under `packaging/lifecycle/`, separately from `auto-installer/`.
 
 The PipeWire quantum fragment preserves the former global 1024-sample default.
 It affects this PipeWire instance, including non-T2 devices. Administrators

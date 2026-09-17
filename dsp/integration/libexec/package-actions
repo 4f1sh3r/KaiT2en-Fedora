@@ -16,5 +16,14 @@ case "${1:-}" in
 esac
 if ! python3 "$helper" t2-dsp "$action" "${args[@]}"; then
     printf '[t2-dsp] migration/removal reported errors. Continuing package transaction.\n' >&2
+    log_file="${T2_DSP_TEST_ROOT:-}/var/log/t2-dsp-install.log"
+    if ! printf 'lifecycle %s reported errors\n' "$action" >>"$log_file"; then
+        printf '[t2-dsp] error: cannot save lifecycle failure report\n' >&2
+    fi
+    if [[ -n "${KAIT2EN_INSTALL_ERRORS:-}" ]]; then
+        if ! printf 't2-dsp: lifecycle %s reported errors\n' "$action" >>"$KAIT2EN_INSTALL_ERRORS"; then
+            printf '[t2-dsp] error: cannot append installer failure report\n' >&2
+        fi
+    fi
 fi
 exit 0

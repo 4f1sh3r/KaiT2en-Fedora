@@ -33,7 +33,7 @@ done
 	exit 2
 }
 
-TARGET_REL="packaging/installer/targets/$TARGET.conf"
+TARGET_REL="auto-installer/targets/$TARGET.conf"
 TARGET_FILE="$REPO_ROOT/$TARGET_REL"
 [[ -f "$TARGET_FILE" ]] || {
 	printf 'unsupported installer target: %s\n' "$TARGET" >&2
@@ -70,7 +70,7 @@ done
 	printf 'invalid EDITIONS_FILE in %s: %s\n' "$TARGET_REL" "$EDITIONS_FILE" >&2
 	exit 1
 }
-EDITIONS_REL="packaging/installer/targets/$EDITIONS_FILE"
+EDITIONS_REL="auto-installer/targets/$EDITIONS_FILE"
 [[ -s "$REPO_ROOT/$EDITIONS_REL" ]] || {
 	printf 'edition catalog is missing: %s\n' "$EDITIONS_REL" >&2
 	exit 1
@@ -84,7 +84,7 @@ git ls-files --error-unmatch "$EDITIONS_REL" >/dev/null 2>&1 || {
 		"$TARGET_REL" "$INPUT_COMPAT_PATCH" >&2
 	exit 1
 }
-PATCH_REL="packaging/installer/patches/$INPUT_COMPAT_PATCH"
+PATCH_REL="auto-installer/patches/$INPUT_COMPAT_PATCH"
 [[ -f "$REPO_ROOT/$PATCH_REL" ]] || {
 	printf 'input compatibility patch is missing: %s\n' "$PATCH_REL" >&2
 	exit 1
@@ -165,7 +165,7 @@ printf 'building %s with %s\n' "$TARGET" "$ENGINE"
 	-e HOST_GID="$(id -g)" \
 	-v "$WORK:/work" \
 	"$CONTAINER_IMAGE" \
-	bash -c 'set +e; bash /work/source/packaging/installer/build-in-container.sh /work/source /work/kernel-devel.rpm /work/out; status=$?; chown -R "$HOST_UID:$HOST_GID" /work; exit "$status"'
+	bash -c 'set +e; bash /work/source/auto-installer/build-in-container.sh /work/source /work/kernel-devel.rpm /work/out; status=$?; chown -R "$HOST_UID:$HOST_GID" /work; exit "$status"'
 
 mkdir -p "$REPO_ROOT/dist"
 install -m 0644 "$WORK/out/$ARTIFACT_BASENAME.zip" "$REPO_ROOT/dist/"

@@ -10,6 +10,7 @@ build:
 	$(PYTHON) tools/build.py --datadir '$(DATADIR)'
 test:
 	$(PYTHON) -m unittest discover -s tests -v
+	$(PYTHON) -m unittest discover -s ../packaging/lifecycle -v
 install: build
 	install -d '$(DESTDIR)$(DATADIR)/t2-dsp/profiles'
 	cp -r build/profiles/. '$(DESTDIR)$(DATADIR)/t2-dsp/profiles/'

@@ -8,7 +8,7 @@ repository=${KAIT2EN_REPOSITORY:-/usr/local/src/KaiT2en-Fedora}
 prepare=${KAIT2EN_PREPARE_COMMAND:-/usr/local/bin/kait2en-prepare}
 repository_url=${KAIT2EN_REPOSITORY_URL:-https://github.com/kaiT2en/KaiT2en-Fedora.git}
 repository_branch=${KAIT2EN_REPOSITORY_BRANCH:-main}
-repository_installer="$repository/packaging/installer/runtime/kait2en-install"
+repository_installer="$repository/auto-installer/runtime/kait2en-install"
 self_path=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/${BASH_SOURCE[0]##*/}
 lock_file="${XDG_RUNTIME_DIR:-/tmp}/kait2en-install-$(id -u).lock"
 

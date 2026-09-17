@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           matrix="$({
-            git ls-files 'packaging/installer/targets/fedora-*.conf' |
+            git ls-files 'auto-installer/targets/fedora-*.conf' |
               sed -e 's|.*/||' -e 's|\.conf$||'
           } | jq -R -s -c 'split("\n") | map(select(length > 0))')"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -78,7 +78,7 @@ jobs:
           sed \
             -e "s|@GITHUB_REPOSITORY@|$GITHUB_REPOSITORY|g" \
             -e "s|@ARTIFACT_BASENAME@|$basename|g" \
-            packaging/installer/macos-release-bootstrap.sh.in \
+            auto-installer/macos-release-bootstrap.sh.in \
             >release-assets/install-kait2en-fedora.sh
           chmod 0755 release-assets/install-kait2en-fedora.sh
           bash -n release-assets/install-kait2en-fedora.sh

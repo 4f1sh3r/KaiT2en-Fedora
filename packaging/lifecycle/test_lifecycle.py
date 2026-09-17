@@ -60,6 +60,11 @@ class Tests(unittest.TestCase):
         engine.migrate_services()
         self.assertTrue(custom.exists())
         self.assertTrue(engine.errors)
+        self.assertTrue((self.root / "usr/local/bin/t2-touchid").exists())
+        # With the override resolved, migration can safely retire the binary.
+        custom.write_text("ExecStart=/usr/local/bin/t2-touchid\n")
+        engine = self.engine()
+        engine.migrate_services()
         name = next(iter(engine.state["retired"]))
         (self.root / name.lstrip("/")).write_text("administrator modified this backup")
         engine.remove()
@@ -79,6 +84,20 @@ class Tests(unittest.TestCase):
         engine.migrate_services()
         self.assertTrue(old.exists())
         self.assertTrue(engine.errors)
+
+    def test_identical_helper_with_literal_local_paths_is_recognized(self):
+        self.put("/usr/local/libexec/t2-services/lifecycle.py", "legacy_path = '/usr/local/bin/t2remote'\n")
+        self.put("/usr/libexec/t2-services/lifecycle.py", "legacy_path = '/usr/local/bin/t2remote'\n")
+        engine = self.engine("t2-services-common")
+        engine.compare_retire("/usr/local/libexec/t2-services/lifecycle.py", "/usr/libexec/t2-services/lifecycle.py")
+        self.assertFalse((self.root / "usr/local/libexec/t2-services/lifecycle.py").exists())
+
+    def test_rpm_interpreter_normalization(self):
+        self.put("/usr/local/libexec/t2-services/t2-ncm-sleep", "#!/usr/bin/env bash\necho fixture\n")
+        self.put("/usr/libexec/t2-services/t2-ncm-sleep", "#!/usr/bin/bash\necho fixture\n")
+        engine = self.engine("t2-services-common")
+        engine.compare_retire("/usr/local/libexec/t2-services/t2-ncm-sleep", "/usr/libexec/t2-services/t2-ncm-sleep")
+        self.assertFalse((self.root / "usr/local/libexec/t2-services/t2-ncm-sleep").exists())
 
     def test_symlinks_refused(self):
         self.touchid()

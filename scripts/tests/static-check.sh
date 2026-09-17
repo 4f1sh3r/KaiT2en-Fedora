@@ -6,20 +6,20 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$repo_root"
 
 shell_files=(
-	packaging/installer/build-in-container.sh
-	packaging/installer/build-input-kmod.sh
-	packaging/installer/initramfs/20-kait2en-input.sh.in
-	packaging/installer/initramfs/90-kait2en-updates.sh
-	packaging/installer/macos-release-bootstrap.sh.in
-	packaging/installer/runtime/install-bt-firmware.sh
-	packaging/installer/runtime/install-wifi-firmware.sh
-	packaging/installer/runtime/kait2en-install
-	packaging/installer/runtime/kait2en-launch-terminal
-	packaging/installer/runtime/kait2en-live-bluetooth
-	packaging/installer/runtime/kait2en-live-diagnostics
-	packaging/installer/runtime/kait2en-rescue
-	packaging/installer/runtime/kait2en-live-wifi
-	packaging/installer/runtime/kait2en-prepare
+	auto-installer/build-in-container.sh
+	auto-installer/build-input-kmod.sh
+	auto-installer/initramfs/20-kait2en-input.sh.in
+	auto-installer/initramfs/90-kait2en-updates.sh
+	auto-installer/macos-release-bootstrap.sh.in
+	auto-installer/runtime/install-bt-firmware.sh
+	auto-installer/runtime/install-wifi-firmware.sh
+	auto-installer/runtime/kait2en-install
+	auto-installer/runtime/kait2en-launch-terminal
+	auto-installer/runtime/kait2en-live-bluetooth
+	auto-installer/runtime/kait2en-live-diagnostics
+	auto-installer/runtime/kait2en-rescue
+	auto-installer/runtime/kait2en-live-wifi
+	auto-installer/runtime/kait2en-prepare
 	scripts/fedora/build-installer.sh
 	scripts/fedora/install-gdm-branding.sh
 	scripts/fedora/install-dkms-modules.sh
@@ -53,35 +53,35 @@ while IFS= read -r file; do
 	python3 -c \
 		'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text())' \
 		"$file"
-done < <(git ls-files 'packaging/installer/anaconda-addon/*.py' \
-	'packaging/installer/anaconda-addon/**/*.py')
+done < <(git ls-files 'auto-installer/anaconda-addon/*.py' \
+	'auto-installer/anaconda-addon/**/*.py')
 
 ! grep -rInE --exclude-dir=target 'OEMDRV|rhdd3|inst\.dd=|inst\.ks=|kait2en\.wifi_required' \
-	packaging/installer/grub.cfg.in \
-	packaging/installer/initramfs \
-	packaging/installer/anaconda-addon \
+	auto-installer/grub.cfg.in \
+	auto-installer/initramfs \
+	auto-installer/anaconda-addon \
 	scripts/macos
 ! grep -rInE --exclude-dir=target 'brcmfmac(4364|4377).*alias|generic.*brcmfmac|brcmfmac[^ ]*-pcie\.txt' \
-	packaging/installer
+	auto-installer
 # A KaiT2en entry without the input initramfs loses the keyboard it rescues.
 awk '
 $1 == "linux" && index($0, "${kait2en_common}") { entries++ }
 $1 == "initrd" && $2 == "${kait2en_initrd}" { overlays++ }
 END { exit !(entries >= 5 && entries == overlays) }
-' packaging/installer/grub.cfg.in
-grep -Fq 'plymouth.enable=0' packaging/installer/grub.cfg.in
-grep -Fq 'nomodeset' packaging/installer/grub.cfg.in
-if grep -Eq '^set kait2en_blacklist=.*apple_gmux' packaging/installer/grub.cfg.in; then
+' auto-installer/grub.cfg.in
+grep -Fq 'plymouth.enable=0' auto-installer/grub.cfg.in
+grep -Fq 'nomodeset' auto-installer/grub.cfg.in
+if grep -Eq '^set kait2en_blacklist=.*apple_gmux' auto-installer/grub.cfg.in; then
 	exit 1
 fi
-! grep -InE 'INPUT_COMPAT_PATCH|compat_patch|packaging/installer/patches' \
-	packaging/installer/runtime/kait2en-prepare
+! grep -InE 'INPUT_COMPAT_PATCH|compat_patch|auto-installer/patches' \
+	auto-installer/runtime/kait2en-prepare
 grep -Fq '"$transition_source" "$target_kernel" "$work/rpm"' \
-	packaging/installer/runtime/kait2en-prepare
+	auto-installer/runtime/kait2en-prepare
 # The transition modules only live in the initramfs, so they must be forced in.
 grep -Fq 'dracut --force --force-drivers' \
-	packaging/installer/runtime/kait2en-prepare
-! grep -Fq -- '--add-drivers' packaging/installer/runtime/kait2en-prepare
+	auto-installer/runtime/kait2en-prepare
+! grep -Fq -- '--add-drivers' auto-installer/runtime/kait2en-prepare
 
 # DKMS drops every kernel's build before rebuilding any of them, so a kernel
 # without headers has to be refused before anything is removed.
@@ -92,11 +92,11 @@ grep -Fq 't2-kernel-builder installation failed; continuing because it is option
 grep -Fq 't2-kernel-builder bundle is incomplete' \
 	apps/t2-kernel-builder/install.sh
 # A wrong origin URL must be repaired; dying leaves the user with no way out.
-grep -Fq 'repair_origin_url' packaging/installer/runtime/kait2en-install
-grep -Fq 'repair_origin_url' packaging/installer/runtime/kait2en-prepare
+grep -Fq 'repair_origin_url' auto-installer/runtime/kait2en-install
+grep -Fq 'repair_origin_url' auto-installer/runtime/kait2en-prepare
 ! grep -Fq 'unexpected origin URL' \
-	packaging/installer/runtime/kait2en-install \
-	packaging/installer/runtime/kait2en-prepare
+	auto-installer/runtime/kait2en-install \
+	auto-installer/runtime/kait2en-prepare
 grep -Fq '["dkms", "autoinstall", "-k", release]' \
 	apps/t2-kernel-builder/t2-kernel-builder-cleanup
 grep -Fq "DKMS_OVERRIDE.write_text('post_transaction=\"\"\\n'" \
@@ -149,66 +149,66 @@ grep -Fq 'exec sudo grub2-mkconfig -o /boot/grub2/grub.cfg' \
 	scripts/fedora/kait2en-multicall
 grep -Fq "printf 'install %s /bin/true" scripts/fedora/install-kernel-args.sh
 grep -Fq '"etc", "xdg", "autostart"' \
-	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
+	auto-installer/anaconda-addon/com_kait2en_input/service/installation.py
 ! grep -InE 'find_regular_user|home\.lstrip|os\.chown' \
-	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
+	auto-installer/anaconda-addon/com_kait2en_input/service/installation.py
 grep -Fq 'KAIT2EN_AUTOSTART_FILE:-/etc/xdg/autostart/kait2en-install.desktop' \
-	packaging/installer/runtime/kait2en-prepare
+	auto-installer/runtime/kait2en-prepare
 ! grep -InE '\$HOME/\.config/autostart' \
-	packaging/installer/runtime/kait2en-install
+	auto-installer/runtime/kait2en-install
 if grep -rInE --exclude-dir=target 'kait2en-first-boot|KAIT2EN_FIRST_BOOT' \
-		packaging/installer; then
+		auto-installer; then
 	exit 1
 fi
 # The live Wi-Fi helpers must ride along in the input initramfs and must stay
 # inside /run, which never reaches the installed system.
-grep -Fq 'usr/lib/kait2en/kait2en-live-wifi' packaging/installer/build-in-container.sh
+grep -Fq 'usr/lib/kait2en/kait2en-live-wifi' auto-installer/build-in-container.sh
 grep -Fq 'usr/lib/kait2en/kait2en-live-wifi.service' \
-	packaging/installer/build-in-container.sh
+	auto-installer/build-in-container.sh
 grep -Fq 'usr/lib/kait2en/install-wifi-firmware.sh' \
-	packaging/installer/build-in-container.sh
+	auto-installer/build-in-container.sh
 grep -Fq 'usr/lib/kait2en/kait2en-live-diagnostics' \
-	packaging/installer/build-in-container.sh
+	auto-installer/build-in-container.sh
 grep -Fq 'runtime_units=/run/systemd/system' \
-	packaging/installer/initramfs/90-kait2en-updates.sh
+	auto-installer/initramfs/90-kait2en-updates.sh
 grep -Fq 'ExecStart=/run/kait2en/kait2en-live-wifi' \
-	packaging/installer/runtime/kait2en-live-wifi.service
+	auto-installer/runtime/kait2en-live-wifi.service
 ! grep -rInE --exclude-dir=target 'kait2en-live-wifi' \
-	packaging/installer/anaconda-addon
+	auto-installer/anaconda-addon
 
-grep -Fq 'usr/lib/kait2en/kait2en-rescue' packaging/installer/build-in-container.sh
-grep -Fq 'kait2en-rescue' packaging/installer/initramfs/90-kait2en-updates.sh
+grep -Fq 'usr/lib/kait2en/kait2en-rescue' auto-installer/build-in-container.sh
+grep -Fq 'kait2en-rescue' auto-installer/initramfs/90-kait2en-updates.sh
 grep -Fq '/sysroot/usr/bin/kait2en-rescue' \
-	packaging/installer/initramfs/90-kait2en-updates.sh
-grep -Fq 'apfs' packaging/installer/runtime/kait2en-rescue
-grep -Fq 'set-default-index' packaging/installer/runtime/kait2en-rescue
-! grep -Fq -- '--set-default ' packaging/installer/runtime/kait2en-rescue
+	auto-installer/initramfs/90-kait2en-updates.sh
+grep -Fq 'apfs' auto-installer/runtime/kait2en-rescue
+grep -Fq 'set-default-index' auto-installer/runtime/kait2en-rescue
+! grep -Fq -- '--set-default ' auto-installer/runtime/kait2en-rescue
 ! grep -rInE --exclude-dir=target 'kait2en-rescue' \
-	packaging/installer/anaconda-addon
+	auto-installer/anaconda-addon
 
 # Bluetooth firmware is loaded from disk by BCM4377 alone. Every entry point has
 # to check for that PCI function, and the UART .hcd path must stay out of here.
-grep -Fq '0x5fa0' packaging/installer/runtime/install-bt-firmware.sh
-grep -Fq '0x5fa0' packaging/installer/runtime/kait2en-live-bluetooth
+grep -Fq '0x5fa0' auto-installer/runtime/install-bt-firmware.sh
+grep -Fq '0x5fa0' auto-installer/runtime/kait2en-live-bluetooth
 grep -Fq '0x5fa0' \
-	packaging/installer/anaconda-addon/com_kait2en_input/service/installation.py
+	auto-installer/anaconda-addon/com_kait2en_input/service/installation.py
 grep -Fq 'BCM4377' scripts/macos/prepare-fedora-installer.sh
-! grep -rInE --exclude-dir=target '\.hcd' packaging/installer scripts/macos
+! grep -rInE --exclude-dir=target '\.hcd' auto-installer scripts/macos
 grep -Fq 'usr/lib/kait2en/install-bt-firmware.sh' \
-	packaging/installer/build-in-container.sh
+	auto-installer/build-in-container.sh
 grep -Fq 'usr/lib/kait2en/kait2en-live-bluetooth' \
-	packaging/installer/build-in-container.sh
+	auto-installer/build-in-container.sh
 grep -Fq 'usr/lib/kait2en/kait2en-live-bluetooth.service' \
-	packaging/installer/build-in-container.sh
+	auto-installer/build-in-container.sh
 grep -Fq 'ExecStart=/run/kait2en/kait2en-live-bluetooth' \
-	packaging/installer/runtime/kait2en-live-bluetooth.service
+	auto-installer/runtime/kait2en-live-bluetooth.service
 ! grep -rInE --exclude-dir=target 'kait2en-live-bluetooth' \
-	packaging/installer/anaconda-addon
+	auto-installer/anaconda-addon
 
-grep -Fq 'Do not close this window!' packaging/installer/runtime/kait2en-install
+grep -Fq 'Do not close this window!' auto-installer/runtime/kait2en-install
 grep -Fq 'Ensure that you are connected to Wi-Fi before continuing.' \
-	packaging/installer/runtime/kait2en-install
-grep -Fq 'Press any key to continue.' packaging/installer/runtime/kait2en-install
+	auto-installer/runtime/kait2en-install
+grep -Fq 'Press any key to continue.' auto-installer/runtime/kait2en-install
 
 # macOS Bash 3.2 treats an expanded empty array as unbound under `set -u`.
 grep -Fq 'ORIGINAL_ARGC=$#' scripts/macos/prepare-fedora-installer.sh
@@ -232,15 +232,15 @@ grep -Fq 'reconnect the USB drive and retry with --reuse-media' \
 grep -Fq 'source "$SCRIPT_DIR/download-fedora-iso.sh"' \
 	scripts/macos/prepare-fedora-installer.sh
 grep -Fq 'scripts/macos/download-fedora-iso.sh' \
-	packaging/installer/build-in-container.sh
-grep -Fq 'FEDORA_METALINK=' packaging/installer/targets/fedora-44.conf
-grep -Fq 'FEDORA_ARCHIVE_BASEURL=' packaging/installer/targets/fedora-44.conf
+	auto-installer/build-in-container.sh
+grep -Fq 'FEDORA_METALINK=' auto-installer/targets/fedora-44.conf
+grep -Fq 'FEDORA_ARCHIVE_BASEURL=' auto-installer/targets/fedora-44.conf
 ! grep -rIn 'FEDORA_BASEURL\|dl.fedoraproject.org/pub/fedora/linux/releases' \
-	packaging/installer/targets scripts/fedora packaging/installer/build-in-container.sh
+	auto-installer/targets scripts/fedora auto-installer/build-in-container.sh
 ! grep -Fq 'Keep no second driver disk connected' scripts/macos/prepare-fedora-installer.sh
 ! grep -Fq 'before the intentional EFI customization' scripts/macos/prepare-fedora-installer.sh
-grep -Fq 'shasum -a 256 -c' packaging/installer/macos-release-bootstrap.sh.in
-grep -Fq 'KAIT2EN_TTY:-/dev/tty' packaging/installer/macos-release-bootstrap.sh.in
+grep -Fq 'shasum -a 256 -c' auto-installer/macos-release-bootstrap.sh.in
+grep -Fq 'KAIT2EN_TTY:-/dev/tty' auto-installer/macos-release-bootstrap.sh.in
 [[ $(grep -Fc 'uses: actions/checkout@v5' .github/workflows/installer.yml) -eq 3 ]]
 grep -Fq 'uses: actions/upload-artifact@v6' .github/workflows/installer.yml
 grep -Fq 'uses: actions/download-artifact@v7' .github/workflows/installer.yml
@@ -249,12 +249,12 @@ grep -Fq 'uses: actions/download-artifact@v7' .github/workflows/installer.yml
 
 patch_name=$(
 	# shellcheck disable=SC1091
-	source packaging/installer/targets/fedora-44.conf
+	source auto-installer/targets/fedora-44.conf
 	printf '%s\n' "$INPUT_COMPAT_PATCH"
 )
-[[ -f "packaging/installer/patches/$patch_name" ]]
+[[ -f "auto-installer/patches/$patch_name" ]]
 
-git apply --unidiff-zero --check "packaging/installer/patches/$patch_name"
+git apply --unidiff-zero --check "auto-installer/patches/$patch_name"
 
 bash scripts/tests/wifi-firmware.sh
 bash scripts/tests/bt-firmware.sh

@@ -77,6 +77,11 @@ class Lifecycle:
     def command(self, *args):
         if self.root:
             return ""  # offline roots never access the host bus or policy store
+        if args[0] == "systemctl" and not Path("/run/systemd/system").is_dir():
+            if args[1] in ("reenable", "disable"):
+                args = ("systemctl", "--root=/", *(arg for arg in args[1:] if arg != "--now"))
+            else:
+                return ""  # no running manager, only update enablement on disk
         result = subprocess.run(args, text=True, capture_output=True)
         if result.returncode:
             raise ValueError(f"{' '.join(args)} failed ({result.returncode}): {result.stderr.strip()}")
@@ -128,7 +133,16 @@ class Lifecycle:
             return
         data = path.read_bytes()
         reference = self.path(new).read_bytes()
-        if data.replace(b"/usr/local/", b"/usr/") != reference and not self.owned(old, data):
+        def normalized_script(content):
+            # Fedora's brp-mangle-shebangs rewrites these at package build time.
+            # Only normalize the exact interpreter line, never arbitrary code.
+            for interpreter in (b"bash", b"python3"):
+                prefix = b"#!/usr/bin/env " + interpreter + b"\n"
+                if content.startswith(prefix):
+                    return b"#!/usr/bin/" + interpreter + b"\n" + content[len(prefix):]
+            return content
+        actual, expected = normalized_script(data), normalized_script(reference)
+        if actual != expected and actual.replace(b"/usr/local/", b"/usr/") != expected and not self.owned(old, data):
             raise ValueError(f"modified local override preserved: {old}. Review before activating the package")
         self.retire(old, True)
 
@@ -140,6 +154,11 @@ class Lifecycle:
             old = f"/etc/systemd/system/{unit}"
             self.attempt(self.compare_retire, old, f"/usr/lib/systemd/system/{unit}")
             self.attempt(self.compare_retire, f"/usr/local/lib/systemd/system/{unit}", f"/usr/lib/systemd/system/{unit}")
+            if self.path(old).exists() or self.path(f"/usr/local/lib/systemd/system/{unit}").exists():
+                # A retained administrator unit may still execute /usr/local.
+                # Do not strand it by retiring its binary or integrations.
+                self.save()
+                return
             # systemctl reenable repairs enablement links still pointing at /etc.
             self.state["was_enabled"] = self.state.get("was_enabled", False) or any(
                 self.path(f"/etc/systemd/system/{target}.wants").joinpath(unit).is_symlink()
@@ -169,6 +188,9 @@ class Lifecycle:
             old = "/usr/local/libexec/t2-services/package-actions"
             if self.path(old).exists():
                 self.attempt(self.retire, old, True)
+            for suffix in ("lifecycle.py", "migration/kait2en-suspend.sh", "migration/suspend-hashes.json"):
+                self.attempt(self.compare_retire, f"/usr/local/libexec/t2-services/{suffix}",
+                             f"/usr/libexec/t2-services/{suffix}")
             self.attempt(self.migrate_suspend)
             self.attempt(self.migrate_network)
             for name, markers in (
@@ -424,6 +446,12 @@ class Lifecycle:
             names.append(f"/etc/systemd/system/{UNITS[self.component]}")
         if self.component == "t2-touchid":
             names.append("/etc/systemd/system/fprintd.service.d/kait2en-t2-touchid.conf")
+        if self.component == "t2-ave":
+            names.append("/usr/local/libexec/t2-services/sleep.d/t2-ave")
+        if self.component == "t2-services-common":
+            names.extend("/usr/local/libexec/t2-services/" + suffix for suffix in (
+                "t2-ncm-sleep", "package-actions", "lifecycle.py",
+                "migration/kait2en-suspend.sh", "migration/suspend-hashes.json"))
         self.state["source_files"] = {name: digest(self.path(name).read_bytes()) for name in names}
         self.save()
 

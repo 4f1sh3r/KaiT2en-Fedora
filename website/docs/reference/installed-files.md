@@ -137,7 +137,9 @@ graphs and FIR data. udev and WirePlumber select the matching profile at runtime
 ```
 
 Unlisted models receive no DSP graph at runtime. Former generated `/etc`
-fragments are backed up under `/var/lib/t2-dsp/migration/`. Migration errors
+fragments are backed up under `/var/lib/kait2en/migration/t2-dsp/` with ownership
+receipts under `/var/lib/kait2en/ownership/`. Removal cleans verified backups.
+Migration errors
 are collected in `/var/log/t2-dsp-install.log` and the installer summary.
 See [Audio DSP](../post-install/audio-dsp.md) for the supported-model table,
 audio behavior and diagnostics.

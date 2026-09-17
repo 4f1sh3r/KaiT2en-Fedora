@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-helper="$repo_root/packaging/installer/runtime/install-bt-firmware.sh"
+helper="$repo_root/auto-installer/runtime/install-bt-firmware.sh"
 work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-bt-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 

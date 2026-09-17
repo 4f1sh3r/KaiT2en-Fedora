@@ -6,6 +6,7 @@ override_dh_auto_build:
 	:
 override_dh_auto_test:
 	bash -n t2-services/shared/integration/libexec/t2-ncm-sleep
+	python3 -m unittest discover -s packaging/lifecycle -v
 override_dh_auto_install:
 	$(MAKE) -C t2-services/shared install PREFIX=/usr DESTDIR=$(CURDIR)/debian/t2-services-common SYSTEMD_UNIT_DIR=/usr/lib/systemd/system LIBEXECDIR=/usr/libexec
 override_dh_auto_clean:

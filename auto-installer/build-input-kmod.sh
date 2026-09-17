@@ -71,7 +71,7 @@ tar --sort=name \
 	-C "$work" -czf "$rpm_root/SOURCES/kait2en-input-0.1.tar.gz" \
 	kait2en-input-0.1
 install -m 0644 \
-	"$SOURCE_ROOT/packaging/installer/kmod-kait2en-input.spec" \
+	"$SOURCE_ROOT/auto-installer/kmod-kait2en-input.spec" \
 	"$rpm_root/SPECS/"
 
 export SOURCE_DATE_EPOCH

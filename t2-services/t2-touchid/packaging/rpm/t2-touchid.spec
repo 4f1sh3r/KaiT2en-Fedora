@@ -40,10 +40,12 @@ if source %{_libexecdir}/t2-services/package-actions; then
     migration_status=$t2_last_status
     t2_run python3 %{_libexecdir}/t2-services/lifecycle.py t2-touchid install-policy
     policy_status=$t2_last_status
-    t2_run systemctl daemon-reload
-    if [ "$migration_status" -eq 0 ] && [ "$policy_status" -eq 0 ]; then
-        if [ "$1" -eq 1 ] && ! systemctl is-enabled --quiet kait2en-t2-touchid.service; then t2_run systemctl preset kait2en-t2-touchid.service; fi
-        t2_run systemctl try-restart kait2en-t2-touchid.service
+    if [ -d /run/systemd/system ]; then
+        t2_run systemctl daemon-reload
+        if [ "$migration_status" -eq 0 ] && [ "$policy_status" -eq 0 ]; then
+            if [ "$1" -eq 1 ] && ! systemctl is-enabled --quiet kait2en-t2-touchid.service; then t2_run systemctl preset kait2en-t2-touchid.service; fi
+            t2_run systemctl try-restart kait2en-t2-touchid.service
+        fi
     fi
     t2_summary
 else

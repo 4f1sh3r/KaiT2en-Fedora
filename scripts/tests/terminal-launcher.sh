@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-launcher="$repo_root/packaging/installer/runtime/kait2en-launch-terminal"
+launcher="$repo_root/auto-installer/runtime/kait2en-launch-terminal"
 work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-terminal-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 log="$work/terminal.log"

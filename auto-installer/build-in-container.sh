@@ -25,7 +25,7 @@ done
 [[ "$KERNEL_DEVEL_SHA256" =~ ^[0-9a-f]{64}$ ]]
 [[ "$FEDORA_METALINK" == https://mirrors.fedoraproject.org/metalink\?* ]]
 [[ "$FEDORA_ARCHIVE_BASEURL" == https://archives.fedoraproject.org/pub/archive/* ]]
-EDITION_CATALOG="$SOURCE_ROOT/packaging/installer/targets/$EDITIONS_FILE"
+EDITION_CATALOG="$SOURCE_ROOT/auto-installer/targets/$EDITIONS_FILE"
 [[ -s "$EDITION_CATALOG" ]]
 grep -Eq "^${DEFAULT_EDITION}[[:space:]]" "$EDITION_CATALOG"
 
@@ -105,11 +105,11 @@ rm -rf "$BUILD_ROOT"
 mkdir -p "$BUILD_ROOT/input-rpm" "$OUTPUT_DIR"
 RPM_PATH=$(
 	KAIT2EN_KMOD_WORK_ROOT="$BUILD_ROOT/input-kmod-work" \
-		"$SOURCE_ROOT/packaging/installer/build-input-kmod.sh" \
+		"$SOURCE_ROOT/auto-installer/build-input-kmod.sh" \
 		"$SOURCE_ROOT" \
 		"$ISO_KERNEL_RELEASE" \
 		"$BUILD_ROOT/input-rpm" \
-		"packaging/installer/patches/$INPUT_COMPAT_PATCH" |
+		"auto-installer/patches/$INPUT_COMPAT_PATCH" |
 		tail -n 1
 )
 [[ -n "$RPM_PATH" && -f "$RPM_PATH" ]]
@@ -136,7 +136,7 @@ done
 mkdir -p "$LAYOUT/scripts/macos"
 install -m 0644 "$SOURCE_ROOT/LICENSE" "$LAYOUT/LICENSE"
 install -m 0644 \
-	"$SOURCE_ROOT/packaging/installer/README.md" \
+	"$SOURCE_ROOT/auto-installer/README.md" \
 	"$LAYOUT/README.md"
 install -m 0755 \
 	"$SOURCE_ROOT/scripts/macos/prepare-fedora-installer.sh" \
@@ -146,7 +146,7 @@ install -m 0755 \
 	"$LAYOUT/scripts/macos/"
 install -m 0644 "$EDITION_CATALOG" "$LAYOUT/installer-editions.tsv"
 
-ADDON_SOURCE="$SOURCE_ROOT/packaging/installer/anaconda-addon"
+ADDON_SOURCE="$SOURCE_ROOT/auto-installer/anaconda-addon"
 ADDON_TARGET="$UPDATES_ROOT/usr/share/anaconda/addons/com_kait2en_input"
 mkdir -p \
 	"$ADDON_TARGET/service" \
@@ -174,22 +174,22 @@ install -m 0644 \
 	"$UPDATES_ROOT/usr/share/anaconda/dbus/services/"
 install -m 0644 "$RPM_PATH" "$UPDATES_ROOT/usr/share/kait2en-installer/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/install-wifi-firmware.sh" \
+	"$SOURCE_ROOT/auto-installer/runtime/install-wifi-firmware.sh" \
 	"$UPDATES_ROOT/usr/share/kait2en-installer/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/install-bt-firmware.sh" \
+	"$SOURCE_ROOT/auto-installer/runtime/install-bt-firmware.sh" \
 	"$UPDATES_ROOT/usr/share/kait2en-installer/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-prepare" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-prepare" \
 	"$UPDATES_ROOT/usr/share/kait2en-installer/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-install" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-install" \
 	"$UPDATES_ROOT/usr/share/kait2en-installer/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-launch-terminal" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-launch-terminal" \
 	"$UPDATES_ROOT/usr/share/kait2en-installer/"
 install -m 0644 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-install.desktop" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-install.desktop" \
 	"$UPDATES_ROOT/usr/share/kait2en-installer/"
 
 # Generated from the same tracked sources as the ISO modules. This snapshot is
@@ -197,16 +197,16 @@ install -m 0644 \
 TRANSITION_SOURCE="$UPDATES_ROOT/usr/share/kait2en-installer/transition-source"
 mkdir -p \
 	"$TRANSITION_SOURCE/modules" \
-	"$TRANSITION_SOURCE/packaging/installer"
+	"$TRANSITION_SOURCE/auto-installer"
 install -m 0644 "$SOURCE_ROOT/LICENSE" "$TRANSITION_SOURCE/"
 printf '%s\n' "$SOURCE_DATE_EPOCH" >"$TRANSITION_SOURCE/source-date-epoch"
 for module in t2bce_dma t2bce_core t2bce_vhci t2touchbar hid_t2magicmouse; do
 	cp -a "$SOURCE_ROOT/modules/$module" "$TRANSITION_SOURCE/modules/"
 done
-install -m 0755 "$SOURCE_ROOT/packaging/installer/build-input-kmod.sh" \
-	"$TRANSITION_SOURCE/packaging/installer/"
-install -m 0644 "$SOURCE_ROOT/packaging/installer/kmod-kait2en-input.spec" \
-	"$TRANSITION_SOURCE/packaging/installer/"
+install -m 0755 "$SOURCE_ROOT/auto-installer/build-input-kmod.sh" \
+	"$TRANSITION_SOURCE/auto-installer/"
+install -m 0644 "$SOURCE_ROOT/auto-installer/kmod-kait2en-input.spec" \
+	"$TRANSITION_SOURCE/auto-installer/"
 
 while IFS= read -r python_file; do
 	python3 -c \
@@ -246,37 +246,37 @@ done
 # from these files. The pre-pivot hook moves them into /run, which survives the
 # switch root.
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/install-wifi-firmware.sh" \
+	"$SOURCE_ROOT/auto-installer/runtime/install-wifi-firmware.sh" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/install-bt-firmware.sh" \
+	"$SOURCE_ROOT/auto-installer/runtime/install-bt-firmware.sh" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-live-wifi" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-live-wifi" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-live-bluetooth" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-live-bluetooth" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 install -m 0644 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-live-wifi.service" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-live-wifi.service" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 install -m 0644 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-live-bluetooth.service" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-live-bluetooth.service" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 # Shipped on the stick so a live session without any network can still produce
 # a diagnostics archive.
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-live-diagnostics" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-live-diagnostics" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/runtime/kait2en-rescue" \
+	"$SOURCE_ROOT/auto-installer/runtime/kait2en-rescue" \
 	"$INITRAMFS_ROOT/usr/lib/kait2en/"
 sed "s|@KERNEL_RELEASE@|$ISO_KERNEL_RELEASE|g" \
-	"$SOURCE_ROOT/packaging/installer/initramfs/20-kait2en-input.sh.in" \
+	"$SOURCE_ROOT/auto-installer/initramfs/20-kait2en-input.sh.in" \
 	>"$INITRAMFS_ROOT/var/lib/dracut/hooks/pre-trigger/20-kait2en-input.sh"
 chmod 0755 "$INITRAMFS_ROOT/var/lib/dracut/hooks/pre-trigger/20-kait2en-input.sh"
 install -m 0755 \
-	"$SOURCE_ROOT/packaging/installer/initramfs/90-kait2en-updates.sh" \
+	"$SOURCE_ROOT/auto-installer/initramfs/90-kait2en-updates.sh" \
 	"$INITRAMFS_ROOT/var/lib/dracut/hooks/pre-pivot/90-kait2en-updates.sh"
 install -m 0644 "$UPDATES_IMAGE" "$INITRAMFS_ROOT/kait2en-anaconda-updates.img"
 find "$INITRAMFS_ROOT" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
@@ -291,7 +291,7 @@ INITRAMFS_IMAGE="$LAYOUT/kait2en-input-initramfs.img"
 sed \
 	-e "s|@ISO_KERNEL_PATH@|$ISO_KERNEL_PATH|g" \
 	-e "s|@ISO_INITRD_PATH@|$ISO_INITRD_PATH|g" \
-	"$SOURCE_ROOT/packaging/installer/grub.cfg.in" >"$LAYOUT/grub.cfg.in"
+	"$SOURCE_ROOT/auto-installer/grub.cfg.in" >"$LAYOUT/grub.cfg.in"
 
 gzip -dc "$UPDATES_IMAGE" | cpio -it --quiet |
 	grep -Fx 'usr/share/anaconda/dbus/services/org.fedoraproject.Anaconda.Addons.KaiT2en.service' >/dev/null
@@ -306,11 +306,11 @@ gzip -dc "$UPDATES_IMAGE" | cpio -it --quiet |
 gzip -dc "$UPDATES_IMAGE" | cpio -it --quiet |
 	grep -Fx 'usr/share/kait2en-installer/kait2en-launch-terminal' >/dev/null
 gzip -dc "$UPDATES_IMAGE" | cpio -it --quiet |
-	grep -Fx 'usr/share/kait2en-installer/transition-source/packaging/installer/build-input-kmod.sh' >/dev/null
+	grep -Fx 'usr/share/kait2en-installer/transition-source/auto-installer/build-input-kmod.sh' >/dev/null
 gzip -dc "$UPDATES_IMAGE" | cpio -it --quiet |
 	grep -Fx 'usr/share/kait2en-installer/transition-source/modules/t2bce_core/t2bce_main.c' >/dev/null
 ! gzip -dc "$UPDATES_IMAGE" | cpio -it --quiet |
-	grep -F 'transition-source/packaging/installer/patches/' >/dev/null
+	grep -F 'transition-source/auto-installer/patches/' >/dev/null
 gzip -dc "$INITRAMFS_IMAGE" | cpio -it --quiet |
 	grep -Fx "usr/lib/modules/$ISO_KERNEL_RELEASE/updates/kait2en/t2bce_vhci.ko" >/dev/null
 gzip -dc "$INITRAMFS_IMAGE" | cpio -it --quiet |
