@@ -82,6 +82,14 @@ def build(output, datadir):
                     "update-props": {"node.name": target}}})
     udev.append('LABEL="t2_dsp_end"')
     (output / "89-t2-dsp.rules").write_text("\n".join(udev) + "\n")
+    # Constrain the raw T2 speakers to the rates the hardware DSP path expects.
+    # Losing this in the packaging refactor caused startup distortion. No rename
+    # here, so the WirePlumber-generated names stay intact for UCM loopbacks.
+    monitor.append({
+        "matches": [{"alsa.id": "~t2-.*", "api.alsa.pcm.stream": "playback"}],
+        "actions": {"update-props": {
+            "audio.allowed-rates": [96000, 88200, 48000, 44100]}},
+    })
     # Strict JSON is accepted as SPA-JSON. Speaker PCM split parents must keep
     # their WirePlumber-generated names so UCM loopbacks keep linking correctly.
     write_json(output / "51-t2-dsp.conf", {

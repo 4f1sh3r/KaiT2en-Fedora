@@ -1,10 +1,5 @@
 # KaiT2en Fedora installer USB
 
-This directory owns the automatic OS installer and live-image build tooling.
-It is separate from the independently installable DSP and T2 service packages.
-Their recipes live with the components. Shared binary-package infrastructure
-lives under `packaging/` at the repository root.
-
 This kit prepares one Fedora USB stick on macOS. It adds the T2 keyboard and
 trackpad drivers, brings up Wi-Fi in the live system, and carries the Apple
 Wi-Fi firmware into the installed system. On Macs whose Bluetooth runs over
