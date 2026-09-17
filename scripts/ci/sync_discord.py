@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Announce the upstream submissions from data/features.yml in Discord.
+"""Announce the upstream submissions from website/data/features.yml in Discord.
 
 One webhook message per submission; the message id is remembered in
-data/discord-state.json so a status change edits the existing message instead
-of posting a new one.
+scripts/ci/state/discord-state.json so a status change edits the existing
+message instead of posting a new one.
 
 Usage:
     DISCORD_UPSTREAM_WEBHOOK=https://discord.com/api/webhooks/... \\
@@ -16,13 +16,14 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 
 import discord_webhook as discord  # noqa: E402
 from render_discord import render  # noqa: E402
-from schema import SUBMITTED_UPSTREAM, DATA_FILE, UpstreamDataError, load_items  # noqa: E402
+from schema import SUBMITTED_UPSTREAM, UpstreamDataError, load_items  # noqa: E402
 
-STATE_FILE = DATA_FILE.parent / "discord-state.json"
+STATE_FILE = HERE / "state" / "discord-state.json"
 STATE_VERSION = 1
 WEBHOOK_ENV = "DISCORD_UPSTREAM_WEBHOOK"
 
