@@ -346,7 +346,7 @@ def build_index_sections(config: dict[str, Any], anchors: dict[str, str]) -> lis
             def resolve(link: str) -> str:
                 if link not in anchors:
                     raise BuildError(
-                        f"data/features.yml: link 'docs/{link}' is not part of "
+                        f"website/data/features.yml: link 'docs/{link}' is not part of "
                         "the documentation page listed in site.yml"
                     )
                 return f"documentation.html#{anchors[link]}"
