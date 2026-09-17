@@ -120,7 +120,7 @@ output_uid=$(id -u)
 output_gid=$(id -g)
 if [[ ${ENGINE##*/} == podman ]]; then
 	# Container root maps to the invoking user, regardless of userns defaults.
-	container_options+=(--userns=keep-id:uid=0,gid=0)
+	container_options+=("--userns=keep-id:uid=0,gid=0")
 	output_uid=0
 	output_gid=0
 fi
