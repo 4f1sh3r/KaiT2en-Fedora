@@ -161,6 +161,8 @@ run_initial_install() {
 }
 
 [[ $# -eq 0 ]] || die 'usage: kait2en-install'
+[[ $EUID -ne 0 ]] ||
+	die 'Run kait2en-install as your normal user, not with sudo or as root. It asks for administrator access itself when it needs it.'
 delegate_to_repository "$@"
 
 # An exec within one installer session inherits the active lock and logging
