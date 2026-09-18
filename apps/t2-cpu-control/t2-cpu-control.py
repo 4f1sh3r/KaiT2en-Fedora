@@ -715,7 +715,12 @@ class CpuControl(Adw.Application):
             reasons=[]; perf=int(data.get("perf_active",0))
             thermal_cores=[str(c[0]) for c in cores if c[3]]
             prochot_cores=[str(c[0]) for c in cores if c[4]]
-            if data.get("bd_inferred")=="1": reasons.append("Platform PROCHOT inferred")
+            if data.get("prochot_external")=="1":
+                detail=[]
+                if data.get("smc_adapter_current_ua"): detail.append(f"adapter {int(data['smc_adapter_current_ua'])/1e6:.2f} A")
+                if data.get("smc_battery_current_ua"): detail.append(f"battery {int(data['smc_battery_current_ua'])/1e6:.2f} A")
+                if data.get("smc_cpu_power_uw"): detail.append(f"SMC CPU {int(data['smc_cpu_power_uw'])/1e6:.0f} W")
+                reasons.append("Platform PROCHOT inferred" + (f" ({', '.join(detail)})" if detail else ""))
             elif prochot_cores: reasons.append("PROCHOT CPU " + ",".join(prochot_cores))
             if thermal_cores: reasons.append("thermal CPU " + ",".join(thermal_cores))
             if perf & (1<<10): reasons.append("PL1")
