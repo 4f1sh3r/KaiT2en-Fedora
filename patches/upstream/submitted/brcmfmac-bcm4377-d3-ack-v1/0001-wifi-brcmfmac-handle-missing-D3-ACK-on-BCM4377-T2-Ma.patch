@@ -1,5 +1,5 @@
 From 368adc4d474dd15d35e6f165ecededfdb933aa37 Mon Sep 17 00:00:00 2001
-From: Andre Eikmeyer <andre@negmaster.com>
+From: Andre Eikmeyer <dev@deq.rocks>
 Date: Fri, 18 Sep 2026 22:20:57 +0200
 Subject: [PATCH] wifi: brcmfmac: handle missing D3 ACK on BCM4377 T2 Macs
 
@@ -13,7 +13,7 @@ resume the existing recovery path tears down and probes the device again
 instead of relying on a D0 mailbox transaction.
 
 Tested-on: MacBookAir9,1, MacBookPro15,4, MacBookPro16,3
-Signed-off-by: Andre Eikmeyer <andre@negmaster.com>
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c | 42 ++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 42 insertions(+)

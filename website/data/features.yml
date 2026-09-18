@@ -20,6 +20,22 @@
 
 items:
 
+  - id: brcmfmac-bcm4377-d3-ack
+    title: "Wi-Fi suspend on BCM4377 T2 Macs"
+    state: available
+    upstream: submitted
+    version: v1
+    project: Linux kernel
+    subsystem: Wi-Fi / brcmfmac
+    authors:
+      - deqrocks
+    link: "https://lore.kernel.org/all/20260918213014.1890677-1-dev@deq.rocks/"
+    updated: "2026-09-18"
+    notes: >-
+      Lets affected T2 Macs suspend when BCM4377 firmware does not acknowledge
+      HOST_D3_INFORM, then uses the driver's cold-reprobe recovery path on
+      resume.
+
   - id: brcmfmac-pm-max-power-management
     title: "Wi-Fi PM_MAX power management"
     state: in-progress
