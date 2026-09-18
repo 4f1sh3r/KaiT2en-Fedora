@@ -11,6 +11,7 @@
 *.o
 *.ko
 *.mod
+*.pp
 *.mod.c
 *.mod.o
 .*.cmd

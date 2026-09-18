@@ -1,0 +1,94 @@
+From 368adc4d474dd15d35e6f165ecededfdb933aa37 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <andre@negmaster.com>
+Date: Fri, 18 Sep 2026 22:20:57 +0200
+Subject: [PATCH] wifi: brcmfmac: handle missing D3 ACK on BCM4377 T2 Macs
+
+BCM4377 on the affected T2 Macs does not acknowledge HOST_D3_INFORM.
+The current PCIe suspend callback treats this as fatal and aborts system
+suspend.
+
+On the affected PCI and DMI combinations, mask the mailbox interrupt,
+preserve the bus-down state, and let generic PCI/ACPI suspend proceed. On
+resume the existing recovery path tears down and probes the device again
+instead of relying on a D0 mailbox transaction.
+
+Tested-on: MacBookAir9,1, MacBookPro15,4, MacBookPro16,3
+Signed-off-by: Andre Eikmeyer <andre@negmaster.com>
+---
+ drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c | 42 ++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 55f4d7b..57bbac1 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -9,6 +9,7 @@
+ #include <linux/pci.h>
+ #include <linux/vmalloc.h>
+ #include <linux/delay.h>
++#include <linux/dmi.h>
+ #include <linux/interrupt.h>
+ #include <linux/bcma/bcma.h>
+ #include <linux/sched.h>
+@@ -49,6 +50,40 @@ enum brcmf_pcie_state {
+ 	BRCMFMAC_PCIE_STATE_UP
+ };
+ 
++/*
++ * BCM4377 on these T2 Macs never acknowledges HOST_D3_INFORM. The platform
++ * can nevertheless enter and leave system suspend if the PCIe mailbox
++ * interrupt is masked and resume takes the existing cold-reprobe path.
++ */
++static const struct dmi_system_id brcmf_pcie_no_d3_ack_quirk[] = {
++	{
++		.matches = {
++			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
++			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "MacBookAir9,1"),
++		},
++	},
++	{
++		.matches = {
++			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
++			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "MacBookPro15,4"),
++		},
++	},
++	{
++		.matches = {
++			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
++			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,3"),
++		},
++	},
++	{}
++};
++
++static bool brcmf_pcie_quirk_no_d3_ack(struct pci_dev *pdev)
++{
++	return pdev->vendor == PCI_VENDOR_ID_BROADCOM &&
++	       pdev->device == BRCM_PCIE_4377_DEVICE_ID &&
++	       dmi_check_system(brcmf_pcie_no_d3_ack_quirk);
++}
++
+ BRCMF_FW_DEF(43602, "brcmfmac43602-pcie");
+ BRCMF_FW_DEF(4350, "brcmfmac4350-pcie");
+ BRCMF_FW_DEF(4350C, "brcmfmac4350c2-pcie");
+@@ -2652,11 +2687,18 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
+ 	wait_event_timeout(devinfo->mbdata_resp_wait, devinfo->mbdata_completed,
+ 			   BRCMF_PCIE_MBDATA_TIMEOUT);
+ 	if (!devinfo->mbdata_completed) {
++		if (brcmf_pcie_quirk_no_d3_ack(devinfo->pdev)) {
++			dev_info(dev, "D3 ACK missing; masking PCIe mailbox interrupt\n");
++			brcmf_pcie_intr_disable(devinfo);
++			goto done;
++		}
++
+ 		brcmf_err(bus, "Timeout on response for entering D3 substate\n");
+ 		brcmf_bus_change_state(bus, BRCMF_BUS_UP);
+ 		return -EIO;
+ 	}
+ 
++done:
+ 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
+ 
+ 	return 0;
+-- 
+2.55.0
