@@ -1,6 +1,10 @@
 {
   "version": 1,
   "messages": {
+    "brcmfmac-bcm4377-d3-ack": {
+      "message_id": "1550620841786740856",
+      "hash": "04446187014f44e3b3f2f1e7470ef51bf0bd0c6c21367a6601161699f9500c2b"
+    },
     "brcmfmac-pm-max-power-management": {
       "message_id": "1536401557581602927",
       "hash": "b097d8f910b260e44b3ff6f83666ddebc22e316c98610d8f121af1efa1c5fead"
