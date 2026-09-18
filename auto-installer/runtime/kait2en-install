@@ -79,6 +79,12 @@ repair_origin_url() {
 validate_repository() {
 	[[ -d "$repository/.git" ]] ||
 		die "The KaiT2en Git checkout is missing: $repository"
+	# A run of kait2en-install under sudo before this was blocked could have
+	# left files here owned by root; repair that instead of failing on it.
+	if [[ -n $(find "$repository" ! -user "$(id -u)" -print -quit 2>/dev/null) ]]; then
+		printf 'Repairing ownership of %s.\n' "$repository"
+		sudo chown -R "$(id -u):$(id -g)" "$repository"
+	fi
 	# System-managed checkout: users work in their own clone, and the installer
 	# builds in-tree. Force it clean before updating rather than refusing on the
 	# installer's own build leftovers.
