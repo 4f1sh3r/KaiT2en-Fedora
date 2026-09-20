@@ -77,7 +77,11 @@ trap 'on_error "$LINENO"' ERR
 
 plist_value() {
 	diskutil info -plist "$1" |
-		plutil -extract "$2" raw -o - - 2>/dev/null
+		plutil -extract "$2" xml1 -o - - 2>/dev/null |
+		sed -n -e 's|^<true/>$|true|p' \
+			-e 's|^<false/>$|false|p' \
+			-e 's|^<string>\(.*\)</string>$|\1|p' \
+			-e 's|^<integer>\(.*\)</integer>$|\1|p'
 }
 
 format_size() {
