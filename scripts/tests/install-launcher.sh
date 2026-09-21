@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-launcher="$repo_root/packaging/installer/runtime/kait2en-install"
+launcher="$repo_root/auto-installer/runtime/kait2en-install"
 work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-install-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
@@ -88,8 +88,8 @@ grep -Fq "git $git_prefix pull --ff-only origin main" "$log"
 grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
 ! grep -Fq 'kait2en-prepare --complete' "$log"
 
-mkdir -p "$fake_repo/packaging/installer/runtime"
-cat >"$fake_repo/packaging/installer/runtime/kait2en-install" <<'EOF'
+mkdir -p "$fake_repo/auto-installer/runtime"
+cat >"$fake_repo/auto-installer/runtime/kait2en-install" <<'EOF'
 #!/usr/bin/env bash
 printf 'delegated active=%s\n' \
 	"${KAIT2EN_INSTALL_SESSION_ACTIVE:-0}" >>"$KAIT2EN_TEST_LOG"
@@ -109,7 +109,7 @@ env \
 grep -Fxq 'delegated active=0' "$log"
 ! grep -Fq 'flock ' "$log"
 
-cp "$launcher" "$fake_repo/packaging/installer/runtime/kait2en-install"
+cp "$launcher" "$fake_repo/auto-installer/runtime/kait2en-install"
 : >"$log"
 printf 'phase=complete\ntarget_kernel=%s\n' "$target" >"$fake_state/state"
 printf 'n\n' |
@@ -124,7 +124,7 @@ printf 'n\n' |
 		KAIT2EN_TEST_REPOSITORY="$fake_repo" \
 		KAIT2EN_TEST_ORIGIN_URL_FILE="$origin_url_file" \
 		KAIT2EN_TEST_LOG="$log" \
-		bash "$fake_repo/packaging/installer/runtime/kait2en-install" >/dev/null
+		bash "$fake_repo/auto-installer/runtime/kait2en-install" >/dev/null
 grep -Fq "git $git_prefix pull --ff-only origin main" "$log"
 grep -Fq "sudo cwd=$fake_repo command=bash ./scripts/fedora/install.sh" "$log"
 ! grep -Fq 'flock ' "$log"

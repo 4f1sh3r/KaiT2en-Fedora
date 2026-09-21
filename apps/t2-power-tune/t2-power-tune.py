@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 import json, os, subprocess, threading
 import gi
 gi.require_version("Gtk","4.0"); gi.require_version("Adw","1")

@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Sourced by package lifecycle scripts. Continue after failed actions and report
+# every failure. Do not enable fingerprint PAM or assign identities here.
+t2_errors=''
+t2_run() {
+	t2_last_status=0
+	if "$@"; then
+		return 0
+	else
+		t2_status=$?
+		t2_last_status=$t2_status
+		t2_message="command failed ($t2_status): $*"
+		printf '[t2-services] %s\n' "$t2_message" >&2
+		t2_errors="${t2_errors}${t2_message}
+"
+		if ! printf '%s\n' "$t2_message" >>/var/log/t2-services-install.log; then
+			printf '[t2-services] could not write /var/log/t2-services-install.log\n' >&2
+		fi
+	fi
+	return 0
+}
+t2_summary() {
+	if [ -n "$t2_errors" ]; then
+		printf '[t2-services] package actions completed with errors:\n%s' "$t2_errors" >&2
+	fi
+	return 0
+}

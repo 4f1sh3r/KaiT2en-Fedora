@@ -1,4 +1,4 @@
-"""Load and validate data/features.yml."""
+"""Load and validate website/data/features.yml."""
 
 from __future__ import annotations
 
@@ -39,8 +39,9 @@ OPTIONAL_FIELDS = ("authors", "link", "help", "notes", "project", "subsystem", "
 
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
-DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "features.yml"
-DOCS_DIR = DATA_FILE.parents[1] / "website" / "docs"
+ROOT = Path(__file__).resolve().parents[2]
+DATA_FILE = ROOT / "website" / "data" / "features.yml"
+DOCS_DIR = ROOT / "website" / "docs"
 
 
 class UpstreamDataError(Exception):

@@ -7,10 +7,13 @@ require_repo_root
 require_fedora
 require_min_kernel 7 0
 
-install -d -o root -g root -m 0755 /usr/local/bin
-install -o root -g root -m 0755 "$SCRIPT_DIR/kait2en-multicall" /usr/local/bin/kait2en-multicall
-ln -sfn kait2en-multicall /usr/local/bin/edit-grub
-ln -sfn kait2en-multicall /usr/local/bin/update-grub
+install_multicall() {
+	install -d -o root -g root -m 0755 /usr/local/bin
+	install -o root -g root -m 0755 "$SCRIPT_DIR/kait2en-multicall" /usr/local/bin/kait2en-multicall
+	ln -sfn kait2en-multicall /usr/local/bin/edit-grub
+	ln -sfn kait2en-multicall /usr/local/bin/update-grub
+}
+run_step "install command helpers" install_multicall
 
 STEPS=(
 	install-dependencies.sh
@@ -24,6 +27,7 @@ STEPS=(
 	install-gdm-branding.sh
 	install-suspend-service.sh
 	install-apps.sh
+	install-t2-services-common.sh
 	install-t2-remote.sh
 	install-touchid.sh
 	rebuild-initramfs.sh
@@ -40,8 +44,8 @@ for step in "${STEPS[@]}"; do
 		step_args=()
 	fi
 
-	if ! bash "$SCRIPT_DIR/$step" "${step_args[@]}"; then
-		warn "$step failed; continuing with the remaining installation steps"
+	run_step "$step" bash "$SCRIPT_DIR/$step" "${step_args[@]}"
+	if (( STEP_STATUS != 0 )); then
 		failed_steps+=("$step")
 	fi
 done
@@ -49,5 +53,5 @@ done
 if (( ${#failed_steps[@]} > 0 )); then
 	warn "installation completed with errors in: ${failed_steps[*]}"
 fi
-info "Kait2en installation completed"
+info "All Kait2en installation steps have been attempted"
 info "reboot after reviewing the output"

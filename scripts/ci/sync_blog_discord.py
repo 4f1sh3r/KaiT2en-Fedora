@@ -2,8 +2,8 @@
 """Announce the blog posts from website/blog/ in Discord.
 
 One webhook message per published post; the message id is remembered in
-data/blog-discord-state.json so an edited post updates the existing message
-instead of posting a new one.
+scripts/ci/state/blog-discord-state.json so an edited post updates the existing
+message instead of posting a new one.
 
 Usage:
     DISCORD_BLOG_WEBHOOK=https://discord.com/api/webhooks/... \\
@@ -25,7 +25,7 @@ import discord_webhook as discord  # noqa: E402
 from build import BuildError, load_posts, read_config  # noqa: E402
 from render_blog_discord import render  # noqa: E402
 
-STATE_FILE = ROOT / "data" / "blog-discord-state.json"
+STATE_FILE = HERE / "state" / "blog-discord-state.json"
 STATE_VERSION = 1
 WEBHOOK_ENV = "DISCORD_BLOG_WEBHOOK"
 

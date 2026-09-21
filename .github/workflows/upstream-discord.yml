@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - data/features.yml
+      - website/data/features.yml
       - scripts/ci/**
       - .github/workflows/upstream-discord.yml
 
   pull_request:
     paths:
-      - data/features.yml
+      - website/data/features.yml
       - scripts/ci/**
       - .github/workflows/upstream-discord.yml
 
@@ -100,13 +100,13 @@ jobs:
         run: |
           # --porcelain, not `git diff`: on the first run the state file is
           # still untracked.
-          if [ -z "$(git status --porcelain -- data/discord-state.json)" ]; then
+          if [ -z "$(git status --porcelain -- scripts/ci/state/discord-state.json)" ]; then
             echo "No state change to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/discord-state.json
+          git add scripts/ci/state/discord-state.json
           git commit -m "upstream: update Discord message state [skip ci]"
           # Pushes with GITHUB_TOKEN do not trigger workflows, so this cannot loop.
           for attempt in 1 2 3; do

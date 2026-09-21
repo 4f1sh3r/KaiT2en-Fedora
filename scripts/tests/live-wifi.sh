@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-script="$repo_root/packaging/installer/runtime/kait2en-live-wifi"
-helper="$repo_root/packaging/installer/runtime/install-wifi-firmware.sh"
+script="$repo_root/auto-installer/runtime/kait2en-live-wifi"
+helper="$repo_root/auto-installer/runtime/install-wifi-firmware.sh"
 work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-live-wifi-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 

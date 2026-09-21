@@ -138,7 +138,22 @@ for ((cpu=0; cpu<count; cpu++)); do
     perf_log=$((perf_log | ((perf >> 16) & 0xffff)))
 done
 if ((perf_active & 1)); then any_prochot=1; fi
-bd=0
-if ((any_prochot && !any_thermal && min_dtj > offset)); then bd=1; fi
-printf 'prochot=%s\nthermal=%s\nbd_inferred=%s\nperf_active=%s\nperf_log=%s\n' \
-    "$any_prochot" "$any_thermal" "$bd" "$perf_active" "$perf_log"
+prochot_external=0
+if ((any_prochot && !any_thermal && min_dtj > offset)); then prochot_external=1; fi
+printf 'prochot=%s\nthermal=%s\nprochot_external=%s\nperf_active=%s\nperf_log=%s\n' \
+    "$any_prochot" "$any_thermal" "$prochot_external" "$perf_active" "$perf_log"
+
+# prochot_external doesn't say what asserted it; add the SMC's own
+# charger/battery/CPU-power view so a real cause can be read off later.
+for d in /sys/class/hwmon/hwmon*; do
+    [[ -r "$d/name" ]] || continue
+    case $(<"$d/name") in t2smc|macsmc) ;; *) continue ;; esac
+    [[ -r "$d/smc_adapter_current_ua" ]] && printf 'smc_adapter_current_ua=%s\n' "$(<"$d/smc_adapter_current_ua")"
+    [[ -r "$d/smc_battery_current_ua" ]] && printf 'smc_battery_current_ua=%s\n' "$(<"$d/smc_battery_current_ua")"
+    for f in "$d"/power*_label; do
+        [[ -r "$f" ]] || continue
+        [[ $(<"$f") == PC0R ]] || continue
+        input=${f%_label}_input
+        [[ -r "$input" ]] && printf 'smc_cpu_power_uw=%s\n' "$(<"$input")"
+    done
+done

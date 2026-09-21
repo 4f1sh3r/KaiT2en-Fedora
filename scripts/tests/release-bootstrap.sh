@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-template="$repo_root/packaging/installer/macos-release-bootstrap.sh.in"
+template="$repo_root/auto-installer/macos-release-bootstrap.sh.in"
 work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-bootstrap-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 

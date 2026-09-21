@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-prepare="$repo_root/packaging/installer/runtime/kait2en-prepare"
+prepare="$repo_root/auto-installer/runtime/kait2en-prepare"
 work=$(mktemp -d "${TMPDIR:-/tmp}/kait2en-prepare-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
@@ -21,7 +21,7 @@ fake_terminal_launcher="$work/kait2en-launch-terminal"
 fake_os_release="$work/os-release"
 log="$work/commands.log"
 mkdir -p "$fake_repo/.git" "$fake_repo/scripts/fedora" \
-	"$fake_transition/packaging/installer" \
+	"$fake_transition/auto-installer" \
 	"$fake_boot" "$fake_modules/$target" "$fake_bin"
 touch "$fake_boot/vmlinuz-$old" "$fake_boot/vmlinuz-$target"
 printf '1\n' >"$fake_transition/source-date-epoch"
@@ -33,7 +33,7 @@ set -Eeuo pipefail
 [[ ${KERNEL_RELEASE:-} == "$KAIT2EN_TEST_TARGET" ]]
 printf 'install-dependencies %s\n' "$KERNEL_RELEASE" >>"$KAIT2EN_TEST_LOG"
 EOF
-cat >"$fake_transition/packaging/installer/build-input-kmod.sh" <<'EOF'
+cat >"$fake_transition/auto-installer/build-input-kmod.sh" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 [[ $# -eq 3 ]]
@@ -44,7 +44,7 @@ printf '%s\n' "$3/kmod-kait2en-input-test.rpm"
 EOF
 chmod 0755 \
 	"$fake_repo/scripts/fedora/install-dependencies.sh" \
-	"$fake_transition/packaging/installer/build-input-kmod.sh"
+	"$fake_transition/auto-installer/build-input-kmod.sh"
 
 cat >"$fake_bin/uname" <<'EOF'
 #!/usr/bin/env bash

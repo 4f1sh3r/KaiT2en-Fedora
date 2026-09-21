@@ -59,6 +59,10 @@ class FixError(RuntimeError):
     """Expected, user-facing failure."""
 
 
+class FixSkip(FixError):
+    """Benign condition: an existing non-KAIT2EN override is left untouched."""
+
+
 @dataclass(frozen=True)
 class Detection:
     cpussdt_problem: bool
@@ -1441,9 +1445,9 @@ def verify_managed_or_absent(target: Path) -> None:
             "Resolve this stale state manually before reinstalling."
         )
     if not marker_exists:
-        raise FixError(
+        raise FixSkip(
             f"Existing ACPI override is not owned by KAIT2EN: {target}. "
-            "It was left unchanged; move or remove it manually before reinstalling."
+            "It was left unchanged; move or remove it manually to let KAIT2EN manage it."
         )
     if target.is_symlink() or marker.is_symlink() or not target.is_file() or not marker.is_file():
         raise FixError(
@@ -1665,6 +1669,9 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except KeyboardInterrupt:
         raise SystemExit(130)
+    except FixSkip as exc:
+        print(f"[kait2en] ACPI autofix skipped: {exc}")
+        raise SystemExit(0)
     except FixError as exc:
         print_failure(str(exc))
         raise SystemExit(1)

@@ -16,6 +16,10 @@ the T2, it only sleeps bridgeOS, so log into macOS once and it stays unlocked
 across Linux reboots. If `journalctl -u kait2en-t2-touchid` says no macOS user
 has a finger enrolled despite one clearly being set up, this is why.
 
+**TLDR:** TouchID is bound to T2 powercycles. Once the T2 panics or power is cut
+off, it will reboot and it will disable TouchID until you reboot into macOS
+and enter your password at login.
+
 ## Binding
 
 The Secure Enclave keeps the fingerprint and compares it. Linux only learns

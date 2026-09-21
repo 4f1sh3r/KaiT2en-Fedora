@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+override_dh_auto_build:
+	$(MAKE) -C t2-services/t2-touchid build CARGO_FLAGS=--frozen
+override_dh_auto_test:
+	$(MAKE) -C t2-services/t2-touchid test CARGO_FLAGS=--frozen
+override_dh_auto_install:
+	$(MAKE) -C t2-services/t2-touchid install PREFIX=/usr DESTDIR=$(CURDIR)/debian/t2-touchid SYSTEMD_UNIT_DIR=/usr/lib/systemd/system LIBEXECDIR=/usr/libexec
+override_dh_auto_clean:
+	$(MAKE) -C t2-services/t2-touchid clean
+# Lifecycle actions are explicit and collect errors rather than aborting.
+override_dh_installsystemd:
+	dh_installsystemd --no-scripts

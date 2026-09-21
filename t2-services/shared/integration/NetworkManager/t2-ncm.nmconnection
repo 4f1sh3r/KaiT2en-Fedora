@@ -1,0 +1,15 @@
+[connection]
+id=Apple T2 Bridge
+uuid=6ab6bd67-a58f-47a6-a7c5-b03c2de64f2b
+type=ethernet
+autoconnect=true
+autoconnect-retries=0
+
+[ethernet]
+mac-address=AC:DE:48:00:11:22
+
+[ipv4]
+method=disabled
+
+[ipv6]
+method=link-local

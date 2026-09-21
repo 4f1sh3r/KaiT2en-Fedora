@@ -1,0 +1,15 @@
+[package]
+name = "t2-ave"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Manage the Apple T2 AVE service over the bridge link"
+
+[[bin]]
+name = "t2remote"
+path = "daemon/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+t2-bridgexpc = { path = "../shared/protocols/t2-bridgexpc" }

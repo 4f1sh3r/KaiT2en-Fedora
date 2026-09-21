@@ -8,7 +8,7 @@ Thus, if you are an iMac user, this guide is not for you.
 Same for Mac Pro users, since Mac Pros have no iGPU.
 This guide is only for Macbook Pro users.
 
-## MacBookPro15,1: enable hybrid graphics
+## MacBookPro15,1 (Polaris): enable hybrid graphics
 
 KaiT2en installs **T2 Hybrid GPU Control** on the MacBookPro15,1. Open it from
 the application menu and enable **Hybrid graphics**.
@@ -47,3 +47,9 @@ dGPU and to enable power saving for the dGPU. For the changes to take effect
 you need to reboot.
 Usually, users prefer iGPU as primary to save some energy and make suspend 
 more reliable.
+We say 16,x is our Waterloo. While we could fix the 15,1 Polaris, Vega dGPUs
+cause us headaches. For working suspend you should use our t2-dGPU-control app
+and set iGPU as primary display adapter and **not** enable discrete “power off
+at reboot”. If you want lower battery draw, you may enable it but suspend will
+stop working, resulting in a crash on suspend.
+

@@ -1,9 +1,9 @@
 # Audio DSP
 
 This page explains the audio DSP support that KAIT2EN installs automatically.
-It is not an installation guide. Supported Macs receive the matching profile
-during the regular KAIT2EN installation; unsupported models continue to use
-the native T2 audio devices.
+It is not an installation guide. All profiles are installed together.
+Supported Macs select the matching profile at runtime. Unsupported models
+continue to use the native T2 audio devices.
 
 ## DSP in general
 
@@ -44,9 +44,10 @@ and diagnostics. Headphones do not pass through the speaker DSP graph.
 | iMac 27-inch 2020 | `iMac20,1` |
 | iMac Pro 2017 | `iMacPro1,1` |
 
-The installer identifies the model from DMI and only deploys a graph when an
-explicit matching profile exists. KAIT2EN does not reuse a profile on an
-unlisted model.
+udev identifies the model from DMI and assigns a short ALSA card ID.
+WirePlumber uses that ID and the UCM Speaker/Mic node to select a graph.
+There is no install-time PCI-address substitution. KAIT2EN does not reuse a
+profile on an unlisted model. Reboot after installing or removing `t2-dsp`.
 
 ## Automatic selection
 
@@ -57,7 +58,8 @@ the DSP output automatically when the profile is first created.
 ## Profile origins and support
 
 The speaker and microphone graphs are KAIT2EN's own work and are generated
-per model. The license information lives in the DSP module of the repository.
+per model. The license information lives under `dsp/` in the repository and
+is shipped in `/usr/share/licenses/t2-dsp/` with the package.
 
 Thanks to [lemmyg](https://github.com/lemmyg/t2-apple-audio-dsp) for the
 pioneering work: the first PipeWire DSP graphs for T2 Macs were his, and they

@@ -1,0 +1,5 @@
+t2-touchid (0.1.0-1) unstable; urgency=medium
+
+  * Split independently installable T2 services and common link integration.
+
+ -- André Eikmeyer <andre.eikmeyer@kait2en.org>  Wed, 16 Sep 2026 12:00:00 +0000

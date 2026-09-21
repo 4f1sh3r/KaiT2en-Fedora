@@ -1,0 +1,13 @@
+#!/bin/sh
+if [ "$1" = configure ]; then
+    if [ -r /usr/libexec/t2-services/package-actions ]; then
+        . /usr/libexec/t2-services/package-actions
+        t2_run python3 /usr/libexec/t2-services/lifecycle.py t2-journal migrate
+        migration_status=$t2_last_status
+        t2_summary
+    else
+        echo '[t2-services] error: missing lifecycle reporter. Migration skipped' >&2
+    fi
+fi
+#DEBHELPER#
+exit 0

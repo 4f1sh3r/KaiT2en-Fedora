@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+override_dh_auto_build:
+	$(MAKE) -C dsp build
+override_dh_auto_test:
+	$(MAKE) -C dsp test
+override_dh_auto_install:
+	$(MAKE) -C dsp install PREFIX=/usr DESTDIR=$(CURDIR)/debian/t2-dsp
+override_dh_auto_clean:
+	$(MAKE) -C dsp clean

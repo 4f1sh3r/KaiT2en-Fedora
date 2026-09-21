@@ -33,7 +33,7 @@ done
 	exit 2
 }
 
-TARGET_REL="packaging/installer/targets/$TARGET.conf"
+TARGET_REL="auto-installer/targets/$TARGET.conf"
 TARGET_FILE="$REPO_ROOT/$TARGET_REL"
 [[ -f "$TARGET_FILE" ]] || {
 	printf 'unsupported installer target: %s\n' "$TARGET" >&2
@@ -70,7 +70,7 @@ done
 	printf 'invalid EDITIONS_FILE in %s: %s\n' "$TARGET_REL" "$EDITIONS_FILE" >&2
 	exit 1
 }
-EDITIONS_REL="packaging/installer/targets/$EDITIONS_FILE"
+EDITIONS_REL="auto-installer/targets/$EDITIONS_FILE"
 [[ -s "$REPO_ROOT/$EDITIONS_REL" ]] || {
 	printf 'edition catalog is missing: %s\n' "$EDITIONS_REL" >&2
 	exit 1
@@ -84,7 +84,7 @@ git ls-files --error-unmatch "$EDITIONS_REL" >/dev/null 2>&1 || {
 		"$TARGET_REL" "$INPUT_COMPAT_PATCH" >&2
 	exit 1
 }
-PATCH_REL="packaging/installer/patches/$INPUT_COMPAT_PATCH"
+PATCH_REL="auto-installer/patches/$INPUT_COMPAT_PATCH"
 [[ -f "$REPO_ROOT/$PATCH_REL" ]] || {
 	printf 'input compatibility patch is missing: %s\n' "$PATCH_REL" >&2
 	exit 1
@@ -114,6 +114,16 @@ fi
 
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
 [[ "$SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]]
+
+container_options=(--user 0:0)
+output_uid=$(id -u)
+output_gid=$(id -g)
+if [[ ${ENGINE##*/} == podman ]]; then
+	# Container root maps to the invoking user, regardless of userns defaults.
+	container_options+=("--userns=keep-id:uid=0,gid=0")
+	output_uid=0
+	output_gid=0
+fi
 
 git diff --quiet HEAD -- && git diff --cached --quiet HEAD -- || {
 	printf 'tracked files must be committed before building the installer\n' >&2
@@ -146,6 +156,7 @@ printf '%s  %s\n' "$KERNEL_DEVEL_SHA256" "$WORK/kernel-devel.rpm" |
 
 printf 'building %s with %s\n' "$TARGET" "$ENGINE"
 "$ENGINE" run --rm \
+	"${container_options[@]}" \
 	-e TARGET_ID="$TARGET_ID" \
 	-e FEDORA_RELEASE="$FEDORA_RELEASE" \
 	-e ARCH="$ARCH" \
@@ -161,11 +172,11 @@ printf 'building %s with %s\n' "$TARGET" "$ENGINE"
 	-e INPUT_COMPAT_PATCH="$INPUT_COMPAT_PATCH" \
 	-e ARTIFACT_BASENAME="$ARTIFACT_BASENAME" \
 	-e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
-	-e HOST_UID="$(id -u)" \
-	-e HOST_GID="$(id -g)" \
-	-v "$WORK:/work" \
+	-e HOST_UID="$output_uid" \
+	-e HOST_GID="$output_gid" \
+	-v "$WORK:/work:Z" \
 	"$CONTAINER_IMAGE" \
-	bash -c 'set +e; bash /work/source/packaging/installer/build-in-container.sh /work/source /work/kernel-devel.rpm /work/out; status=$?; chown -R "$HOST_UID:$HOST_GID" /work; exit "$status"'
+	bash -c 'set +e; bash /work/source/auto-installer/build-in-container.sh /work/source /work/kernel-devel.rpm /work/out; status=$?; chown -R "$HOST_UID:$HOST_GID" /work; exit "$status"'
 
 mkdir -p "$REPO_ROOT/dist"
 install -m 0644 "$WORK/out/$ARTIFACT_BASENAME.zip" "$REPO_ROOT/dist/"

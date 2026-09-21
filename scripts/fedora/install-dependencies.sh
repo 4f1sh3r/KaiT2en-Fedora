@@ -30,6 +30,7 @@ packages=(
 	gcc-c++ \
 	make \
 	python3 \
+	python3-gobject \
 	pkgconf-pkg-config \
 	"${development_package[@]}" \
 	kernel-headers \

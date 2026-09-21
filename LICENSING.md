@@ -6,7 +6,7 @@ under, a license choice only applies going forward.
 
 ## GPL-2.0 (kernel modules)
 
-Everything under `modules/` is a Linux kernel module and stays GPL-2.0 as the
+Kernel modules under `modules/` and `t2-services/t2-ave/kernel/` stay GPL-2.0 as the
 kernel requires. This includes `t2bce_*`, `t2ave` (in the BCE stack), `t2sep`,
 `t2smc`, `t2smp` and the others.
 
@@ -15,8 +15,9 @@ kernel requires. This includes `t2bce_*`, `t2ave` (in the BCE stack), `t2sep`,
 Everything that is not a kernel module and not vendored third-party code:
 
 - all programs and tools below `apps/`
-- `protocols/t2-bridgexpc`, `protocols/t2-biometrickit`
-- the audio DSP profiles below `modules/t2bce_audio-dsp/profiles/` (each
+- userspace programs and integration below `t2-services/`
+- `t2-services/shared/protocols/t2-bridgexpc`, `t2-services/t2-touchid/protocols/t2-biometrickit`
+- host-side DSP integration and profiles below `dsp/` (each profile
   folder carries a README.md with the notice; the installer copies it next to
   the installed files)
 - the root scripts, howto docs and project text (root `LICENSE`)
@@ -35,6 +36,6 @@ requirement and adds no restriction beyond section 7(b).
 
 ## Other owners
 
-- `apps/react-drm` carries its own license.
-- Vendored third-party code (e.g. `apps/t2-journal/vendor/`,
-  `third_party/hex2hcd/`) keeps its upstream license.
+- `third-party/react-drm` carries its own license.
+- Vendored third-party code (e.g. `t2-services/t2-journal/libs/macos-unifiedlogs/`,
+  `third-party/hex2hcd/`) keeps its upstream license.

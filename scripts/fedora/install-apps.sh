@@ -15,13 +15,8 @@ esac
 require_root
 require_repo_root
 require_fedora
-require_command \
-	awk chown cut desktop-file-validate dnf env getent grep id install mktemp \
-	modinfo npm rm rpm sleep sudo systemctl tar tr udevadm \
-	update-desktop-database usermod
-if [[ "$install_mode" == all ]]; then
-	require_command cargo make
-fi
+# Validate commands inside their owning steps. Missing npm must not prevent
+# unrelated Rust applications from being installed.
 
 REACT_DRM_FEDORA_PACKAGES=(
 	nodejs22-bin
@@ -68,7 +63,7 @@ remove_obsolete_apps() {
 	for unit in "${OBSOLETE_UNITS[@]}"; do
 		if systemctl list-unit-files "$unit" &>/dev/null; then
 			info "removing obsolete $unit"
-			systemctl disable --now "$unit" || true
+			systemctl disable --now "$unit" || warn "could not disable $unit"
 			reload=1
 		fi
 		[[ -e "/usr/local/lib/systemd/system/$unit" ]] || continue
@@ -93,6 +88,9 @@ install_rust_app() {
 	if ! make -C "$path" install; then
 		warn "$name installation failed; continuing with the remaining apps"
 		return 0
+	fi
+	if [[ "$name" == t2-journal ]]; then
+		python3 "$REPO_ROOT/packaging/lifecycle/kait2en-lifecycle.py" t2-journal record-source || warn "could not record t2-journal installation ownership"
 	fi
 }
 
@@ -174,10 +172,13 @@ install_react_drm() {
 	local missing_groups=()
 	local service_dir service_file temporary_file env_q workdir_q start_q detach_q
 	local app_dir launcher_file launcher_tmp
-	local desktop extension_uuid extension_src extension_dst
+	local desktop extension_uuid extension_src extension_base extension_dst
 	if ! has_t2_touchbar_model; then
 		return
 	fi
+	require_command awk chown cut desktop-file-validate dnf env getent grep id \
+		install mktemp modinfo npm rm rpm sleep sudo systemctl tar tr udevadm \
+		update-desktop-database usermod
 	for module in t2bdrm t2touchbar_bl; do
 		modinfo "$module" >/dev/null 2>&1 ||
 			fail "required KaiT2en kernel module is missing: $module"
@@ -193,7 +194,7 @@ install_react_drm() {
 	[[ -n "$target_home" && -d "$target_home" ]] ||
 		fail "unable to determine home directory for $target_user"
 
-	src="$REPO_ROOT/apps/react-drm"
+	src="$REPO_ROOT/third-party/react-drm"
 	dst="$target_home/react-drm"
 	for package in package.json package-lock.json .env.example.kait2en system/99-react-drm-kait2en.rules system/react-drm.service system/react-drm-tb-detach; do
 		[[ -r "$src/$package" ]] || fail "react-drm deployment file is missing: $package"
@@ -226,13 +227,16 @@ install_react_drm() {
 	)
 	if [[ "$desktop" == *gnome* ]]; then
 		require_command gnome-extensions gsettings
-		extension_dst="$target_home/.local/share/gnome-shell/extensions/$extension_uuid"
+		extension_base="$target_home/.local/share/gnome-shell/extensions"
+		extension_dst="$extension_base/$extension_uuid"
 		info "installing Window Monitor Pro for react-drm"
+		install -d -o "$target_user" -g "$target_group" -m 0755 "$extension_base"
 		install -d -o "$target_user" -g "$target_group" -m 0755 "$extension_dst"
 		install -o "$target_user" -g "$target_group" -m 0644 \
 			"$extension_src/extension.js" \
 			"$extension_src/metadata.json" \
 			"$extension_dst/"
+		chown -R "$target_user:$target_group" "$target_home/.local/share/gnome-shell"
 		run_as_target gsettings set org.gnome.shell disable-user-extensions false
 		if ! run_as_target gnome-extensions enable "$extension_uuid"; then
 			info "Window Monitor Pro will be enabled after the next login"
@@ -394,18 +398,21 @@ install_react_drm() {
 	fi
 }
 
-if [[ "$install_mode" == all ]]; then
+install_app_assets() {
 	install -d -o root -g root -m 0755 /usr/local/share/kait2en
 	install -o root -g root -m 0644 \
 		"$REPO_ROOT/assets/kait2en-app-logo.png" \
 		/usr/local/share/kait2en/kait2en-wordmark.png
 	install_kait2en_fonts
-	remove_obsolete_apps
-	install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-fan-control"
-	install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
-	install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
-	install_rust_app "$REPO_ROOT/apps/t2-journal" "t2journal"
-	install_gpu_control
+}
+if [[ "$install_mode" == all ]]; then
+	run_step "install app assets" install_app_assets
+	run_step "remove obsolete apps" remove_obsolete_apps
+	run_step "t2-fan-control" install_rust_app "$REPO_ROOT/apps/t2-fan-control" "t2-fan-control"
+	run_step "t2-smc-control" install_rust_app "$REPO_ROOT/apps/t2-smc-control" "t2-smc-control"
+	run_step "t2-power-explorer" install_rust_app "$REPO_ROOT/apps/t2-power-explorer" "t2-power-explorer"
+	run_step "t2-journal" install_rust_app "$REPO_ROOT/t2-services/t2-journal" "t2-journal"
+	run_step "GPU control" install_gpu_control
 	if ! "$REPO_ROOT/apps/t2-cpu-control/install.sh"; then
 		warn "t2-cpu-control installation failed; continuing"
 	fi
@@ -417,7 +424,7 @@ if [[ "$install_mode" == all ]]; then
 		warn "t2-power-tune installation failed; continuing"
 	fi
 fi
-install_react_drm
+run_step "react-drm" install_react_drm
 
 if [[ "$install_mode" == react-drm ]]; then
 	info "react-drm installed"

@@ -5,217 +5,23 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
 require_root
 require_repo_root
 require_fedora
-require_command basename cp dnf find id install mktemp rm runuser sed systemctl
+require_command dnf make python3
 
-DSP_SRC="$REPO_ROOT/modules/t2bce_audio-dsp/profiles"
-DSP_DST_BASE="/usr/share/kait2en/audio-dsp"
-WP_CONF_DIR="/etc/wireplumber/wireplumber.conf.d"
-WP_CONF="$WP_CONF_DIR/51-kait2en-t2-dsp.conf"
-PW_CONF_DIR="/etc/pipewire/pipewire.conf.d"
-PW_QUANTUM_CONF="$PW_CONF_DIR/50-kait2en-quantum.conf"
-WP_SCRIPT_DIR="/usr/share/wireplumber/scripts/device"
+# Install all profiles, exactly as in the standalone package. udev and
+# WirePlumber choose the model at runtime, not on the installation/build host.
+run_step "install DSP dependencies" dnf install -y \
+    pipewire pipewire-pulseaudio 'wireplumber >= 0.5.8' \
+    pipewire-module-filter-chain-lv2 lv2-bankstown lsp-plugins-lv2
 
-DSP_PACKAGES=(
-	pipewire
-	pipewire-pulseaudio
-	wireplumber
-	pipewire-module-filter-chain-lv2
-	lv2-bankstown
-	lv2-triforce
-	lsp-plugins-lv2
-	lv2-swh-plugins
-)
-
-model_dir_for_product() {
-	case "$1" in
-		MacBookAir8,1) printf '%s\n' "8_1" ;;
-		MacBookAir8,2) printf '%s\n' "8_2" ;;
-		MacBookAir9,1) printf '%s\n' "9_1" ;;
-		MacBookPro15,1) printf '%s\n' "15_1" ;;
-		MacBookPro15,2) printf '%s\n' "15_2" ;;
-		MacBookPro15,3) printf '%s\n' "15_3" ;;
-		MacBookPro15,4) printf '%s\n' "15_4" ;;
-		MacBookPro16,1) printf '%s\n' "16_1" ;;
-		MacBookPro16,2) printf '%s\n' "16_2" ;;
-		MacBookPro16,3) printf '%s\n' "16_3" ;;
-		MacBookPro16,4) printf '%s\n' "16_4" ;;
-		iMac20,1) printf '%s\n' "imac20_1" ;;
-		iMacPro1,1) printf '%s\n' "imacpro1_1" ;;
-		*) return 1 ;;
-	esac
-}
-
-apple_t2_audio_pci_tag() {
-	local dev vendor device pci_id
-
-	for dev in /sys/bus/pci/devices/*; do
-		[[ -r "$dev/vendor" && -r "$dev/device" ]] || continue
-		vendor="$(<"$dev/vendor")"
-		device="$(<"$dev/device")"
-		if [[ "$vendor" == "0x106b" && "$device" == "0x1803" ]]; then
-			pci_id="$(basename "$dev")"
-			printf '%s\n' "${pci_id//:/_}"
-			return 0
-		fi
-	done
-
-	return 1
-}
-
-target_user() {
-	local user=${SUDO_USER:-}
-
-	if [[ -n "$user" && "$user" != root ]]; then
-		printf '%s\n' "$user"
-	else
-		return 1
-	fi
-}
-
-restart_user_audio() {
-	local user uid runtime
-
-	if ! user="$(target_user)"; then
-		warn "cannot determine non-root user; restart WirePlumber and PipeWire manually"
-		return 0
-	fi
-
-	uid="$(id -u "$user")"
-	runtime="/run/user/$uid"
-	if [[ ! -d "$runtime" ]]; then
-		warn "user runtime $runtime is not active; restart WirePlumber and PipeWire after login"
-		return 0
-	fi
-
-	info "restarting WirePlumber and PipeWire for $user"
-	if ! runuser -u "$user" -- env XDG_RUNTIME_DIR="$runtime" \
-		systemctl --user restart wireplumber pipewire pipewire-pulse; then
-		warn "could not restart user audio services; reboot or restart them manually"
-	fi
-}
-
-install_graph() {
-	local src=$1 dst=$2 old_audio_root=$3 new_audio_root=$4 new_target=$5 tmp
-
-	tmp="$(mktemp)"
-	sed \
-		-e "s|$old_audio_root|$new_audio_root|g" \
-		-e "s|\"target.object\": \"alsa_output.pci-[^\"]*\\.Speakers\"|\"target.object\": \"$new_target\"|g" \
-		-e "s|\"target.object\": \"alsa_input.pci-[^\"]*\\.BuiltinMic\"|\"target.object\": \"$new_target\"|g" \
-		"$src" >"$tmp"
-	install -o root -g root -m 0644 "$tmp" "$dst"
-	rm -f "$tmp"
-}
-
-clean_installed_profile() {
-	local dir=$1
-
-	[[ -d "$dir" ]] || return 0
-
-	# Only remove file types managed by this installer. Do not recursively
-	# replace the directory in case an administrator keeps other files there.
-	find "$dir" -maxdepth 1 -type f \
-		\( -name '*.wav' -o -name '*.lua' -o -name 'graph.json' -o -name 'mic.json' -o -name 'LICENSE.*' -o -name 'README.md' \) \
-		-delete
-}
-
-product_name=
-if [[ -r /sys/class/dmi/id/product_name ]]; then
-	product_name="$(< /sys/class/dmi/id/product_name)"
-fi
-if [[ -z "$product_name" ]]; then
-	info "skipping audio DSP: cannot detect product name"
-	exit 0
+if (( STEP_STATUS == 0 )); then
+    run_step "install DSP profiles and integration" make -C "$REPO_ROOT/dsp" install PREFIX=/usr
+    if (( STEP_STATUS == 0 )); then
+        run_step "migrate legacy DSP configuration" bash /usr/libexec/t2-dsp/package-actions configure
+    else
+        warn "DSP files were not fully installed. Legacy configuration was left in place"
+    fi
+else
+    warn "DSP dependencies could not be installed. Existing DSP files and configuration were left in place"
 fi
 
-if ! model_dir="$(model_dir_for_product "$product_name")"; then
-	info "skipping audio DSP: no DSP profile for $product_name"
-	exit 0
-fi
-
-src_dir="$DSP_SRC/$model_dir"
-if [[ ! -d "$src_dir" || ! -f "$src_dir/graph.json" ]]; then
-	info "skipping audio DSP: missing DSP files for $product_name ($model_dir)"
-	exit 0
-fi
-
-if ! pci_tag="$(apple_t2_audio_pci_tag)"; then
-	fail "could not find Apple T2 audio PCI device 106b:1803"
-fi
-
-speaker_sink="alsa_output.pci-${pci_tag}.HiFi__Speaker__sink"
-speaker_target="alsa_output.hw_Audio_0"
-mic_source="alsa_input.pci-${pci_tag}.HiFi__Mic__source"
-dst_dir="$DSP_DST_BASE/$model_dir"
-old_audio_root="/usr/share/t2-linux-audio/$model_dir"
-
-info "installing audio DSP for $product_name ($model_dir)"
-dnf install -y "${DSP_PACKAGES[@]}"
-
-install -d -o root -g root -m 0755 "$dst_dir"
-clean_installed_profile "$dst_dir"
-find "$src_dir" -maxdepth 1 -type f \( -name '*.wav' -o -name '*.lua' -o -name 'LICENSE.*' -o -name 'README.md' \) \
-	-exec install -o root -g root -m 0644 {} "$dst_dir/" \;
-
-install_graph "$src_dir/graph.json" "$dst_dir/graph.json" \
-	"$old_audio_root" "$dst_dir" \
-	"$speaker_target"
-
-has_mic=0
-if [[ -f "$src_dir/mic.json" ]]; then
-	install_graph "$src_dir/mic.json" "$dst_dir/mic.json" \
-		"$old_audio_root" "$dst_dir" \
-		"$mic_source"
-	has_mic=1
-fi
-
-rm -f "$WP_SCRIPT_DIR/t2-force-unmute.lua"
-
-install -d -o root -g root -m 0755 "$WP_CONF_DIR"
-rm -f /etc/pipewire/pipewire.conf.d/t2_*_speakers.conf
-rm -f /etc/pipewire/pipewire.conf.d/t2_*_mic.conf
-
-# A 1024 sample quantum halves the wakeups of the DSP graph compared with the
-# 512 most players ask for; the extra 10 ms of latency do not matter on
-# speakers.
-install -d -o root -g root -m 0755 "$PW_CONF_DIR"
-tmp_conf="$(mktemp)"
-{
-	printf '# Generated by scripts/fedora/install-dsp.sh\n'
-	printf 'context.properties = {\n'
-	printf '    default.clock.quantum = 1024\n'
-	printf '    default.clock.min-quantum = 1024\n'
-	printf '}\n'
-} >"$tmp_conf"
-install -o root -g root -m 0644 "$tmp_conf" "$PW_QUANTUM_CONF"
-rm -f "$tmp_conf"
-rm -f "$WP_CONF_DIR/51-t2-dsp.conf"
-
-tmp_conf="$(mktemp)"
-{
-	printf '# WirePlumber configuration for KaiT2en Apple T2 audio DSP\n'
-	printf '# Generated by scripts/fedora/install-dsp.sh for %s\n\n' "$product_name"
-	printf 'node.software-dsp.rules = [\n'
-	printf '    {\n'
-	printf '        matches = [\n'
-	printf '            { node.name = "%s" }\n' "$speaker_sink"
-	printf '        ]\n'
-	printf '        actions = { create-filter = { filter-path = "%s/graph.json" hide-parent = false } }\n' "$dst_dir"
-	printf '    }\n'
-	if (( has_mic )); then
-		printf '    {\n'
-		printf '        matches = [\n'
-		printf '            { node.name = "%s" }\n' "$mic_source"
-		printf '        ]\n'
-		printf '        actions = { create-filter = { filter-path = "%s/mic.json" hide-parent = false } }\n' "$dst_dir"
-		printf '    }\n'
-	fi
-	printf ']\n\n'
-	printf 'wireplumber.profiles = { main = { node.software-dsp = required } }\n'
-} >"$tmp_conf"
-install -o root -g root -m 0644 "$tmp_conf" "$WP_CONF"
-rm -f "$tmp_conf"
-
-restart_user_audio
-
-info "audio DSP installed; raw speaker sink remains available next to the DSP sink"
+info "DSP installation steps finished. Reboot to activate. User audio services were not restarted"

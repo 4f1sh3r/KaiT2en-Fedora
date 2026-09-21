@@ -1,0 +1,16 @@
+[Unit]
+Description=T2 service link suspend and resume
+Before=sleep.target
+After=NetworkManager.service
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=180
+TimeoutStopSec=300
+ExecStart=@LIBEXECDIR@/t2-services/t2-ncm-sleep pre
+ExecStop=@LIBEXECDIR@/t2-services/t2-ncm-sleep post
+
+[Install]
+WantedBy=sleep.target
