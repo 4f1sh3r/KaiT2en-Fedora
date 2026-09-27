@@ -9,12 +9,13 @@ on:
     inputs:
       experiment:
         description: Experiment directory name below patches/testing
-        required: true
-        type: string
+        default: psr
       kernel_release:
         description: Optional Fedora kernel series or exact NVR.arch
-        required: false
-        type: string
+        default: "7.2"
+  push:
+    branches:
+      - local/pr5-kernel-72
 
 permissions:
   contents: read
@@ -26,13 +27,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  COPR_CHROOT: fedora-44-x86_64
-  COPR_PROJECT: ${{ vars.COPR_PROJECT_TESTING }}
+  COPR_CHROOT: fedora-45-x86_64
+  COPR_PROJECT: ${{ vars.COPR_PROJECT || '4lex404/kait2en-kernel-testing' }}
 
 jobs:
   build:
     if: >-
       github.event_name == 'workflow_dispatch'
+      || github.event_name == 'push'
       || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 240
@@ -71,7 +73,11 @@ jobs:
             fi
             experiment=${experiments[0]}
           else
-            experiment=$MANUAL_EXPERIMENT
+            if [[ -z $MANUAL_EXPERIMENT && $EVENT_NAME != pull_request ]]; then
+              experiment=psr
+            else
+              experiment=$MANUAL_EXPERIMENT
+            fi
           fi
 
           [[ $experiment =~ ^[a-z0-9][a-z0-9-]*$ ]] || {
@@ -136,7 +142,7 @@ jobs:
             --volume "$PWD:/repo:ro" \
             --volume "$PWD/out:/out" \
             --env GITHUB_OUTPUT=/out/github-output \
-            fedora:44 \
+            fedora:45 \
             bash -euo pipefail -c '
               dnf -y install dnf5-plugins rpm-build
               kernel_args=()
