@@ -42,7 +42,7 @@ static int __bce_vhci_add_hcd(struct bce_vhci *vhci);
 static void bce_vhci_shutdown_client(void *userdata);
 static void bce_vhci_pm_reset_client(void *userdata);
 static int bce_vhci_pm_prepare_client(void *userdata);
-static void bce_vhci_pm_prepare_no_state_client(void *userdata);
+static int bce_vhci_pm_prepare_no_state_client(void *userdata);
 static void bce_vhci_pm_mark_no_state_resume_client(void *userdata);
 static bool bce_vhci_pm_is_no_state_resume_client(void *userdata);
 static void bce_vhci_pm_complete_client(void *userdata);
@@ -240,9 +240,12 @@ int bce_vhci_pm_prepare(struct bce_vhci *vhci)
     return status;
 }
 
-void bce_vhci_pm_prepare_no_state(struct bce_vhci *vhci)
+int bce_vhci_pm_prepare_no_state(struct bce_vhci *vhci)
 {
+    /* HCD removal needs firmware replies delivered through event queues. */
+    bce_vhci_resume_event_queues(vhci);
     bce_vhci_remove_hcd(vhci);
+    return bce_vhci_pause_event_queues(vhci);
 }
 
 void bce_vhci_pm_mark_no_state_resume(struct bce_vhci *vhci)
@@ -282,9 +285,9 @@ static void bce_vhci_shutdown_client(void *userdata)
     bce_vhci_shutdown(userdata);
 }
 
-static void bce_vhci_pm_prepare_no_state_client(void *userdata)
+static int bce_vhci_pm_prepare_no_state_client(void *userdata)
 {
-    bce_vhci_pm_prepare_no_state(userdata);
+    return bce_vhci_pm_prepare_no_state(userdata);
 }
 
 static void bce_vhci_pm_mark_no_state_resume_client(void *userdata)
@@ -380,6 +383,7 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
     struct usb_hub_status *hs;
     struct usb_port_status *ps;
     u32 port_status;
+    bool reset_resume;
     if (typeReq == GetHubDescriptor && wLength >= sizeof(struct usb_hub_descriptor)) {
         hd = (struct usb_hub_descriptor *) buf;
         memset(hd, 0, sizeof(*hd));
@@ -416,7 +420,20 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
 
         if ((status = bce_vhci_cmd_port_status(&vhci->cq, (u8) wIndex, 0, &port_status)))
             return status;
-        if (port_status & BCE_VHCI_PORT_STATUS_ENABLED)
+
+        /*
+         * bridgeOS does not re-arm a preserved device's bulk OUT read credits
+         * across a stateful sleep; only the device's own SET_INTERFACE does.
+         * Report such a port as connected but not enabled until usbcore has
+         * reset it, which makes usbcore reset-resume the device (restore its
+         * configuration and interfaces) instead of resuming it in place.
+         * Devices with only IN endpoints keep resuming in place: their EP0
+         * credits do survive sleep.
+         */
+        reset_resume = wIndex <= BITS_PER_LONG &&
+                       test_bit(wIndex - 1, &vhci->stateful_reset_ports);
+
+        if ((port_status & BCE_VHCI_PORT_STATUS_ENABLED) && !reset_resume)
             ps->wPortStatus |= USB_PORT_STAT_ENABLE;
         if (port_status & BCE_VHCI_PORT_STATUS_CONNECTED)
             ps->wPortStatus |= USB_PORT_STAT_CONNECTION;
@@ -426,11 +443,14 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
             ps->wPortStatus |= USB_PORT_STAT_RESET;
         if (port_status & BCE_VHCI_PORT_STATUS_HIGH_SPEED)
             ps->wPortStatus |= USB_PORT_STAT_HIGH_SPEED;
-        if (port_status & (BCE_VHCI_PORT_STATUS_SUSPENDED |
-                           BCE_VHCI_PORT_STATUS_SUSPENDED_LEGACY))
+        if ((port_status & (BCE_VHCI_PORT_STATUS_SUSPENDED |
+                            BCE_VHCI_PORT_STATUS_SUSPENDED_LEGACY)) && !reset_resume)
             ps->wPortStatus |= USB_PORT_STAT_SUSPEND;
         if (port_status & BCE_VHCI_PORT_STATUS_C_CONNECTION)
             ps->wPortChange |= USB_PORT_STAT_C_CONNECTION;
+        if (reset_resume)
+            pr_debug("t2bce_vhci: hub reporting port=%u for reset-resume raw=%x status=%x\n",
+                    wIndex, port_status, ps->wPortStatus);
         /* pr_debug("t2bce_vhci: hub GetPortStatus port=%u raw=%x status=%x change=%x\n",
                 wIndex, port_status, ps->wPortStatus, ps->wPortChange); */
         return 0;
@@ -444,6 +464,8 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
         }
         if (wValue == USB_PORT_FEAT_RESET) {
             pr_debug("t2bce_vhci: hub SetPortFeature RESET port=%u\n", wIndex);
+            if (wIndex <= BITS_PER_LONG)
+                clear_bit(wIndex - 1, &vhci->stateful_reset_ports);
             return bce_vhci_reset_device(vhci, wIndex, wValue);
         }
         if (wValue == USB_PORT_FEAT_SUSPEND) {
@@ -499,13 +521,18 @@ static int bce_vhci_enable_device(struct usb_hcd *hcd, struct usb_device *udev)
     if (vhci->port_to_device[udev->portnum])
         return 0;
 
+    vdev = kzalloc(sizeof(struct bce_vhci_device), GFP_KERNEL);
+    if (!vdev)
+        return -ENOMEM;
+
     /* bridgeOS requires a firmware device id before endpoints are created. */
-    if (bce_vhci_cmd_device_create(&vhci->cq, udev->portnum, &devid))
+    if (bce_vhci_cmd_device_create(&vhci->cq, udev->portnum, &devid)) {
+        kfree(vdev);
         return -EIO;
+    }
 
     pr_debug("t2bce_vhci: device_create port=%u dev=%u\n", udev->portnum, devid);
 
-    vdev = kzalloc(sizeof(struct bce_vhci_device), GFP_KERNEL);
     vhci->port_to_device[udev->portnum] = devid;
     vhci->devices[devid] = vdev;
 
@@ -544,8 +571,11 @@ static void bce_vhci_free_device(struct usb_hcd *hcd, struct usb_device *udev)
     dev = vhci->devices[devid];
     for (i = 0; i < 32; i++) {
         if (dev->tq_mask & BIT(i)) {
-            bce_vhci_transfer_queue_pause(&dev->tq[i], BCE_VHCI_PAUSE_SHUTDOWN);
-            bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, dev->tq[i].endp_addr);
+            if (!bce_vhci_transfer_queue_pause(&dev->tq[i], BCE_VHCI_PAUSE_SHUTDOWN))
+                bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, dev->tq[i].endp_addr);
+            else
+                pr_warn("t2bce_vhci: [%02x] pause not confirmed, skipping endpoint destroy\n",
+                        dev->tq[i].endp_addr);
             if (dev->tq[i].endp)
                 dev->tq[i].endp->hcpriv = NULL;
             bce_vhci_destroy_transfer_queue(vhci, &dev->tq[i]);
@@ -553,6 +583,8 @@ static void bce_vhci_free_device(struct usb_hcd *hcd, struct usb_device *udev)
     }
     vhci->devices[devid] = NULL;
     vhci->port_to_device[udev->portnum] = 0;
+    if (udev->portnum <= BITS_PER_LONG)
+        clear_bit(udev->portnum - 1, &vhci->stateful_reset_ports);
     bce_vhci_cmd_device_destroy(&vhci->cq, devid);
     kfree(dev);
 }
@@ -572,8 +604,11 @@ static int bce_vhci_reset_device(struct bce_vhci *vhci, int index, u16 timeout)
 
         for (i = 0; i < 32; i++) {
             if (dev->tq_mask & BIT(i)) {
-                bce_vhci_transfer_queue_pause(&dev->tq[i], BCE_VHCI_PAUSE_SHUTDOWN);
-                bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, dev->tq[i].endp_addr);
+                if (!bce_vhci_transfer_queue_pause(&dev->tq[i], BCE_VHCI_PAUSE_SHUTDOWN))
+                    bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, dev->tq[i].endp_addr);
+                else
+                    pr_warn("t2bce_vhci: [%02x] pause not confirmed, skipping endpoint destroy\n",
+                            dev->tq[i].endp_addr);
                 if (dev->tq[i].endp)
                     dev->tq[i].endp->hcpriv = NULL;
                 bce_vhci_destroy_transfer_queue(vhci, &dev->tq[i]);
@@ -705,6 +740,30 @@ static int bce_vhci_bus_suspend(struct usb_hcd *hcd)
     return status;
 }
 
+/*
+ * Devices with bulk OUT endpoints lose the T2's queued reads across a
+ * stateful sleep and need a reset-resume (see the hub GetPortStatus
+ * handling). OUT endpoints other than EP0 use transfer queue indices 1
+ * to 15.
+ */
+static void bce_vhci_mark_stateful_reset_ports(struct bce_vhci *vhci)
+{
+    int port;
+    bce_vhci_device_t devid;
+
+    vhci->stateful_reset_ports = 0;
+    for (port = 1; port < ARRAY_SIZE(vhci->port_to_device) && port <= BITS_PER_LONG; port++) {
+        devid = vhci->port_to_device[port];
+        if (!devid || !vhci->devices[devid])
+            continue;
+        if (vhci->devices[devid]->tq_mask & GENMASK(15, 1)) {
+            set_bit(port - 1, &vhci->stateful_reset_ports);
+            pr_debug("t2bce_vhci: stateful resume will reset-resume port=%d dev=%u tq_mask=%x\n",
+                    port, devid, vhci->devices[devid]->tq_mask);
+        }
+    }
+}
+
 static int bce_vhci_bus_resume(struct usb_hcd *hcd)
 {
     struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
@@ -712,6 +771,7 @@ static int bce_vhci_bus_resume(struct usb_hcd *hcd)
 
     pr_info("t2bce_vhci: bus_resume entry\n");
     vhci->port_change_pending = 0;
+    bce_vhci_mark_stateful_reset_ports(vhci);
     bce_vhci_resume_event_queues(vhci);
     status = bce_vhci_resume_suspended(vhci);
     WRITE_ONCE(vhci->system_suspending, false);
@@ -806,7 +866,11 @@ static int bce_vhci_drop_endpoint(struct usb_hcd *hcd, struct usb_device *udev, 
         }
     }
 
-    bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, (u8) (endp->desc.bEndpointAddress & 0x8Fu));
+    if (!bce_vhci_transfer_queue_pause(q, BCE_VHCI_PAUSE_SHUTDOWN))
+        bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, (u8) (endp->desc.bEndpointAddress & 0x8Fu));
+    else
+        pr_warn("t2bce_vhci: [%02x] pause not confirmed, skipping endpoint destroy\n",
+                (u8) (endp->desc.bEndpointAddress & 0x8Fu));
     vdev->tq_mask &= ~BIT(endp_index);
     bce_vhci_destroy_transfer_queue(vhci, q);
     endp->hcpriv = NULL;

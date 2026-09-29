@@ -19,10 +19,12 @@
 #include <linux/apple-gmux.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
+#include <linux/ktime.h>
 #include <linux/dmi.h>
 #include <linux/pci.h>
 #include <linux/vga_switcheroo.h>
 #include <linux/debugfs.h>
+#include <linux/efi.h>
 #include <acpi/video.h>
 #include <asm/io.h>
 
@@ -82,9 +84,184 @@ struct apple_gmux_data {
 
 	struct pci_dev *discrete_pdev;
 	bool use_pwg_power_sequence;
+	bool use_pwrd_power_sequence;
+	u32 gpu_bar0;
+	u32 hda_bar0;
+	ktime_t dgpu_off_time;
 };
 
 static struct apple_gmux_data *apple_gmux_data;
+
+/*
+ * MacBookPro16,1 and 16,4 use the PWRD path, not PWG1/PWG3: AppleMuxControl2
+ * maps both board-ids to the same config, which does not set the
+ * PowerUpCompensation property that gates the two PWG methods, and calls
+ * PWRD(0) on power-up and PWRD(1) on power-down instead. It brackets that
+ * with save/restoreDeviceState on the GPU, its HDA function and the bridges
+ * above them, since all of them lose config space when the rails drop.
+ *
+ * SaveRootPort is 6 in that config, which is the capacity of the bridge
+ * array; the kext stops at the first empty slot, so walk to the root port.
+ */
+#define GMUX_DGPU_MAX_BRIDGES 6
+
+/* GPUMinimumOffTime of the AppleMuxControl2 config for these models. */
+#define GMUX_DGPU_MIN_OFF_MS 200
+
+static int gmux_call_pwrd(struct apple_gmux_data *gmux_data, bool power_down)
+{
+	acpi_handle handle = ACPI_HANDLE(&gmux_data->discrete_pdev->dev);
+	acpi_status status;
+
+	if (!handle)
+		return -ENODEV;
+
+	status = acpi_execute_simple_method(handle, "PWRD", power_down);
+	if (ACPI_FAILURE(status)) {
+		dev_err(&gmux_data->discrete_pdev->dev,
+			"failed to evaluate PWRD(%u): %s\n", power_down,
+			acpi_format_exception(status));
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int gmux_collect_bridges(struct apple_gmux_data *gmux_data,
+				struct pci_dev *bridges[GMUX_DGPU_MAX_BRIDGES])
+{
+	struct pci_dev *bridge = gmux_data->discrete_pdev;
+	int count = 0;
+
+	while (count < GMUX_DGPU_MAX_BRIDGES) {
+		bridge = pci_upstream_bridge(bridge);
+		if (!bridge)
+			break;
+		bridges[count++] = bridge;
+	}
+
+	return count;
+}
+
+/* The GPU's HDA function, caller must pci_dev_put() it. */
+static struct pci_dev *gmux_get_dgpu_hda(struct apple_gmux_data *gmux_data)
+{
+	struct pci_dev *gpu = gmux_data->discrete_pdev;
+
+	return pci_get_slot(gpu->bus, PCI_DEVFN(PCI_SLOT(gpu->devfn), 1));
+}
+
+static int gmux_save_function(struct pci_dev *pdev, u32 *bar0)
+{
+	int ret = pci_save_state(pdev);
+
+	if (ret) {
+		dev_err(&pdev->dev, "failed to save state: %d\n", ret);
+		return ret;
+	}
+
+	pci_read_config_dword(pdev, PCI_BASE_ADDRESS_0, bar0);
+
+	return 0;
+}
+
+/*
+ * Restore, then read BAR0 back and compare it against what was saved: the
+ * writes are silently dropped if the device is not answering yet, which is
+ * how the kext detects a restore that did not take.
+ */
+static int gmux_restore_function(struct pci_dev *pdev, u32 bar0)
+{
+	u32 now;
+
+	pci_restore_state(pdev);
+	pci_read_config_dword(pdev, PCI_BASE_ADDRESS_0, &now);
+	if (now != bar0) {
+		dev_err(&pdev->dev,
+			"restore did not take, BAR0=%8.8x expected %8.8x\n",
+			now, bar0);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+/* Save the deepest devices first, then the bridges inward to outward. */
+static int gmux_save_dgpu_state(struct apple_gmux_data *gmux_data)
+{
+	struct pci_dev *bridges[GMUX_DGPU_MAX_BRIDGES];
+	int count = gmux_collect_bridges(gmux_data, bridges);
+	struct pci_dev *hda;
+	int i, ret;
+
+	hda = gmux_get_dgpu_hda(gmux_data);
+	if (hda) {
+		ret = gmux_save_function(hda, &gmux_data->hda_bar0);
+		pci_dev_put(hda);
+		if (ret)
+			return ret;
+	}
+
+	ret = gmux_save_function(gmux_data->discrete_pdev, &gmux_data->gpu_bar0);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < count; i++) {
+		ret = pci_save_state(bridges[i]);
+		if (ret) {
+			dev_err(&bridges[i]->dev,
+				"failed to save bridge state: %d\n", ret);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * Restore the bridges outward to inward so each one is reachable before it
+ * is touched, then the GPU once its config space answers, then the HDA
+ * function. A failed HDA restore is not fatal, a failed GPU restore is.
+ */
+static int gmux_restore_dgpu_state(struct apple_gmux_data *gmux_data)
+{
+	struct pci_dev *bridges[GMUX_DGPU_MAX_BRIDGES];
+	int count = gmux_collect_bridges(gmux_data, bridges);
+	struct pci_dev *hda;
+	u32 id;
+	int i, ms, ret;
+
+	for (i = count - 1; i >= 0; i--)
+		pci_restore_state(bridges[i]);
+	pr_debug("power up: %d bridges restored\n", count);
+
+	for (ms = 0; ms < 1000; ms++) {
+		pci_read_config_dword(gmux_data->discrete_pdev, PCI_VENDOR_ID,
+				      &id);
+		if (id != 0xffffffff && id != 0)
+			break;
+		usleep_range(1000, 2000);
+	}
+	if (id == 0xffffffff || id == 0) {
+		dev_err(&gmux_data->discrete_pdev->dev,
+			"timed out waiting for PCI config space\n");
+		return -ETIMEDOUT;
+	}
+
+	pr_debug("power up: config space after %d polls\n", ms);
+	ret = gmux_restore_function(gmux_data->discrete_pdev,
+				    gmux_data->gpu_bar0);
+	if (ret)
+		return ret;
+
+	hda = gmux_get_dgpu_hda(gmux_data);
+	if (hda) {
+		gmux_restore_function(hda, gmux_data->hda_bar0);
+		pci_dev_put(hda);
+	}
+
+	return 0;
+}
 
 static int gmux_call_pwg(struct apple_gmux_data *gmux_data,
 			 const char *method)
@@ -125,6 +302,9 @@ struct apple_gmux_config {
 	bool read_version_as_u32;
 	char *name;
 };
+
+/* kMux_GPUPowerState in AppleMuxControl2, 3 when the discrete GPU is powered. */
+#define GMUX_PORT_GPU_POWER_STATE	0x3f
 
 #define GMUX_INTERRUPT_ENABLE		0xff
 #define GMUX_INTERRUPT_DISABLE		0x00
@@ -539,6 +719,22 @@ static int gmux_switch_ddc(enum vga_switcheroo_client_id id)
  * core voltage, VRAM and PCIe.
  */
 
+static void gmux_dump_power(struct apple_gmux_data *gmux_data,
+			    const char *when, bool warn)
+{
+	u8 power = gmux_read8(gmux_data, GMUX_PORT_DISCRETE_POWER);
+	u8 status = gmux_read8(gmux_data, GMUX_PORT_INTERRUPT_STATUS);
+	u8 enable = gmux_read8(gmux_data, GMUX_PORT_INTERRUPT_ENABLE);
+	u8 gpu = gmux_read8(gmux_data, GMUX_PORT_GPU_POWER_STATE);
+
+	if (warn)
+		pr_warn("%s: power 0x%02x gpu state 0x%02x irq status 0x%02x enable 0x%02x\n",
+			when, power, gpu, status, enable);
+	else
+		pr_debug("%s: power 0x%02x gpu state 0x%02x irq status 0x%02x enable 0x%02x\n",
+			 when, power, gpu, status, enable);
+}
+
 static int gmux_set_discrete_state(struct apple_gmux_data *gmux_data,
 				   enum vga_switcheroo_state state)
 {
@@ -547,15 +743,42 @@ static int gmux_set_discrete_state(struct apple_gmux_data *gmux_data,
 	reinit_completion(&gmux_data->powerchange_done);
 
 	if (state == VGA_SWITCHEROO_ON) {
-		if (gmux_data->use_pwg_power_sequence &&
+		if (gmux_data->use_pwrd_power_sequence &&
 		    gmux_data->discrete_pdev) {
+			s64 off_ms = ktime_ms_delta(ktime_get(),
+						    gmux_data->dgpu_off_time);
+
+			if (off_ms < GMUX_DGPU_MIN_OFF_MS) {
+				pr_debug("power up: off for %lld ms, waiting\n",
+					 off_ms);
+				msleep(GMUX_DGPU_MIN_OFF_MS - off_ms);
+			}
+
+			pr_debug("power up: port 3\n");
+			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 3);
+
+			pr_debug("power up: PWRD(0)\n");
+			ret = gmux_call_pwrd(gmux_data, false);
+			if (ret)
+				return ret;
+			msleep(20);
+
+			pr_debug("power up: restore state\n");
+			ret = gmux_restore_dgpu_state(gmux_data);
+			if (ret)
+				return ret;
+		} else if (gmux_data->use_pwg_power_sequence &&
+			   gmux_data->discrete_pdev) {
 			u16 vendor;
 			int i;
 
+			pr_debug("power up: port 2\n");
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 2);
 			msleep(100);
+			pr_debug("power up: port 3\n");
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 3);
 
+			pr_debug("power up: PWG1\n");
 			ret = gmux_call_pwg(gmux_data, "PWG1");
 			if (ret)
 				return ret;
@@ -573,29 +796,58 @@ static int gmux_set_discrete_state(struct apple_gmux_data *gmux_data,
 				return -ETIMEDOUT;
 			}
 
+			pr_debug("power up: config space after %d polls\n", i);
+			pr_debug("power up: PWG3\n");
 			ret = gmux_call_pwg(gmux_data, "PWG3");
 			if (ret)
 				return ret;
 
 		} else {
+			pr_debug("power up: port 1\n");
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 1);
+			pr_debug("power up: port 3\n");
 			gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 3);
 		}
 		pr_debug("Discrete card powered up\n");
 	} else {
+		if (gmux_data->use_pwrd_power_sequence &&
+		    gmux_data->discrete_pdev) {
+			pr_debug("power down: save state\n");
+			ret = gmux_save_dgpu_state(gmux_data);
+			if (ret)
+				return ret;
+
+			pr_debug("power down: PWRD(1)\n");
+			ret = gmux_call_pwrd(gmux_data, true);
+			if (ret)
+				return ret;
+		}
+
+		pr_debug("power down: port 1\n");
 		gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 1);
-		if (gmux_data->use_pwg_power_sequence)
+		if (gmux_data->use_pwg_power_sequence ||
+		    gmux_data->use_pwrd_power_sequence)
 			usleep_range(10000, 11000);
+		pr_debug("power down: port 0\n");
 		gmux_write8(gmux_data, GMUX_PORT_DISCRETE_POWER, 0);
+		gmux_dump_power(gmux_data, "power down: after port 0", false);
+		if (gmux_data->use_pwrd_power_sequence) {
+			msleep(20);
+			gmux_data->dgpu_off_time = ktime_get();
+		}
 		pr_debug("Discrete card powered down\n");
 	}
 
 	gmux_data->power_state = state;
 
+	pr_debug("power: waiting for gmux completion\n");
 	if (gmux_data->gpe >= 0 &&
 	    !wait_for_completion_interruptible_timeout(&gmux_data->powerchange_done,
-						       msecs_to_jiffies(200)))
+						       msecs_to_jiffies(200))) {
 		pr_warn("Timeout waiting for gmux switch to complete\n");
+		gmux_dump_power(gmux_data, "power: timeout", true);
+	}
+	pr_debug("power: gmux switch done\n");
 
 	return 0;
 }
@@ -621,7 +873,8 @@ static enum vga_switcheroo_client_id gmux_get_client_id(struct pci_dev *pdev)
 		 pdev->device == 0x0863)
 		return VGA_SWITCHEROO_IGD;
 
-	if (apple_gmux_data->use_pwg_power_sequence &&
+	if ((apple_gmux_data->use_pwg_power_sequence ||
+	     apple_gmux_data->use_pwrd_power_sequence) &&
 	    apple_gmux_data->discrete_pdev != pdev) {
 		pci_dev_put(apple_gmux_data->discrete_pdev);
 		apple_gmux_data->discrete_pdev = pci_dev_get(pdev);
@@ -825,13 +1078,48 @@ static void gmux_fini_debugfs(struct apple_gmux_data *gmux_data)
 	debugfs_remove_recursive(gmux_data->debug_dentry);
 }
 
+#define APPLE_GPU_VARS_GUID EFI_GUID(0xfa4ce28d, 0xb62f, 0x4c99, \
+				     0x9c, 0xc3, 0x68, 0x15, 0x68, 0x6e, 0x30, 0xf9)
+
+static efi_char16_t gmux_gpu_active_name[] = L"gpu-active";
+
+/*
+ * AppleMuxControl2 stores the GPU driving the panel in gpu-active before
+ * sleep and power-off: 1 for the integrated GPU, 0 for the discrete one.
+ */
+static void gmux_write_gpu_active(struct apple_gmux_data *gmux_data)
+{
+	efi_guid_t guid = APPLE_GPU_VARS_GUID;
+	u32 active = gmux_data->switch_state_display == VGA_SWITCHEROO_IGD;
+	efi_status_t status;
+
+	if (!efivar_is_available())
+		return;
+
+	status = efivar_set_variable(gmux_gpu_active_name, &guid,
+				     EFI_VARIABLE_NON_VOLATILE |
+				     EFI_VARIABLE_BOOTSERVICE_ACCESS |
+				     EFI_VARIABLE_RUNTIME_ACCESS,
+				     sizeof(active), &active);
+	if (status != EFI_SUCCESS)
+		pr_warn("writing gpu-active failed: 0x%lx\n", status);
+	else
+		pr_debug("gpu-active: %u\n", active);
+}
+
 static int gmux_suspend(struct device *dev)
 {
 	struct pnp_dev *pnp = to_pnp_dev(dev);
 	struct apple_gmux_data *gmux_data = pnp_get_drvdata(pnp);
 
+	gmux_write_gpu_active(gmux_data);
 	gmux_disable_interrupts(gmux_data);
 	return 0;
+}
+
+static void gmux_shutdown(struct pnp_dev *pnp)
+{
+	gmux_write_gpu_active(pnp_get_drvdata(pnp));
 }
 
 static int gmux_resume(struct device *dev)
@@ -879,6 +1167,9 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
 	pnp_set_drvdata(pnp, gmux_data);
 	gmux_data->use_pwg_power_sequence = type == APPLE_GMUX_TYPE_MMIO &&
 		dmi_match(DMI_PRODUCT_NAME, "MacBookPro15,1");
+	gmux_data->use_pwrd_power_sequence = type == APPLE_GMUX_TYPE_MMIO &&
+		(dmi_match(DMI_PRODUCT_NAME, "MacBookPro16,1") ||
+		 dmi_match(DMI_PRODUCT_NAME, "MacBookPro16,4"));
 
 	switch (type) {
 	case APPLE_GMUX_TYPE_MMIO:
@@ -1103,6 +1394,7 @@ static struct pnp_driver gmux_pnp_driver = {
 	.name		= "t2gmux",
 	.probe		= gmux_probe,
 	.remove		= gmux_remove,
+	.shutdown	= gmux_shutdown,
 	.id_table	= gmux_device_ids,
 	.driver		= {
 			.pm = &gmux_dev_pm_ops,
@@ -1115,4 +1407,5 @@ MODULE_AUTHOR("kait2en");
 MODULE_DESCRIPTION("Kait2en T2 GMUX driver");
 MODULE_VERSION("0.8");
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS("EFIVAR");
 MODULE_DEVICE_TABLE(pnp, gmux_device_ids);

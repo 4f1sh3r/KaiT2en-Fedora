@@ -4,9 +4,11 @@
  *
  *   Copyright (c) 2010 Michael Poole <mdpoole@troilus.org>
  *   Copyright (c) 2010 Chase Douglas <chase.douglas@canonical.com>
- */
-
-/*
+ *
+ * T2 internal-trackpad path: legacy implementation with model geometry,
+ * nearest-position slots, and raw firmware buttons; no Tahoe-derived
+ * position or Force Touch pipeline. New T2 work belongs in
+ * t2_precision_trackpad.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -81,7 +83,7 @@ MODULE_PARM_DESC(report_undeciphered, "Report undeciphered multi-touch state fie
 
 /* These definitions are not precise, but they're close enough.  (Bits
  * 0x03 seem to indicate the aspect ratio of the touch, bits 0x70 seem
- * to be some kind of bit mask -- 0x20 may be a near-field reading,
+ * to be some kind of bit mask. 0x20 may be a near-field reading,
  * and 0x40 is actual contact, and 0x10 may be a start/stop or change
  * indication.)
  */
@@ -835,6 +837,7 @@ static void report_finger_data(struct input_dev *input, int slot,
 			       const struct input_mt_pos *pos,
 			       const struct tp_finger *f)
 {
+	/* Tahoe maps this T2 field to MTContact.proximity. */
 	input_mt_slot(input, slot);
 	input_mt_report_slot_state(input, MT_TOOL_FINGER, true);
 
@@ -870,7 +873,8 @@ static int magicmouse_raw_event_mtp(struct hid_device *hdev,
 	// print_hex_dump_debug("appleft ev: ", DUMP_PREFIX_OFFSET, 16, 1, data,
 	// 		     size, false);
 
-	/* Expect 46 bytes of prefix, and N * 30 bytes of touch data. */
+	/* AppleMultitouchHIDEventDriverV2::handleInterruptReport receives a
+	 * 46-byte prefix followed by 30-byte contacts. */
 	if (size < hdr_sz || ((size - hdr_sz) % touch_sz) != 0)
 		return 0;
 
@@ -1283,6 +1287,7 @@ static int magicmouse_setup_input_spi(struct input_dev *input,
 static int magicmouse_setup_input_t2(struct input_dev *input,
 				      struct hid_device *hdev)
 {
+	/* Legacy T2 geometry comes from magicmouse_t2_configs, not feature 0xd9. */
 	int min_x, min_y, max_x, max_y, res_x, res_y;
 
 	for (size_t i = 0; i < ARRAY_SIZE(magicmouse_t2_configs); i++) {
@@ -1729,24 +1734,6 @@ static const struct hid_device_id magic_mice[] = {
 		USB_DEVICE_ID_APPLE_MAGICTRACKPAD2_USBC), .driver_data = 0 },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
 		USB_DEVICE_ID_APPLE_MAGICTRACKPAD2_USBC), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680_ALT), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J223), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J230K), .driver_data = 0 },
-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
-		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J152F), .driver_data = 0 },
 	{ HID_SPI_DEVICE(SPI_VENDOR_ID_APPLE, HID_ANY_ID),
 	  .driver_data = 0 },
 	{ HID_DEVICE(BUS_HOST, HID_GROUP_ANY, HOST_VENDOR_ID_APPLE,

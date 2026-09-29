@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=T2 Force Click
+Comment=Configure trackpad click and force click pressure and actions
+Exec=/usr/local/bin/t2-force-click
+TryExec=/usr/local/bin/t2-force-click
+Icon=org.t2forceclick.gtk
+Terminal=false
+Categories=System;Settings;HardwareSettings;
+Keywords=trackpad;force touch;force click;taptic;T2;Mac;
+StartupNotify=true

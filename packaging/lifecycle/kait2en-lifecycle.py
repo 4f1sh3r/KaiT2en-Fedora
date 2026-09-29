@@ -270,9 +270,8 @@ class Lifecycle:
                 same = old.read_bytes() == new.read_bytes()
                 if new.suffix == ".json":
                     same = self.normalized_graph(json.loads(old.read_text())) == self.normalized_graph(json.loads(new.read_text()))
-                if not same and not self.owned(name, old.read_bytes()):
-                    raise ValueError(f"modified DSP asset preserved: {name}")
-                self.retire(name, True)
+                # owned() never confirms these (record_source has no t2-dsp case); retire() archives unverified content anyway.
+                self.retire(name, same or self.owned(name, old.read_bytes()))
             self.attempt(migrate_asset)
         # Retire backups produced by the previous DSP migration helper too.
         for backup in self.path("/var/lib/t2-dsp/migration").glob("*"):
@@ -456,6 +455,9 @@ class Lifecycle:
         self.save()
 
     def summary(self):
+        if not self.errors:
+            print(f"[{self.component}] completed without errors")
+            return
         print(f"[{self.component}] completed with {len(self.errors)} errors/warnings")
         for error in self.errors:
             print(f"  - {error}")

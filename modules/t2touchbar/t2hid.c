@@ -1001,6 +1001,21 @@ static int apple_probe(struct hid_device *hdev,
 		return ret;
 	}
 
+	/*
+	 * WELLSPRINGT2's Taptic Engine actuator (vendor usage page 0xff00,
+	 * usage 0x0d) is not HID_TYPE_USBMOUSE, so APPLE_IGNORE_MOUSE above
+	 * does not exclude it. t2_trackpad_actuator claims it instead.
+	 */
+	if (quirks & APPLE_IGNORE_MOUSE) {
+		unsigned int i;
+
+		for (i = 0; i < hdev->maxcollection; i++) {
+			if (hdev->collection[i].type == HID_COLLECTION_APPLICATION &&
+			    hdev->collection[i].usage == 0xff00000d)
+				return -ENODEV;
+		}
+	}
+
 	ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
 	if (ret) {
 		hid_err(hdev, "hw start failed\n");

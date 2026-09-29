@@ -8,9 +8,9 @@ Linux boot. The application keeps one parsed BridgeOS snapshot until you run
 
 The T2 is reached over the `Apple T2 Bridge` NetworkManager profile that
 `scripts/fedora/install-t2-services-common.sh` configures on the internal
-CDC-NCM interface. The common `t2-services-suspend.service` handles NCM
-unbind/bind around suspend. Journal connects directly through the shared
-BridgeXPC library. Neither the AVE daemon nor Touch ID is required.
+CDC-NCM interface, which survives suspend on its own. Journal connects
+directly through the shared BridgeXPC library. Neither the AVE daemon nor
+Touch ID is required.
 
 ## Build & Install
 
@@ -30,10 +30,14 @@ t2journal -b --grep 'suspend|watchdog'
 t2journal -b --grep=smc
 t2journal -b --output jsonl > merged.jsonl
 t2journal -b > t2journal.log
+t2journal refresh --sysdiagnose
 ```
 
 If no T2 log snapshot exists, a query performs the initial refresh
 automatically.
+
+`refresh --sysdiagnose` additionally keeps a copy of the downloaded
+sysdiagnose archive in the current directory, e.g. to extract panic logs.
 
 Only records are written to stdout. Progress and errors are written to stderr,
 so redirection and pipelines behave normally. Boot indices select the Linux

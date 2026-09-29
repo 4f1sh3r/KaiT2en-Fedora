@@ -40,6 +40,8 @@ struct bce_vhci {
     struct work_struct w_fw_events;
     struct work_struct w_add_hcd;
     unsigned long port_change_pending;
+    /* Ports whose device must be reset-resumed after a stateful resume. */
+    unsigned long stateful_reset_ports;
     bool no_state_resume;
     bool hcd_registered;
     bool system_suspending;
@@ -57,7 +59,7 @@ void bce_vhci_remove_hcd(struct bce_vhci *vhci);
 void bce_vhci_shutdown(struct bce_vhci *vhci);
 void bce_vhci_pm_reset(struct bce_vhci *vhci);
 int bce_vhci_pm_prepare(struct bce_vhci *vhci);
-void bce_vhci_pm_prepare_no_state(struct bce_vhci *vhci);
+int bce_vhci_pm_prepare_no_state(struct bce_vhci *vhci);
 void bce_vhci_pm_mark_no_state_resume(struct bce_vhci *vhci);
 bool bce_vhci_pm_is_no_state_resume(struct bce_vhci *vhci);
 void bce_vhci_pm_complete(struct bce_vhci *vhci);

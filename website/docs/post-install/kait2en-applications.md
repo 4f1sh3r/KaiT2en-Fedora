@@ -59,6 +59,10 @@ t2journal --allboots --source t2
 t2journal -b --output jsonl > merged.jsonl
 ```
 
+`t2journal refresh --sysdiagnose` additionally keeps a copy of the downloaded
+sysdiagnose archive in the current directory, e.g. to extract panic logs from
+it yourself.
+
 Run `t2journal --help` for all filtering and refresh options.
 
 ## T2 Power Tune
@@ -68,6 +72,19 @@ power-saving tunables. Selected changes can be tested temporarily or installed
 as a persistent systemd service. Replaces powertop/tlp for reaching deeper
 (pkg) c-states.
 
+## T2 Force Click
+
+Configures the Force Touch trackpad's normal-click pressure and its harder
+Force Click threshold. Force Click is available as a separate event, so it can
+be bound without changing normal clicks, tap-to-click, scrolling, or gestures.
+Those remain libinput's job.
+
+One action can be selected for a Force Click. Alternating copy/paste, a
+recorded keyboard shortcut, or an advanced shell command. A physical
+three-finger click already produces a middle click directly from the trackpad,
+so it does not need a Force Click binding. Commands run as the active desktop
+user.
+
 ## T2 GPU Control
 
 Used on supported MacBook Pro models with Intel and AMD graphics. It selects
@@ -76,19 +93,13 @@ or enable AMDGPU's power-saving profile.
 
 ## T2 Hybrid GPU Control
 
-Used on the MacBookPro15,1. It enables an iGPU-driven desktop with PRIME
-offload to the AMD GPU, which wakes on demand and returns to D3cold when idle.
-A discrete-GPU boot mode remains available as a recovery option.
+Used on the MacBookPro15,1, MacBookPro16,1 and MacBookPro16,4. It enables an
+iGPU-driven desktop with PRIME offload to the AMD GPU, which wakes on demand
+and returns to D3cold when idle. Suspend and resume work in this mode. A
+discrete-GPU boot mode remains available as a recovery option.
 
 ## T2 Kernel Builder
 
 Provides a graphical workflow for building customized Fedora kernels with the
 required T2 configuration and selected patch groups. Completed builds can be
 installed or removed through restricted privileged helpers.
-
-## react-drm / Touch Bar Configurator
-
-Replaces the standard Touch Bar interface with a configurable control center.
-It provides function and media keys, brightness and volume controls,
-application-aware actions, system information, and optional widgets.
-Touchbar Configurator is a GUI app that can be used for in-depth customization.

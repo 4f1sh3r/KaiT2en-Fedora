@@ -14,6 +14,8 @@ MODULES=(
 	t2bdrm
 	t2touchbar
 	hid_t2magicmouse
+	t2_precision_trackpad
+	t2_trackpad_actuator
 	t2mfi_fastcharge
 	t2gmux
 	t2thunderbolt
@@ -78,6 +80,8 @@ modules=(
 	t2bdrm
 	t2touchbar
 	hid_t2magicmouse
+	t2_precision_trackpad
+	t2_trackpad_actuator
 	t2mfi_fastcharge
 	t2gmux
 	t2thunderbolt

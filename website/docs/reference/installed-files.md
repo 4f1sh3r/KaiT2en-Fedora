@@ -40,6 +40,8 @@ kernel updates. `modinfo -n <module>` prints the installed kernel object path.
 | `t2bdrm` | `t2bdrm` | Touch Bar DRM display device |
 | `t2touchbar` | `t2hid`, `t2touchbar_bl`, `t2touchbar_kbd` | Internal HID quirks, Touch Bar backlight and keyboard mode |
 | `hid_t2magicmouse` | `hid_t2magicmouse` | Internal trackpad support with the required Asahi patches |
+| `t2_precision_trackpad` | `t2_precision_trackpad` | Force Touch trackpad driver with dynamic surface geometry and a separate Force Click event |
+| `t2_trackpad_actuator` | `t2_trackpad_actuator` | T2 Force Touch actuator transport |
 | `t2mfi_fastcharge` | `t2mfi_fastcharge` | Fast-charge control for Apple MFi devices |
 | `t2gmux` | `t2gmux` | GMUX handling on dual-GPU Macs |
 | `t2thunderbolt` | `t2thunderbolt` | Thunderbolt power-management ordering and T2 PCI quirks |
@@ -49,9 +51,9 @@ The installer also writes
 `/etc/kernel/install.d/39-kait2en-dkms-cleanup.install`. The hook removes stale
 DKMS build state before a kernel installation is retried.
 
-On the MacBookPro15,1, the app installer also builds the AMDGPU and Intel HDA
-modules with the hybrid runtime-PM patches and installs them for the running
-kernel at:
+On the MacBookPro15,1, MacBookPro16,1 and MacBookPro16,4, the app installer also
+builds the AMDGPU and Intel HDA modules with the hybrid runtime-PM patches and
+installs them for the running kernel at:
 
 ```text
 /usr/lib/modules/<kernel>/updates/kait2en-gpu-runtime-pm/amdgpu.ko.xz
@@ -130,6 +132,7 @@ graphs and FIR data. udev and WirePlumber select the matching profile at runtime
 ```text
 /usr/share/t2-dsp/profiles/<profile>/
 /usr/share/wireplumber/wireplumber.conf.d/51-t2-dsp.conf
+/usr/share/wireplumber/scripts/t2-default-output.lua
 /usr/share/pipewire/pipewire.conf.d/50-kait2en-quantum.conf
 /usr/lib/udev/rules.d/89-t2-dsp.rules
 /usr/libexec/t2-dsp/package-actions
@@ -150,8 +153,8 @@ audio behavior and diagnostics.
 | --- | --- |
 | `/etc/systemd/system/kait2en-suspend.service` | Calls the suspend helper before `sleep.target` and again after resume |
 | `/usr/local/libexec/kait2en/kait2en-suspend.sh` | Handles the BCM4377 suspend workaround described below |
-| `/etc/systemd/system/t2-services-suspend.service` | Coordinates feature hooks and the common NCM link around sleep |
-| `/usr/local/libexec/t2-services/t2-ncm-sleep` | Saves the NCM connection, unbinds before sleep, binds and restores IPv6 after resume |
+| `/etc/systemd/system/t2-services-suspend.service` | Runs feature sleep/resume hooks around sleep |
+| `/usr/local/libexec/t2-services/t2-ncm-sleep` | Runs installed feature hooks before sleep and after resume |
 | `/usr/local/libexec/t2-services/sleep.d/t2-ave` | Closes/reopens sessions only when the AVE daemon is running |
 | `/etc/systemd/system/kait2en-t2-remote.service` | Loads `t2bce_ave` and runs `t2remote`, which holds the bridgeOS services Linux uses, currently `com.apple.aveservice` for the video encoder |
 | `/usr/local/bin/t2remote` | RemoteXPC service manager; `t2remote status` shows the live services. Listens on `/run/t2remote.sock` |
@@ -220,7 +223,9 @@ outcome of the Bluetooth step is recorded in the installed system at:
 
 `t2-fan-control`, `t2-smc-control`, `t2-power-explorer`, `t2-cpu-control`, `t2-journal`, `kernel-builder`, and `t2-power-tune` are installed system-wide under `/usr/local`.
 
-MacBookPro15,1 gets `t2-hybrid-gpu-control`; other MacBook Pro models with Intel and AMD display devices get `t2-dgpu-control`.
+MacBookPro15,1, MacBookPro16,1 and MacBookPro16,4 get
+`t2-hybrid-gpu-control`; other MacBook Pro models with Intel and AMD display
+devices get `t2-dgpu-control`.
 All KAIT2EN desktop applications use the shared header wordmark at
 `/usr/local/share/kait2en/kait2en-wordmark.png`.
 
@@ -233,6 +238,7 @@ All KAIT2EN desktop applications use the shared header wordmark at
 | T2 CPU Control | `/usr/local/bin/t2-cpu-control`, `/usr/local/libexec/t2-cpu-control-helper`, `/usr/local/libexec/t2-cpu-control-status`, `/usr/local/libexec/t2-cpu-kernel-benchmark`, `/usr/local/lib/systemd/system/t2-cpu-control.service`, `/usr/local/lib/systemd/system-sleep/t2-cpu-control`, `/usr/local/share/applications/org.t2cpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2cpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2cpucontrol.policy` |
 | T2 Kernel Builder | `/usr/local/bin/t2-kernel-builder`, `/usr/local/libexec/t2-kernel-builder-cleanup`, `/usr/local/libexec/t2-kernel-builder/build.sh`, `/usr/local/libexec/t2-kernel-builder/configs/*.config`, `/usr/local/share/applications/org.t2kernelbuilder.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2kernelbuilder.gtk.svg`, `/usr/local/share/polkit-1/actions/org.t2kernelbuilder.gtk.policy` |
 | T2 Power Tune | `/usr/local/bin/t2-power-tune`, `/usr/local/libexec/t2-power-tune-helper`, `/usr/local/libexec/t2-power-tune-status`, `/usr/local/share/applications/org.t2powertune.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2powertune.gtk.svg`, `/usr/share/polkit-1/actions/org.t2powertune.policy` |
+| T2 Force Click | `/usr/local/bin/t2-force-click`, `/usr/local/share/applications/org.t2forceclick.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2forceclick.gtk.svg`, `/usr/local/lib/systemd/system/t2-force-click.service` |
 | T2 Hybrid GPU Control | `/usr/local/bin/t2-hybrid-gpu-control`, `/usr/local/libexec/t2-hybrid-gpu-control-helper`, `/usr/local/libexec/t2-hybrid-gpu-control-status`, `/usr/local/share/applications/org.t2hybridgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2hybridgpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.status.policy` |
 | T2 GPU Control | `/usr/local/bin/t2-dgpu-control`, `/usr/local/libexec/t2-dgpu-control-helper`, `/usr/local/libexec/t2-dgpu-control-status`, `/usr/local/share/applications/org.t2dgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2dgpucontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-dgpu-off.service`, `/usr/local/lib/systemd/system/kait2en-dgpu-suspend.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile-resume.service`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.status.policy` |
 
@@ -241,6 +247,34 @@ boot and resume. T2 Hybrid GPU Control does not install system services.
 T2 GPU Control enables its units only when the corresponding options are
 applied in the app. Both privileged helpers validate the GPU layout and accept
 only the fixed operations exposed by their UI.
+
+T2 Force Click persists its settings at `/etc/t2-force-click/config.txt`; its
+root daemon listens at `/run/t2-force-click/daemon.sock`, which is runtime
+state and disappears at shutdown. While the driver is loaded, its user-facing
+controls are:
+
+```text
+/sys/module/t2_precision_trackpad/parameters/click_strength
+/sys/module/t2_precision_trackpad/parameters/force_click_threshold_percent
+/sys/module/t2_precision_trackpad/parameters/force_click_enabled
+```
+
+## T2 trackpad actuator playback
+
+`t2_trackpad_actuator` exposes the DTrace-captured Taptic Engine click
+waveforms to privileged local software. A third-party helper can play the
+light or firm impulse by writing one of these values:
+
+```sh
+printf light | sudo tee /sys/module/t2_trackpad_actuator/parameters/play
+printf firm | sudo tee /sys/module/t2_trackpad_actuator/parameters/play
+```
+
+The interface accepts no raw waveform bytes. `light` and `firm` select the
+captured reports used by the precision trackpad driver. Callers should trigger
+individual application events and rate-limit repeated playback themselves.
+The parameter is write-only and requires the module to be loaded and bound to
+the T2 actuator interface.
 
 T2 Power Tune reads package C-state residency and exposes PCIe ASPM, runtime
 power management, LTR ignore, and additional power tunables. The optional
@@ -268,19 +302,3 @@ markers below `$XDG_CACHE_HOME/t2-kernel-builder/build` (normally
 Kernels installed through the app add their normal files below `/boot` and
 `/lib/modules/<kernel>/`; package-managed builds are installed through DNF.
 
-`react-drm` is installed for the desktop user only when the DMI product name is
-one of `MacBookPro15,1`, `MacBookPro15,2`, `MacBookPro15,3`, `MacBookPro15,4`,
-`MacBookPro16,1`, `MacBookPro16,2`, `MacBookPro16,3` or `MacBookPro16,4`:
-
-```text
-~/react-drm/
-~/.config/systemd/user/react-drm.service
-~/.local/share/applications/react-drm-config-gui.desktop
-/etc/udev/rules.d/99-react-drm.rules
-```
-
-The installer adds that user to the `video` and `input` groups. When the active
-desktop reported by the user's systemd environment contains `gnome`, it also
-installs Window Monitor Pro below `~/.local/share/gnome-shell/extensions/` for
-application-aware controls. Every other DMI product name exits this step before
-installing react-drm dependencies or files.

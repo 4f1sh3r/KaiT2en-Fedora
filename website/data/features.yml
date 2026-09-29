@@ -268,18 +268,18 @@ items:
       The butterfly keyboard backlight came back on at 0% after resume, and now
       uses the same LED naming as the magic keyboards.
 
-  - id: react-drm-control-center
-    title: "Touch Bar control center (react-drm)"
+  - id: force-click
+    title: "Force Click trackpad controls"
     state: available
     upstream: downstream
     project: KAIT2EN Fedora
-    subsystem: t2bdrm / react-drm
+    subsystem: Input / Force Touch
     authors:
       - deqrocks
-    updated: "2026-08-03"
+    updated: "2026-09-21"
     notes: >-
-      Replaces the standard Touch Bar interface: function keys, media and
-      brightness controls, application-aware panels and system information.
+      Provides adjustable click and Force Click pressure, Taptic Engine
+      feedback, and configurable actions for the separate Force Click event.
 
   - id: hybrid-graphics
     title: "Hybrid graphics and dGPU power management"
@@ -296,6 +296,21 @@ items:
     notes: >-
       Runtime GPU switching is available downstream on MacBookPro15,1. The
       apple-gmux, amdgpu and ALSA HDA changes were submitted upstream as v3.
+
+  - id: hybrid-graphics-16-x
+    title: "Hybrid graphics and dGPU power management on MacBookPro16,1 and 16,4"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2gmux / amdgpu
+    authors:
+      - byte
+      - deqrocks
+    link: post-install/configuring-gpus.md
+    updated: "2026-09-22"
+    notes: >-
+      Runtime GPU switching, dGPU power management, and working suspend and
+      resume are available on MacBookPro16,1 and MacBookPro16,4.
 
   - id: t2-ave-hardware-encode
     title: "Hardware video encoding (T2 AVE)"
