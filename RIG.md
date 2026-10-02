@@ -61,38 +61,11 @@ and decided case by case.
   onto v0.05 once the approach has proven itself; until then upstream's
   fan-control changes do not reach this machine.
 
-### t2smc native battery charge limit
-
-- Source: `feat/t2smc-native-charge-threshold` (`1a990b0`, `2f6d11f`,
-  `c63576a`)
-- Touches: `modules/t2smc`, `apps/t2-smc-control`, `scripts/fedora`,
-  `website/docs`
-- What it does: `t2smc` attaches a `power_supply` extension to `BAT0` that
-  exposes the SMC charge limit as the standard
-  `charge_control_end_threshold`, so the desktop environment sets it through
-  its own power settings. Persistence is left entirely to the desktop, which
-  re-applies the value at every start. The charge limit slider,
-  `/etc/t2-smc-control/config.txt` and `kait2en-t2-smc-charge-limit.service`
-  are removed from `t2-smc-control`, which keeps a read-only readout and
-  gained a "Sync RTC" button. `install-apps.sh` retires the stale unit
-  idempotently, for fresh installs and updates alike.
-- Why it is here: reworked successor of PR #14, which was never merged.
-  deqrocks' review points on that PR are addressed: the whole battery_hook
-  path is gone (BAT0 comes from `sbs`, not from the ACPI battery driver, so
-  the hook never fired here), `t2->battery` is mutex-guarded and holds its own
-  reference, and a failing extension registration is a warning instead of a
-  probe failure.
-- Known risk: the extension is looked up by the hard-coded name `BAT0`,
-  where the old hwmon path was name-independent. Accepted deliberately - `sbs`
-  builds the name from the slot index, so a single-battery laptop is always
-  `BAT0`, but this is unverified on other T2 models.
-- Why not upstream yet: pushed to the fork on 2026-09-05, PR still to be
-  opened by hand. GNOME, suspend/resume, reboot and the installer are all
-  verified here; the KDE path is untested (no powerdevil installed). deqrocks
-  also argued the whole thing may be moot once macsmc lands upstream.
-
 ## Landed upstream
 
+- t2smc native battery charge limit — upstream now; `modules/t2smc/t2smc.c`
+  is byte-identical to `upstream/main` (verified 2026-09-21). The code comes
+  from upstream, so this branch no longer diverges here.
 - t2bce/t2bdrm scatter-gather — merged into `main` on 2026-09-02 via PR #72
   (`3d0276d`, `47e8cd4`), identical to what this branch carried. Unmerged here
   on the same day; `apps/t2-fan-control` is now the only divergence from `main`.
