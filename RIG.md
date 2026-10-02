@@ -61,18 +61,11 @@ and decided case by case.
   onto v0.05 once the approach has proven itself; until then upstream's
   fan-control changes do not reach this machine.
 
-### t2-touchbar three-finger brightness swipe
-
-- Source: `touchbar/brightness-swipe` (`34ccd65`), pushed to `origin`
-- Touches: `apps/t2-touchbar`
-- What it does: a three-finger swipe on the dark Touch Bar sends brightness
-  up/down keys, alongside the existing two-finger volume swipe.
-- Why it is here: tested and working on this machine (2026-10-02).
-- Why not upstream yet: PR to `kaiT2en/KaiT2en-Fedora` is opened by the user;
-  remove this entry once it lands.
-
 ## Landed upstream
 
+- t2-touchbar three-finger brightness swipe — merged into `main` via PR #88
+  (`ba5f000`, carrying `34ccd65` unchanged). Comes in through `merge main`
+  now; local topic branch deleted.
 - t2smc native battery charge limit — upstream now; `modules/t2smc/t2smc.c`
   is byte-identical to `upstream/main` (verified 2026-09-21). The code comes
   from upstream, so this branch no longer diverges here.
