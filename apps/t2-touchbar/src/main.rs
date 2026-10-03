@@ -5,7 +5,10 @@ mod config;
 mod display;
 mod gesture;
 mod haptic;
+mod kbdlight;
 mod keyboard;
+mod levels;
+mod mpris;
 mod policy;
 mod renderer;
 mod touchid;
@@ -17,16 +20,16 @@ use std::{
     io::Read,
     os::{
         fd::{AsFd, AsRawFd, OwnedFd},
-        unix::fs::OpenOptionsExt,
+        unix::{fs::OpenOptionsExt, net::UnixStream},
     },
     path::Path,
     sync::atomic::{AtomicBool, Ordering},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result};
 use input::{
-    Device as InputDevice, Libinput, LibinputInterface,
+    Device as InputDevice, DeviceCapability, Libinput, LibinputInterface, SendEventsMode,
     event::{
         DeviceEvent, Event, EventTrait,
         keyboard::{KeyState, KeyboardEvent, KeyboardEventTrait},
@@ -42,9 +45,37 @@ use display::Display;
 use gesture::{Swipe, SwipeKind};
 use haptic::Haptic;
 use keyboard::VirtualKeyboard;
+use levels::{Level, Reader as LevelReader};
+use mpris::{Mpris, Track};
 use policy::{PersistentState, TimeoutLearner};
-use renderer::{Action, Canvas, Layout};
+use renderer::{Action, Canvas, Layout, LevelKind, TrackLayout};
 use touchid::TouchIdState;
+
+/// How long the esc key stays lit after it was used on the dark bar, so even
+/// a quick tap is visible.
+const ESC_LINGER_MS: u64 = 150;
+/// Swipe feedback stays a little after the fingers lift to show the result.
+const LEVEL_LINGER_MS: u64 = 700;
+/// The desktop applies a volume or brightness key asynchronously, so the
+/// value is read back repeatedly for a short while after each step.
+const LEVEL_POLL_MS: u64 = 80;
+const LEVEL_POLL_WINDOW_MS: u64 = 600;
+/// Track overlay timeline: fade in, hold, fade out.
+const TRACK_FADE_MS: u64 = 700;
+const TRACK_HOLD_MS: u64 = 5_000;
+/// About 30 fps while the overlay fades.
+const TRACK_FRAME_MS: u64 = 33;
+/// Holding previous/next this long from touch-down starts seeking.
+/// The Touch ID arrow swings towards the sensor once per period, at about
+/// 30 fps.
+const ARROW_PERIOD_MS: u64 = 1_500;
+const ARROW_FRAME_MS: u64 = 33;
+const MEDIA_HOLD_MS: u64 = 450;
+const SEEK_INTERVAL_MS: u64 = 250;
+/// Seek steps grow after this long, so long distances stay quick.
+const SEEK_FAST_AFTER_MS: u64 = 1_500;
+const SEEK_STEP: Duration = Duration::from_secs(5);
+const SEEK_FAST_STEP: Duration = Duration::from_secs(15);
 
 static STOP: AtomicBool = AtomicBool::new(false);
 
@@ -79,6 +110,31 @@ enum Contact {
     /// First finger, waiting whether a second one turns this into a swipe.
     Pending,
     Swipe,
+    /// Esc held on the dark bar; the bar stays dark.
+    DarkEsc,
+    /// Previous/next held: a tap on release, seeking once held long enough.
+    MediaHold(usize),
+    /// A key of the track overlay on the dark bar; `true` is next.
+    TrackKey(bool),
+}
+
+/// "Artist – Title" shown on the dark bar when a new track starts.
+struct TrackToast {
+    track: Track,
+    /// Origin of the fade in / hold / fade out timeline.
+    start_ms: u64,
+    next_ms: Option<u64>,
+    layout: TrackLayout,
+    pressed: Option<bool>,
+}
+
+/// Previous/next under a finger. Released early it skips the track, held
+/// past `MEDIA_HOLD_MS` it seeks in steps until released.
+struct MediaHold {
+    forward: bool,
+    next_ms: u64,
+    seeking_since: Option<u64>,
+    player: Option<String>,
 }
 
 /// A first touch held back for `two_finger_window_ms`. On the dark bar it
@@ -106,6 +162,27 @@ struct Runtime {
     positions: HashMap<u32, f64>,
     pending: Option<PendingTouch>,
     swipe: Option<Swipe>,
+    /// The dark bar currently lights only the esc key.
+    overlay_shown: bool,
+    overlay_hide_ms: Option<u64>,
+    /// Level feedback while a dark-bar swipe runs.
+    level_kind: Option<LevelKind>,
+    level: Level,
+    /// Leftmost and rightmost finger the feedback was last placed against.
+    level_fingers: (f64, f64),
+    level_poll_ms: Option<u64>,
+    level_poll_until_ms: u64,
+    /// The level feedback changed and is drawn once the pending input is
+    /// processed, so a burst of touch events costs one frame.
+    level_dirty: bool,
+    /// Last values seen per kind, shown until a fresh read arrives.
+    level_cache: [Level; 2],
+    level_reader: LevelReader,
+    level_wake: UnixStream,
+    key_level: u32,
+    media_hold: Option<MediaHold>,
+    mpris: Mpris,
+    toast: Option<TrackToast>,
     touches_armed: bool,
     active_button: Option<usize>,
     layout: Layout,
@@ -115,8 +192,7 @@ struct Runtime {
     keyboard: VirtualKeyboard,
     haptic: Haptic,
     physical_escape: bool,
-    animation_phase: u8,
-    animation_rising: bool,
+    animation_start_ms: u64,
     next_animation_ms: Option<u64>,
 }
 
@@ -131,6 +207,8 @@ impl Runtime {
         let physical_escape = has_physical_escape();
         let layout = Layout::new(state.mode, width, physical_escape);
         let haptic = Haptic::open(config.haptic_feedback);
+        let (level_reader, level_wake) = LevelReader::spawn()?;
+        level_wake.set_nonblocking(true)?;
         Ok(Self {
             config,
             state,
@@ -146,6 +224,21 @@ impl Runtime {
             positions: HashMap::new(),
             pending: None,
             swipe: None,
+            overlay_shown: false,
+            overlay_hide_ms: None,
+            level_kind: None,
+            level: Level::default(),
+            level_fingers: (0.0, 0.0),
+            level_poll_ms: None,
+            level_poll_until_ms: 0,
+            level_dirty: false,
+            level_cache: [Level::default(); 2],
+            level_reader,
+            level_wake,
+            key_level: 100,
+            media_hold: None,
+            mpris: Mpris::default(),
+            toast: None,
             touches_armed: true,
             active_button: None,
             layout,
@@ -155,8 +248,7 @@ impl Runtime {
             keyboard: VirtualKeyboard::open()?,
             haptic,
             physical_escape,
-            animation_phase: 0,
-            animation_rising: true,
+            animation_start_ms: 0,
             next_animation_ms: None,
         })
     }
@@ -183,10 +275,16 @@ impl Runtime {
             return Ok(());
         }
         let now = self.now_ms();
+        self.refresh_key_level();
         if !self.visible {
             self.learner.wake(now, &self.config);
         }
         self.visible = true;
+        self.overlay_shown = false;
+        self.overlay_hide_ms = None;
+        self.level_kind = None;
+        self.level_poll_ms = None;
+        self.toast = None;
         if quarantine_touch {
             self.touches_armed = false;
         }
@@ -207,6 +305,11 @@ impl Runtime {
                 .auto_off(self.now_ms(), self.state.mode, &self.config);
         }
         self.visible = false;
+        self.overlay_shown = false;
+        self.overlay_hide_ms = None;
+        self.level_kind = None;
+        self.level_poll_ms = None;
+        self.toast = None;
         self.canvas.clear();
         self.display
             .present(&self.canvas.pixels, self.canvas.width, self.canvas.height)?;
@@ -219,6 +322,7 @@ impl Runtime {
         self.positions.clear();
         self.pending = None;
         self.swipe = None;
+        self.media_hold = None;
     }
 
     fn touch_down(&mut self, slot: u32, x: f64, y: f64) -> Result<()> {
@@ -245,10 +349,31 @@ impl Runtime {
             self.contacts.insert(slot, Contact::Cancelled);
             return Ok(());
         }
+        if !self.visible
+            && let Some(toast) = self.toast.as_mut()
+        {
+            let inside = |(left, right): (u16, u16)| x >= f64::from(left) && x < f64::from(right);
+            let forward = if inside(toast.layout.next) {
+                Some(true)
+            } else if inside(toast.layout.prev) {
+                Some(false)
+            } else {
+                None
+            };
+            if let Some(forward) = forward {
+                toast.pressed = Some(forward);
+                self.contacts.insert(slot, Contact::TrackKey(forward));
+                return self.track_frame(now);
+            }
+            // Anything else on the bar takes over from the overlay.
+            self.toast = None;
+        }
+        let button = self.layout.hit(x, y, self.canvas.height);
+        // The esc slot never moves, so it stays usable while the bar is dark.
         let button = if self.visible {
-            self.layout.hit(x, y, self.canvas.height)
+            button
         } else {
-            None
+            button.filter(|&index| self.is_esc(index))
         };
         self.pending = Some(PendingTouch {
             slot,
@@ -257,10 +382,14 @@ impl Runtime {
             button,
         });
         self.contacts.insert(slot, Contact::Pending);
-        if button.is_some() {
-            // Highlight at once; only the key event waits for the window.
-            self.active_button = button;
-            self.present_keys()?;
+        if let Some(index) = button {
+            if self.visible {
+                // Highlight at once; only the key event waits for the window.
+                self.active_button = button;
+                self.present_keys()?;
+            } else {
+                self.show_dark_esc(index)?;
+            }
         }
         Ok(())
     }
@@ -274,6 +403,9 @@ impl Runtime {
         self.contacts.insert(pending.slot, Contact::Swipe);
         self.contacts.insert(slot, Contact::Swipe);
         self.swipe = Some(Swipe::new(kind, self.swipe_centroid(), f64::from(step)));
+        if pending.dark {
+            return self.begin_level(LevelKind::Volume);
+        }
         if pending.button.is_some() {
             self.active_button = None;
             self.present_keys()?;
@@ -290,7 +422,18 @@ impl Runtime {
             self.swipe_centroid(),
             f64::from(self.config.brightness_swipe_step_px),
         ));
-        Ok(())
+        self.begin_level(LevelKind::Brightness)
+    }
+
+    fn swipe_span(&self) -> (f64, f64) {
+        let xs = self
+            .contacts
+            .iter()
+            .filter(|(_, contact)| matches!(contact, Contact::Swipe))
+            .filter_map(|(slot, _)| self.positions.get(slot).copied());
+        xs.fold((f64::MAX, f64::MIN), |(first, last), x| {
+            (first.min(x), last.max(x))
+        })
     }
 
     fn swipe_centroid(&self) -> f64 {
@@ -310,11 +453,31 @@ impl Runtime {
             return Ok(());
         };
         self.pending = None;
+        if pending.dark && pending.button.is_some() {
+            self.contacts.insert(pending.slot, Contact::DarkEsc);
+            self.keyboard.press(Key::Esc)?;
+            self.haptic.click();
+            return Ok(());
+        }
         if pending.dark {
             self.contacts.insert(pending.slot, Contact::Wake);
             return self.wake(true);
         }
         match pending.button {
+            Some(index) if self.media_direction(index).is_some() => {
+                // Stays highlighted; the action is decided on release or hold.
+                let touched = pending.deadline_ms - self.config.two_finger_window_ms;
+                self.contacts
+                    .insert(pending.slot, Contact::MediaHold(index));
+                self.media_hold = Some(MediaHold {
+                    forward: self.media_direction(index) == Some(true),
+                    next_ms: touched + MEDIA_HOLD_MS,
+                    seeking_since: None,
+                    player: None,
+                });
+                self.deadline_ms = Some(now + self.state.learned(self.state.mode).timeout_ms);
+                Ok(())
+            }
             Some(index) => {
                 self.contacts.insert(pending.slot, Contact::Button(index));
                 self.press_button(index, now)
@@ -324,6 +487,255 @@ impl Runtime {
                 Ok(())
             }
         }
+    }
+
+    fn track_changed(&mut self, track: Track) -> Result<()> {
+        let now = self.now_ms();
+        if let Some(toast) = self.toast.as_mut() {
+            toast.track = track;
+            toast.start_ms = now.saturating_sub(TRACK_FADE_MS);
+            return self.track_frame(now);
+        }
+        // Only on a quiet dark bar: never over keys, gestures or Touch ID.
+        if self.visible
+            || self.overlay_shown
+            || self.touch_id != TouchIdState::Idle
+            || !self.contacts.is_empty()
+        {
+            return Ok(());
+        }
+        self.refresh_key_level();
+        self.toast = Some(TrackToast {
+            track,
+            start_ms: now,
+            next_ms: None,
+            layout: self.track_keys(),
+            pressed: None,
+        });
+        self.track_frame(now)
+    }
+
+    /// Draws the track overlay for `now` and schedules the next frame: about
+    /// 30 fps while fading, nothing while it holds or a key is pressed.
+    fn track_frame(&mut self, now: u64) -> Result<()> {
+        let Some(toast) = self.toast.as_mut() else {
+            return Ok(());
+        };
+        let elapsed = now.saturating_sub(toast.start_ms);
+        let fade_out = TRACK_FADE_MS + TRACK_HOLD_MS;
+        let (opacity, next) = if toast.pressed.is_some() {
+            (1.0, None)
+        } else if elapsed < TRACK_FADE_MS {
+            (
+                elapsed as f32 / TRACK_FADE_MS as f32,
+                Some(now + TRACK_FRAME_MS),
+            )
+        } else if elapsed < fade_out {
+            (1.0, Some(toast.start_ms + fade_out))
+        } else if elapsed < fade_out + TRACK_FADE_MS {
+            (
+                1.0 - (elapsed - fade_out) as f32 / TRACK_FADE_MS as f32,
+                Some(now + TRACK_FRAME_MS),
+            )
+        } else {
+            return self.hide_overlay();
+        };
+        // Smoothstep, so the fades start and end softly.
+        let eased = opacity * opacity * (3.0 - 2.0 * opacity);
+        toast.next_ms = next;
+        let (track, pressed, keys) = (toast.track.clone(), toast.pressed, toast.layout);
+        self.canvas.track(
+            &track.artist,
+            &track.title,
+            (eased * 100.0).round() as u32,
+            pressed,
+            keys,
+        );
+        self.present_overlay()
+    }
+
+    /// The overlay's previous key takes the first key slot after esc; next
+    /// mirrors it on the right, as if an invisible esc sat there too. The
+    /// keys stay in fixed places, esc keeps working and the text centers on
+    /// the bar.
+    fn track_keys(&self) -> TrackLayout {
+        let first = &self.layout.buttons[usize::from(self.is_esc(0))];
+        let width = self.canvas.width;
+        TrackLayout {
+            prev: (first.left, first.right),
+            next: (width - first.right, width - first.left),
+        }
+    }
+
+    fn show_dark_esc(&mut self, index: usize) -> Result<()> {
+        self.refresh_key_level();
+        self.level_kind = None;
+        self.toast = None;
+        self.overlay_hide_ms = None;
+        self.canvas.single_key(&self.layout, index);
+        self.present_overlay()
+    }
+
+    fn begin_level(&mut self, kind: LevelKind) -> Result<()> {
+        self.refresh_key_level();
+        self.toast = None;
+        self.level_kind = Some(kind);
+        self.level = self.level_cache[cache_slot(kind)];
+        self.level_reader.request(kind);
+        self.level_fingers = self.swipe_span();
+        self.overlay_hide_ms = None;
+        self.level_dirty = true;
+        Ok(())
+    }
+
+    /// Draws the level feedback if anything changed since the last frame.
+    fn flush_level(&mut self) -> Result<()> {
+        if !std::mem::take(&mut self.level_dirty) {
+            return Ok(());
+        }
+        let Some(kind) = self.level_kind.filter(|_| !self.visible) else {
+            return Ok(());
+        };
+        self.canvas.level(
+            kind,
+            self.level.percent,
+            self.level.muted,
+            (self.level_fingers.0 as f32, self.level_fingers.1 as f32),
+        );
+        self.present_overlay()
+    }
+
+    /// Shows whatever the canvas holds on the otherwise dark bar.
+    fn present_overlay(&mut self) -> Result<()> {
+        self.display
+            .present(&self.canvas.pixels, self.canvas.width, self.canvas.height)?;
+        if !self.overlay_shown {
+            self.backlight.set(self.config.active_brightness)?;
+            self.overlay_shown = true;
+        }
+        Ok(())
+    }
+
+    fn hide_overlay(&mut self) -> Result<()> {
+        self.overlay_hide_ms = None;
+        self.level_kind = None;
+        self.toast = None;
+        self.level_poll_ms = None;
+        if !self.overlay_shown || self.visible {
+            return Ok(());
+        }
+        self.overlay_shown = false;
+        self.canvas.clear();
+        self.display
+            .present(&self.canvas.pixels, self.canvas.width, self.canvas.height)?;
+        self.backlight.set(0)
+    }
+
+    fn poll_level(&mut self, now: u64) {
+        self.level_poll_ms = (now < self.level_poll_until_ms).then_some(now + LEVEL_POLL_MS);
+        if let Some(kind) = self.level_kind {
+            self.level_reader.request(kind);
+        }
+    }
+
+    fn levels_read(&mut self) {
+        let now = self.now_ms();
+        let results: Vec<_> = self.level_reader.results().collect();
+        for (kind, level) in results {
+            self.level_cache[cache_slot(kind)] = level;
+            if self.level_kind != Some(kind) || level == self.level {
+                continue;
+            }
+            self.level = level;
+            self.level_dirty = true;
+            // Keep a lingering overlay alive until the value has settled.
+            self.overlay_hide_ms = self
+                .overlay_hide_ms
+                .map(|deadline| deadline.max(now + LEVEL_POLL_MS));
+        }
+    }
+
+    /// Follows the keyboard backlight; returns whether the level changed.
+    fn refresh_key_level(&mut self) -> bool {
+        let level = if self.config.follow_keyboard_backlight {
+            kbdlight::key_level().unwrap_or(100)
+        } else {
+            100
+        };
+        if level == self.key_level {
+            return false;
+        }
+        self.key_level = level;
+        self.canvas.set_level(level);
+        true
+    }
+
+    fn keyboard_backlight_changed(&mut self) -> Result<()> {
+        if !self.refresh_key_level() || self.touch_id != TouchIdState::Idle {
+            return Ok(());
+        }
+        if self.visible {
+            return self.present_keys();
+        }
+        self.level_dirty = true;
+        Ok(())
+    }
+
+    /// `Some(true)` for next, `Some(false)` for previous.
+    fn media_direction(&self, index: usize) -> Option<bool> {
+        match self.layout.buttons[index].action {
+            Action::Key(Key::NextSong) => Some(true),
+            Action::Key(Key::PreviousSong) => Some(false),
+            _ => None,
+        }
+    }
+
+    fn seek_step(&mut self, now: u64) -> Result<()> {
+        let Some(mut hold) = self.media_hold.take() else {
+            return Ok(());
+        };
+        let since = match hold.seeking_since {
+            Some(since) => since,
+            None => {
+                // The hold turned into seeking: no track skip on release.
+                hold.player = self.mpris.active_player();
+                self.haptic.click();
+                if self
+                    .learner
+                    .action(now, self.state.mode, &mut self.state, &self.config)
+                {
+                    self.save();
+                }
+                *hold.seeking_since.insert(now)
+            }
+        };
+        let step = if now - since >= SEEK_FAST_AFTER_MS {
+            SEEK_FAST_STEP
+        } else {
+            SEEK_STEP
+        };
+        let seeked = hold
+            .player
+            .as_deref()
+            .is_some_and(|player| self.mpris.seek(player, step, hold.forward).is_ok());
+        if !seeked {
+            // No MPRIS player: leave it to whoever handles the seek keys.
+            let key = if hold.forward {
+                Key::FastForward
+            } else {
+                Key::Rewind
+            };
+            self.keyboard.press(key)?;
+            self.keyboard.release()?;
+        }
+        hold.next_ms = now + SEEK_INTERVAL_MS;
+        self.deadline_ms = Some(now + self.state.learned(self.state.mode).timeout_ms);
+        self.media_hold = Some(hold);
+        Ok(())
+    }
+
+    fn is_esc(&self, index: usize) -> bool {
+        self.layout.buttons[index].action == Action::Key(Key::Esc)
     }
 
     fn press_button(&mut self, index: usize, now: u64) -> Result<()> {
@@ -354,6 +766,14 @@ impl Runtime {
                 if let Some(index) = pending.button
                     && self.layout.hit(x, y, self.canvas.height) != Some(index)
                 {
+                    if pending.dark {
+                        // Slid off the dark esc slot: an ordinary wake touch.
+                        self.pending = Some(PendingTouch {
+                            button: None,
+                            ..pending
+                        });
+                        return self.hide_overlay();
+                    }
                     self.pending = None;
                     self.active_button = None;
                     self.contacts.insert(slot, Contact::Cancelled);
@@ -370,6 +790,44 @@ impl Runtime {
                 }
                 Ok(())
             }
+            Some(Contact::MediaHold(index)) => {
+                if self.layout.hit(x, y, self.canvas.height) != Some(index) {
+                    self.media_hold = None;
+                    self.active_button = None;
+                    self.contacts.insert(slot, Contact::Cancelled);
+                    self.present_keys()?;
+                }
+                Ok(())
+            }
+            Some(Contact::TrackKey(forward)) => {
+                let Some(toast) = self.toast.as_mut() else {
+                    return Ok(());
+                };
+                let (left, right) = if forward {
+                    toast.layout.next
+                } else {
+                    toast.layout.prev
+                };
+                if x < f64::from(left) || x >= f64::from(right) {
+                    toast.pressed = None;
+                    toast.start_ms = now.saturating_sub(TRACK_FADE_MS);
+                    self.contacts.insert(slot, Contact::Cancelled);
+                    return self.track_frame(now);
+                }
+                Ok(())
+            }
+            Some(Contact::DarkEsc) => {
+                if !self
+                    .layout
+                    .hit(x, y, self.canvas.height)
+                    .is_some_and(|index| self.is_esc(index))
+                {
+                    self.keyboard.release()?;
+                    self.contacts.insert(slot, Contact::Cancelled);
+                    self.hide_overlay()?;
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -380,12 +838,24 @@ impl Runtime {
             return Ok(());
         };
         let steps = swipe.advance(centroid);
+        let kind = swipe.kind;
+        let span = self.swipe_span();
+        if self.level_kind.is_some()
+            && ((span.0 - self.level_fingers.0).abs() >= 3.0
+                || (span.1 - self.level_fingers.1).abs() >= 3.0)
+        {
+            // The feedback follows the fingers.
+            self.level_fingers = span;
+            self.level_dirty = true;
+        }
         if steps == 0 {
             return Ok(());
         }
-        match swipe.kind {
+        match kind {
             SwipeKind::Volume | SwipeKind::Brightness => {
-                let key = match (swipe.kind, steps > 0) {
+                self.level_poll_ms = Some(now + LEVEL_POLL_MS);
+                self.level_poll_until_ms = now + LEVEL_POLL_WINDOW_MS;
+                let key = match (kind, steps > 0) {
                     (SwipeKind::Volume, true) => Key::VolumeUp,
                     (SwipeKind::Volume, false) => Key::VolumeDown,
                     (_, true) => Key::BrightnessUp,
@@ -413,7 +883,12 @@ impl Runtime {
             Some(Contact::Pending) => {
                 // Lifted within the window: a plain tap.
                 if let Some(pending) = self.pending.take() {
-                    if pending.dark {
+                    if pending.dark && pending.button.is_some() {
+                        self.keyboard.press(Key::Esc)?;
+                        self.keyboard.release()?;
+                        self.haptic.click();
+                        self.overlay_hide_ms = Some(now + ESC_LINGER_MS);
+                    } else if pending.dark {
                         self.wake(true)?;
                     } else if let Some(index) = pending.button {
                         self.press_button(index, now)?;
@@ -428,10 +903,45 @@ impl Runtime {
                 self.active_button = None;
                 self.present_keys()?;
             }
+            Some(Contact::MediaHold(index)) => {
+                let seeking = self
+                    .media_hold
+                    .take()
+                    .is_some_and(|hold| hold.seeking_since.is_some());
+                if !seeking {
+                    self.press_button(index, now)?;
+                    self.keyboard.release()?;
+                }
+                self.active_button = None;
+                self.present_keys()?;
+            }
+            Some(Contact::DarkEsc) => {
+                self.keyboard.release()?;
+                self.overlay_hide_ms = Some(now + ESC_LINGER_MS);
+            }
+            Some(Contact::TrackKey(forward)) => {
+                let key = if forward {
+                    Key::NextSong
+                } else {
+                    Key::PreviousSong
+                };
+                self.keyboard.press(key)?;
+                self.keyboard.release()?;
+                self.haptic.click();
+                if let Some(toast) = self.toast.as_mut() {
+                    // Stay fully visible; the next track replaces the text.
+                    toast.pressed = None;
+                    toast.start_ms = now.saturating_sub(TRACK_FADE_MS);
+                }
+                self.track_frame(now)?;
+            }
             Some(Contact::Swipe) => {
                 // The centroid would jump to the remaining finger, so the
                 // first lift ends the swipe.
                 self.swipe = None;
+                if self.level_kind.is_some() {
+                    self.overlay_hide_ms = Some(now + LEVEL_LINGER_MS);
+                }
                 for contact in self.contacts.values_mut() {
                     if matches!(contact, Contact::Swipe) {
                         *contact = Contact::Cancelled;
@@ -498,17 +1008,32 @@ impl Runtime {
             return self.go_dark(false);
         }
         self.visible = true;
-        self.animation_phase = 8;
-        self.animation_rising = false;
-        self.next_animation_ms = matches!(state, TouchIdState::Waiting | TouchIdState::Scanning)
-            .then(|| self.now_ms() + animation_interval(state));
-        self.render_touch_id()?;
+        let now = self.now_ms();
+        // Waiting, scanning and retry share the arrow; keep its swing smooth
+        // across those transitions.
+        if self.next_animation_ms.is_none() {
+            self.animation_start_ms = now;
+        }
+        self.next_animation_ms = None;
+        self.render_touch_id(now)?;
         self.backlight.set(self.config.active_brightness)
     }
 
-    fn render_touch_id(&mut self) -> Result<()> {
-        self.canvas
-            .touch_id(self.touch_id.as_str(), self.animation_phase);
+    /// Draws the prompt; while it shows an arrow, schedules the next frame.
+    fn render_touch_id(&mut self, now: u64) -> Result<()> {
+        let animated = matches!(
+            self.touch_id,
+            TouchIdState::Waiting | TouchIdState::Scanning | TouchIdState::Retry
+        );
+        let nudge = if animated {
+            self.next_animation_ms = Some(now + ARROW_FRAME_MS);
+            let elapsed = now.saturating_sub(self.animation_start_ms) % ARROW_PERIOD_MS;
+            arrow_nudge(elapsed as f32 / ARROW_PERIOD_MS as f32)
+        } else {
+            self.next_animation_ms = None;
+            0.0
+        };
+        self.canvas.touch_id(self.touch_id.as_str(), nudge);
         self.display
             .present(&self.canvas.pixels, self.canvas.width, self.canvas.height)
     }
@@ -516,6 +1041,27 @@ impl Runtime {
     fn tick(&mut self) -> Result<()> {
         let now = self.now_ms();
         self.resolve_pending(now)?;
+        if self
+            .toast
+            .as_ref()
+            .and_then(|toast| toast.next_ms)
+            .is_some_and(|deadline| now >= deadline)
+        {
+            self.track_frame(now)?;
+        }
+        if self.level_poll_ms.is_some_and(|deadline| now >= deadline) {
+            self.poll_level(now);
+        }
+        if self.overlay_hide_ms.is_some_and(|deadline| now >= deadline) {
+            self.hide_overlay()?;
+        }
+        if self
+            .media_hold
+            .as_ref()
+            .is_some_and(|hold| now >= hold.next_ms)
+        {
+            self.seek_step(now)?;
+        }
         self.toggle_mode_if_due(now)?;
         if self.touch_id == TouchIdState::Idle
             && self.visible
@@ -530,19 +1076,7 @@ impl Runtime {
             .next_animation_ms
             .is_some_and(|deadline| now >= deadline)
         {
-            if self.animation_rising {
-                self.animation_phase += 1;
-                if self.animation_phase >= 8 {
-                    self.animation_rising = false;
-                }
-            } else {
-                self.animation_phase = self.animation_phase.saturating_sub(1);
-                if self.animation_phase == 0 {
-                    self.animation_rising = true;
-                }
-            }
-            self.render_touch_id()?;
-            self.next_animation_ms = Some(now + animation_interval(self.touch_id));
+            self.render_touch_id(now)?;
         }
         Ok(())
     }
@@ -550,6 +1084,12 @@ impl Runtime {
     fn next_timeout(&self) -> i32 {
         let now = self.now_ms();
         let mut deadlines = Vec::new();
+        if let Some(deadline) = self.toast.as_ref().and_then(|toast| toast.next_ms) {
+            deadlines.push(deadline);
+        }
+        if let Some(hold) = &self.media_hold {
+            deadlines.push(hold.next_ms);
+        }
         if let Some(deadline) = self.deadline_ms {
             deadlines.push(deadline);
         }
@@ -567,6 +1107,12 @@ impl Runtime {
         if let Some(pending) = self.pending {
             deadlines.push(pending.deadline_ms);
         }
+        if let Some(deadline) = self.level_poll_ms {
+            deadlines.push(deadline);
+        }
+        if let Some(deadline) = self.overlay_hide_ms {
+            deadlines.push(deadline);
+        }
         deadlines
             .into_iter()
             .min()
@@ -575,12 +1121,9 @@ impl Runtime {
     }
 }
 
-fn animation_interval(state: TouchIdState) -> u64 {
-    if state == TouchIdState::Scanning {
-        55
-    } else {
-        110
-    }
+/// Eased swing: rest at 0, fully nudged halfway through the period.
+fn arrow_nudge(phase: f32) -> f32 {
+    (1.0 - (phase * std::f32::consts::TAU).cos()) / 2.0
 }
 
 fn main() -> Result<()> {
@@ -626,6 +1169,15 @@ fn main() -> Result<()> {
         .map_err(|()| anyhow::anyhow!("assign main seat"))?;
     let (touch_id_rx, mut touch_id_wake) = touchid::watch()?;
     touch_id_wake.set_nonblocking(true)?;
+    let mut kbd_wake = kbdlight::watch()?;
+    kbd_wake.set_nonblocking(true)?;
+    let tracks = if runtime.config.show_track_changes {
+        let (receiver, wake) = mpris::watch_tracks()?;
+        wake.set_nonblocking(true)?;
+        Some((receiver, wake))
+    } else {
+        None
+    };
     let mut touch_device: Option<InputDevice> = None;
 
     while !STOP.load(Ordering::Relaxed) {
@@ -642,6 +1194,22 @@ fn main() -> Result<()> {
             },
             pollfd {
                 fd: touch_id_wake.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            pollfd {
+                fd: kbd_wake.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            pollfd {
+                fd: runtime.level_wake.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            pollfd {
+                // poll ignores negative descriptors.
+                fd: tracks.as_ref().map_or(-1, |(_, wake)| wake.as_raw_fd()),
                 events: libc::POLLIN,
                 revents: 0,
             },
@@ -663,6 +1231,28 @@ fn main() -> Result<()> {
             while let Ok(state) = touch_id_rx.try_recv() {
                 runtime.touch_id_changed(state)?;
             }
+        }
+
+        if poll_fds[3].revents & libc::POLLIN != 0 {
+            let mut discard = [0u8; 64];
+            while kbd_wake.read(&mut discard).is_ok() {}
+            runtime.keyboard_backlight_changed()?;
+        }
+
+        if poll_fds[5].revents & libc::POLLIN != 0
+            && let Some((receiver, wake)) = &tracks
+        {
+            let mut discard = [0u8; 64];
+            while (&*wake).read(&mut discard).is_ok() {}
+            while let Ok(track) = receiver.try_recv() {
+                runtime.track_changed(track)?;
+            }
+        }
+
+        if poll_fds[4].revents & libc::POLLIN != 0 {
+            let mut discard = [0u8; 64];
+            while (&runtime.level_wake).read(&mut discard).is_ok() {}
+            runtime.levels_read();
         }
 
         if poll_fds[0].revents & libc::POLLIN != 0 {
@@ -703,17 +1293,40 @@ fn main() -> Result<()> {
         if poll_fds[1].revents & libc::POLLIN != 0 {
             main_input.dispatch()?;
             for event in &mut main_input {
-                if let Event::Keyboard(KeyboardEvent::Key(key)) = event
-                    && key.key() == Key::Fn as u32
-                {
-                    runtime.fn_event(key.key_state() == KeyState::Pressed)?;
+                match event {
+                    // seat0 hands over every readable device, including the
+                    // virtual keyboard this daemon writes to. Only Fn is
+                    // needed; closing the rest avoids wakeups from every
+                    // pointer motion and our own key events looping back.
+                    Event::Device(DeviceEvent::Added(added)) if !provides_fn(&added.device()) => {
+                        let _ = added
+                            .device()
+                            .config_send_events_set_mode(SendEventsMode::DISABLED);
+                    }
+                    Event::Keyboard(KeyboardEvent::Key(key)) if key.key() == Key::Fn as u32 => {
+                        runtime.fn_event(key.key_state() == KeyState::Pressed)?;
+                    }
+                    _ => {}
                 }
             }
         }
         runtime.tick()?;
+        runtime.flush_level()?;
     }
     runtime.go_dark(false)?;
     Ok(())
+}
+
+fn provides_fn(device: &InputDevice) -> bool {
+    device.has_capability(DeviceCapability::Keyboard)
+        && device.keyboard_has_key(Key::Fn as u32) == Ok(true)
+}
+
+fn cache_slot(kind: LevelKind) -> usize {
+    match kind {
+        LevelKind::Volume => 0,
+        LevelKind::Brightness => 1,
+    }
 }
 
 fn is_touch_bar(name: &str) -> bool {

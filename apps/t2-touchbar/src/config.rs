@@ -22,6 +22,8 @@ pub struct Config {
     pub volume_swipe_step_px: u32,
     pub brightness_swipe_step_px: u32,
     pub mode_swipe_px: u32,
+    pub follow_keyboard_backlight: bool,
+    pub show_track_changes: bool,
 }
 
 impl Default for Config {
@@ -38,6 +40,8 @@ impl Default for Config {
             volume_swipe_step_px: 40,
             brightness_swipe_step_px: 40,
             mode_swipe_px: 160,
+            follow_keyboard_backlight: true,
+            show_track_changes: true,
         }
     }
 }

@@ -3,7 +3,7 @@
 kait2en-touchbar replaces Apple's built-in Touch Bar row with its own
 dark-first display. The bar stays black until you touch it or press Fn,
 learns how long to stay lit, offers a media row and an F-key row (hold Fn
-to switch), shows a fingerprint prompt for Touch ID and gives haptic
+to switch), shows a Touch ID prompt and gives haptic
 feedback on key presses. It saves power because the bar is off most of
 the time.
 
@@ -15,16 +15,31 @@ Two fixed layers are available:
 A 600 ms Fn hold or a two-finger swipe on the lit bar switches the persistent
 layer. A two-finger swipe on the dark bar changes the volume without waking
 it: right is louder, left is quieter. A three-finger swipe there changes the
-display brightness the same way. A short Fn press and a touch
-both wake the saved layer. The initial five-second illumination timeout learns
+display brightness the same way. The esc slot works on the dark bar too and
+sends Esc without waking it. A short Fn press and a touch elsewhere both wake
+the saved layer. The initial five-second illumination timeout learns
 up to a hard thirty-second ceiling when a user repeatedly has to wake the bar
 again. It decays slowly when the learned extension is unused.
 
 While `t2-touchid` reports an authentication, all keys disappear and the bar
-shows the fingerprint animation next to the sensor. This works for sudo and
-the GNOME lock screen in the running user session.
+shows "Unlock with Touch ID" with an arrow that keeps nudging towards the
+sensor. The prompt is drawn by this program; no Apple
+artwork is included. This works for sudo and the GNOME lock screen in the
+running user session.
+
+Holding previous or next seeks in the active media player (MPRIS) instead of
+skipping the track; a tap still skips.
+
+When a media player starts a new track while the bar is dark, "Artist – Title"
+fades in for five seconds with previous/next keys at both ends, so an unwanted
+track can be skipped without waking the bar. `show_track_changes = false`
+turns this off.
 
 Accepted key presses use `t2_trackpad_actuator` to give a bit of haptic feedback.
+
+The panel itself only has two brightness steps. The key glyphs are therefore
+dimmed in software to follow the keyboard backlight, so the bar and the keys
+look alike; a readable minimum remains while the keyboard backlight is off.
 
 ## Installation
 
@@ -68,3 +83,5 @@ awake, because suspending it would also remove touch-to-wake.
 The DRM setup and input architecture are derived from tiny-dfr under its MIT
 license. The KAIT2EN implementation is GPL-3.0-or-later. The upstream notice
 is in `THIRD-PARTY-NOTICES.md`.
+
+Touch ID is a trademark of Apple Inc. This project is not affiliated with Apple.
