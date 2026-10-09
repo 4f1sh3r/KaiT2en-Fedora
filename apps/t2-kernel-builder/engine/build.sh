@@ -30,6 +30,9 @@ T2_REQUIRED_MODULES=(
 	APPLE_MFI_FASTCHARGE
 	DRM_I915
 	USB4
+	MEDIA_SUPPORT
+	VIDEO_DEV
+	VIDEO_VIM2M
 )
 AMD_DGPU_REQUIRED_MODULES=(
 	APPLE_GMUX
@@ -44,7 +47,7 @@ MACSMC_REQUIRED_MODULES=(
 	MACSMC_LIGHT
 	MACSMC_ACCEL
 	LEDS_MACSMC
-	INPUT_MACSMC_CHAMSHELL
+	MACSMC_WDT
 	RTC_DRV_MACSMC
 	MACSMC_POWER
 )
@@ -424,7 +427,10 @@ if [[ ! -f $WORK/.prepared ]]; then
 		# Fedora's localmodconfig invokes oldconfig and otherwise waits forever
 		# for answers when new symbols remain after module streamlining.
 		set +o pipefail
-		yes '' | make -C "$TREE" localmodconfig
+		# The EFI system partition is VFAT with iocharset=iso8859-1. Its
+		# modules are often unloaded while the profile is captured, and
+		# without them /boot/efi fails to mount and boot ends in emergency mode.
+		yes '' | make -C "$TREE" LMC_KEEP="fs/fat:fs/nls" localmodconfig
 		localmod_status=${PIPESTATUS[1]}
 		set -o pipefail
 		((localmod_status == 0)) || exit "$localmod_status"
@@ -435,6 +441,9 @@ if [[ ! -f $WORK/.prepared ]]; then
 		# keyboard module, which requires sparse-keymap symbols from the kernel.
 		# USB4 must also survive localmodconfig: pcie_ports=compat can keep the
 		# in-tree Thunderbolt driver unloaded while the profile is captured.
+		# t2bce_ave in the t2bce_stack DKMS build links against v4l2-mem2mem.
+		# That helper has no prompt and only survives localmodconfig while
+		# t2bce_ave is loaded, so VIDEO_VIM2M is kept as its selecting driver.
 		# The initcall and module blacklists used by Kait2en replace drivers at
 		# runtime; they do not make those drivers optional at build time.
 		"$TREE/scripts/config" --file "$TREE/.config" \
@@ -443,7 +452,9 @@ if [[ ! -f $WORK/.prepared ]]; then
 			--enable HOTPLUG_PCI_PCIE \
 			--enable RTC_DRV_CMOS \
 			--enable BACKLIGHT_CLASS_DEVICE \
-			--enable VGA_SWITCHEROO
+			--enable VGA_SWITCHEROO \
+			--enable MEDIA_TEST_SUPPORT \
+			--enable V4L_TEST_DRIVERS
 		if ((HAS_MACSMC_PATCHES)); then
 			"$TREE/scripts/config" --file "$TREE/.config" --enable IIO
 		fi
@@ -467,18 +478,23 @@ if [[ ! -f $WORK/.prepared ]]; then
 			"$TREE/scripts/config" --file "$TREE/.config" --module "$symbol"
 		done
 
+		# localmodconfig can promote the HDA driver to built-in. Built in, it
+		# fails to probe the CS8409 codec on the MacBookPro14,1. The runtime-PM
+		# installer also replaces the HDA modules with builds from this tree.
+		"$TREE/scripts/config" --file "$TREE/.config" \
+			--module SND_HDA_INTEL \
+			--module SND_HDA_CODEC_HDMI
+
 		if ((HAS_AMD_DGPU)); then
 			# Keep i915 and apple_gmux at the same linkage level. localmodconfig
 			# can promote the currently active i915 driver to built-in, but the
 			# patched i915 calls apple_gmux directly and cannot link against it as
 			# a module. apple_gmux must remain modular so t2gmux can replace it.
-			# The runtime-PM installer also replaces the AMD and HDA modules with
-			# builds from this tree. Preserve their complete Kconfig dependency
-			# graph even if localmodconfig ran while the discrete GPU was off.
+			# The runtime-PM installer also replaces the AMD modules with builds
+			# from this tree. Preserve their complete Kconfig dependency graph
+			# even if localmodconfig ran while the discrete GPU was off.
 			"$TREE/scripts/config" --file "$TREE/.config" \
-				--module DRM_AMDGPU \
-				--module SND_HDA_INTEL \
-				--module SND_HDA_CODEC_HDMI
+				--module DRM_AMDGPU
 		fi
 	fi
 	make -C "$TREE" olddefconfig
@@ -487,7 +503,7 @@ if [[ ! -f $WORK/.prepared ]]; then
 			grep -qx "CONFIG_$symbol=m" "$TREE/.config" ||
 				fail "required T2 kernel module was rejected by Kconfig: CONFIG_$symbol"
 		done
-		driver_symbols=(RTC_DRV_CMOS)
+		driver_symbols=(RTC_DRV_CMOS V4L2_MEM2MEM_DEV VIDEOBUF2_VMALLOC)
 		if ((HAS_MACSMC_PATCHES)); then
 			driver_symbols+=(IIO)
 		fi
@@ -505,6 +521,24 @@ if [[ ! -f $WORK/.prepared ]]; then
 fi
 
 TREE=$(<"$WORK/kernel-tree")
+
+if ((T2_CONFIG)) && ! grep -Eq '^CONFIG_V4L2_MEM2MEM_DEV=[ym]$' "$TREE/.config"; then
+	# Trees prepared before VIDEO_VIM2M became required can lack the
+	# v4l2-mem2mem helper that t2bce_ave links against. Repair them in place
+	# so an existing build only recompiles the media core.
+	printf 'Enabling v4l2-mem2mem for t2bce_ave in the prepared tree\n'
+	"$TREE/scripts/config" --file "$TREE/.config" \
+		--enable MEDIA_TEST_SUPPORT \
+		--enable V4L_TEST_DRIVERS \
+		--module MEDIA_SUPPORT \
+		--module VIDEO_DEV \
+		--module VIDEO_VIM2M
+	make -C "$TREE" olddefconfig
+	for symbol in V4L2_MEM2MEM_DEV VIDEOBUF2_VMALLOC; do
+		grep -Eq "^CONFIG_$symbol=[ym]$" "$TREE/.config" ||
+			fail "required T2 kernel driver was rejected by Kconfig: CONFIG_$symbol"
+	done
+fi
 
 if ((PREPARE_ONLY)); then
 	printf 'Prepared kernel tree: %s\n' "$TREE"

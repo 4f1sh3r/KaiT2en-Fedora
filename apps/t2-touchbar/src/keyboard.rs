@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use input_linux::{EventKind, Key, SynchronizeKind, uinput::UInputHandle};
 use input_linux_sys::{input_event, input_id, timeval, uinput_setup};
 
-const ALLOWED_KEYS: [Key; 26] = [
+const ALLOWED_KEYS: [Key; 33] = [
     Key::Esc,
     Key::F1,
     Key::F2,
@@ -28,6 +28,13 @@ const ALLOWED_KEYS: [Key; 26] = [
     Key::PreviousSong,
     Key::PlayPause,
     Key::NextSong,
+    Key::Sysrq,
+    Key::Insert,
+    Key::Delete,
+    Key::Home,
+    Key::End,
+    Key::PageUp,
+    Key::PageDown,
     Key::Rewind,
     Key::FastForward,
     Key::Mute,
@@ -41,18 +48,19 @@ pub struct VirtualKeyboard {
 }
 
 impl VirtualKeyboard {
-    pub fn open() -> Result<Self> {
+    /// `extra` adds the keys of the personal keys file to the fixed set.
+    pub fn open(extra: &[Key]) -> Result<Self> {
         let file = OpenOptions::new()
             .write(true)
             .open("/dev/uinput")
             .context("open /dev/uinput")?;
         let handle = UInputHandle::new(file);
         handle.set_evbit(EventKind::Key)?;
-        for key in ALLOWED_KEYS {
-            handle.set_keybit(key)?;
+        for key in ALLOWED_KEYS.iter().chain(extra) {
+            handle.set_keybit(*key)?;
         }
         let mut name = [0 as c_char; 80];
-        for (target, byte) in name.iter_mut().zip(b"KAIT2EN Touch Bar".iter().copied()) {
+        for (target, byte) in name.iter_mut().zip(b"T2 Touch Bar".iter().copied()) {
             *target = byte as c_char;
         }
         handle.dev_setup(&uinput_setup {
@@ -76,6 +84,18 @@ impl VirtualKeyboard {
         self.release()?;
         emit(&mut self.handle, key, 1)?;
         self.pressed = Some(key);
+        Ok(())
+    }
+
+    /// Taps a combination: modifiers and key down in order, up in reverse.
+    pub fn tap_combination(&mut self, keys: &[Key]) -> Result<()> {
+        self.release()?;
+        for key in keys {
+            emit(&mut self.handle, *key, 1)?;
+        }
+        for key in keys.iter().rev() {
+            emit(&mut self.handle, *key, 0)?;
+        }
         Ok(())
     }
 

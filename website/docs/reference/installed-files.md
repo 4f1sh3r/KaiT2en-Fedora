@@ -165,6 +165,7 @@ audio behavior and diagnostics.
 | NetworkManager profile `Apple T2 Bridge` | IPv6 link-local connection to the T2 over its internal CDC-NCM interface, bound to the interface's MAC address. Replaces the earlier `t2_ncm` udev rule |
 | `/etc/modprobe.d/kait2en-silent-blacklist.conf` | Silently ignores attempts to load drivers replaced by KAIT2EN modules |
 | `/usr/share/plymouth/themes/kait2en/` | macOS-style boot splash with a KAIT2EN logo |
+| `/etc/plymouth/plymouthd.conf` | Selects the KAIT2EN theme, pins `DeviceScale=1` and sets `UseSimpledrm=0` so the splash does not resize when i915 replaces the 2880x1800 EFI framebuffer |
 | `/usr/share/pixmaps/kait2en-gdm-logo.png` | White and red KAIT2EN logo shown by GDM |
 | `/etc/dconf/db/gdm.d/00-kait2en` | Configures the GDM logo and solid black login background |
 | `/usr/share/backgrounds/kait2en/gdm-black.png` | Black GDM background image |
@@ -178,8 +179,10 @@ checks for a Broadcom PCI device with vendor ID `0x14e4` and device ID `0x5f69`,
   `brcmfmac` and `hci_bcm4377` in that order. After resume it loads `brcmfmac`
   and `brcmfmac_wcc`, waits five seconds, then loads `hci_bcm4377`.
 
-If the controller is absent, the service logs that the fix is not needed and
-does not unload a module. State files for modules successfully unloaded by
+Without a BCM4377, it checks for the BCM4350 WLAN chip (device ID `0x43a3`).
+
+If neither controller is present, the service logs that the fix is not needed
+and does not unload a module. State files for modules successfully unloaded by
 the helper exist only until resume below `/run/kait2en-suspend/`.
 
 The installer checks the running kernel log for two known Apple ACPI firmware
@@ -246,8 +249,8 @@ All KAIT2EN desktop applications use the shared header wordmark at
 | T2 Kernel Builder | `/usr/local/bin/t2-kernel-builder`, `/usr/local/libexec/t2-kernel-builder-cleanup`, `/usr/local/libexec/t2-kernel-builder/build.sh`, `/usr/local/libexec/t2-kernel-builder/configs/*.config`, `/usr/local/share/applications/org.t2kernelbuilder.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2kernelbuilder.gtk.svg`, `/usr/local/share/polkit-1/actions/org.t2kernelbuilder.gtk.policy` |
 | T2 Power Tune | `/usr/local/bin/t2-power-tune`, `/usr/local/libexec/t2-power-tune-helper`, `/usr/local/libexec/t2-power-tune-status`, `/usr/local/share/applications/org.t2powertune.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2powertune.gtk.svg`, `/usr/share/polkit-1/actions/org.t2powertune.policy` |
 | T2 Force Click | `/usr/local/bin/t2-force-click`, `/usr/local/share/applications/org.t2forceclick.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2forceclick.gtk.svg`, `/usr/local/lib/systemd/system/t2-force-click.service` |
-| KAIT2EN Touch Bar | `/usr/local/bin/kait2en-touchbar`, `/usr/local/lib/systemd/user/kait2en-touchbar.service`, `/usr/local/lib/systemd/system/kait2en-touchbar-attach.service`, `/usr/local/lib/udev/rules.d/99-zz-kait2en-touchbar.rules`, `/etc/kait2en/touchbar.toml`, `/usr/local/share/licenses/kait2en-touchbar/THIRD-PARTY-NOTICES.md` |
-| T2 Hybrid GPU Control | `/usr/local/bin/t2-hybrid-gpu-control`, `/usr/local/libexec/t2-hybrid-gpu-control-helper`, `/usr/local/libexec/t2-hybrid-gpu-control-status`, `/usr/local/share/applications/org.t2hybridgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2hybridgpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.status.policy` |
+| T2 Touch Bar | `/usr/local/bin/kait2en-touchbar`, `/usr/local/lib/systemd/user/kait2en-touchbar.service`, `/usr/local/lib/systemd/system/kait2en-touchbar-attach.service`, `/usr/local/lib/udev/rules.d/99-zz-kait2en-touchbar.rules`, `/etc/kait2en/touchbar.toml`, `/usr/local/share/licenses/kait2en-touchbar/THIRD-PARTY-NOTICES.md` |
+| T2 Hybrid GPU Control | `/usr/local/bin/t2-hybrid-gpu-control`, `/usr/local/libexec/t2-hybrid-gpu-control-helper`, `/usr/local/libexec/t2-hybrid-gpu-control-status`, `/usr/local/share/applications/org.t2hybridgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2hybridgpucontrol.gtk.svg`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2hybridgpucontrol.gtk.status.policy`, `/etc/environment.d/90-kait2en-gsk-renderer.conf` |
 | T2 GPU Control | `/usr/local/bin/t2-dgpu-control`, `/usr/local/libexec/t2-dgpu-control-helper`, `/usr/local/libexec/t2-dgpu-control-status`, `/usr/local/share/applications/org.t2dgpucontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2dgpucontrol.gtk.svg`, `/usr/local/lib/systemd/system/kait2en-dgpu-off.service`, `/usr/local/lib/systemd/system/kait2en-dgpu-suspend.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile.service`, `/usr/local/lib/systemd/system/kait2en-amdgpu-profile-resume.service`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.policy`, `/usr/share/polkit-1/actions/org.t2dgpucontrol.gtk.status.policy` |
 
 T2 Fan Control's service starts immediately and persists fan curves across

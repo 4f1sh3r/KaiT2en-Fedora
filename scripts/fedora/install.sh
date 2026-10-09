@@ -8,10 +8,14 @@ require_fedora
 require_min_kernel 7 0
 
 # Asked before anything runs so the rest of the installation is unattended.
-# KAIT2EN_INSTALL_TOUCHBAR=1|0 answers it ahead of time; without a terminal
+# KAIT2EN_INSTALL_TOUCHBAR=1|0 answers it ahead of time. Without a terminal
 # the previous default (install) is kept.
 ask_touchbar() {
 	local answer
+	if ! has_touch_bar; then
+		KAIT2EN_INSTALL_TOUCHBAR=0
+		return
+	fi
 	case "${KAIT2EN_INSTALL_TOUCHBAR:-}" in
 		1 | 0) return ;;
 	esac
@@ -21,9 +25,9 @@ ask_touchbar() {
 	fi
 	cat <<'TEXT'
 
-KAIT2EN Touch Bar (optional)
+T2 Touch Bar (optional)
 
-  kait2en-touchbar replaces Apple's built-in Touch Bar row with its own
+  T2 Touch Bar replaces Apple's built-in Touch Bar row with its own
   dark-first display: the bar stays black until you touch it or press Fn,
   learns how long to stay lit, offers a media row and an F-key row (hold Fn
   to switch), shows a fingerprint prompt for Touch ID and gives haptic

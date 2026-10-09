@@ -14,6 +14,8 @@ use crate::policy::Mode;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
     Key(Key),
+    /// Index into the personal keys from keys.toml.
+    Custom(usize),
 }
 
 #[derive(Clone, Copy)]
@@ -65,7 +67,18 @@ pub struct Layout {
 
 impl Layout {
     pub fn new(mode: Mode, width: u16, physical_escape: bool) -> Self {
-        // Keys inside a group sit KEY_GAP apart; groups are separated by the
+        Self::with_custom(mode, width, physical_escape, &[])
+    }
+
+    /// Like `new`, but the special row also shows `custom` labels in its
+    /// free space next to esc, as many as fit.
+    pub fn with_custom(
+        mode: Mode,
+        width: u16,
+        physical_escape: bool,
+        custom: &[&'static str],
+    ) -> Self {
+        // Keys inside a group sit KEY_GAP apart. Groups are separated by the
         // wider GROUP_GAP, like the clusters of a hardware function row.
         let mut groups: Vec<Vec<(Glyph, Key)>> = Vec::new();
         match mode {
@@ -116,6 +129,19 @@ impl Layout {
                     (Glyph::Icon(Icon::Volume(true)), Key::VolumeUp),
                 ],
             ]),
+            Mode::Special => groups.extend([
+                vec![(Glyph::Text("print"), Key::Sysrq)],
+                vec![
+                    (Glyph::Text("insert"), Key::Insert),
+                    (Glyph::Text("delete"), Key::Delete),
+                ],
+                vec![
+                    (Glyph::Text("home"), Key::Home),
+                    (Glyph::Text("end"), Key::End),
+                    (Glyph::Text("page up"), Key::PageUp),
+                    (Glyph::Text("page down"), Key::PageDown),
+                ],
+            ]),
         }
 
         // esc keeps the same slot in every mode, so switching layers only
@@ -131,6 +157,46 @@ impl Layout {
                 action: Action::Key(Key::Esc),
             });
             start = right + GROUP_GAP;
+        }
+
+        if mode == Mode::Special {
+            // Fewer keys than fit: keep the media key width and align them
+            // to the right edge, leaving the space next to esc free.
+            let media = Self::new(Mode::Media, width, physical_escape);
+            let cell = media
+                .buttons
+                .last()
+                .map_or(width / 14, |button| button.right - button.left);
+            let mut right = width.saturating_sub(KEY_GAP);
+            let mut placed = Vec::new();
+            for group in groups.into_iter().rev() {
+                for (glyph, key) in group.into_iter().rev() {
+                    let left = right.saturating_sub(cell);
+                    placed.push(Button {
+                        left,
+                        right,
+                        glyph,
+                        action: Action::Key(key),
+                    });
+                    right = left.saturating_sub(KEY_GAP);
+                }
+                right = right.saturating_sub(GROUP_GAP - KEY_GAP);
+            }
+            // Personal keys form one more group in the space that is left.
+            let space = right.saturating_sub(start);
+            let fit = usize::from((space + KEY_GAP) / (cell + KEY_GAP));
+            for (index, label) in custom.iter().enumerate().take(fit).rev() {
+                let left = right.saturating_sub(cell);
+                placed.push(Button {
+                    left,
+                    right,
+                    glyph: Glyph::Text(label),
+                    action: Action::Custom(index),
+                });
+                right = left.saturating_sub(KEY_GAP);
+            }
+            buttons.extend(placed.into_iter().rev());
+            return Self { buttons };
         }
 
         // The remaining span is filled edge to edge. Rounding leftovers widen
@@ -188,7 +254,7 @@ const TRACK_GAP: f32 = 40.0;
 const ARROW_LENGTH: f32 = 22.0;
 const ARROW_GAP: f32 = 14.0;
 const ARROW_STROKE: f32 = 3.0;
-/// How far the arrow's tail moves towards the sensor; the tip moves twice as
+/// How far the arrow's tail moves towards the sensor. The tip moves twice as
 /// far.
 const ARROW_TAIL_TRAVEL: f32 = 7.0;
 const KEY_FONT_SIZE: f32 = 23.0;
@@ -280,6 +346,7 @@ impl Canvas {
         percent: Option<u32>,
         muted: bool,
         fingers: (f32, f32),
+        fade: u32,
     ) {
         const ICON_SIZE: f32 = 1.6;
         const ICON_SLOT: f32 = 60.0;
@@ -303,6 +370,8 @@ impl Canvas {
         .round();
         let cy = f32::from(self.height) / 2.0;
 
+        let full = self.color;
+        self.color = full.scale(fade.min(100));
         self.pixmap.fill(Color::BLACK);
         let icon = match (kind, muted) {
             (LevelKind::Volume, true) => Icon::Mute,
@@ -340,6 +409,7 @@ impl Canvas {
             self.color,
         );
         self.flush();
+        self.color = full;
     }
 
     /// "**Artist** – Title" on the dark bar with borderless previous/next
@@ -437,14 +507,17 @@ impl Canvas {
         }
     }
 
-    /// Only one pressed key on an otherwise black bar, e.g. esc used while
-    /// the bar is dark.
-    pub fn single_key(&mut self, layout: &Layout, index: usize) {
+    /// One key on an otherwise black bar, with optional pressed styling and
+    /// opacity for the activity escape key.
+    pub fn single_key(&mut self, layout: &Layout, index: usize, active: bool, fade: u32) {
+        let full = self.color;
+        self.color = full.scale(fade.min(100));
         self.pixmap.fill(Color::BLACK);
         if let Some(button) = layout.buttons.get(index) {
-            self.button(button, true);
+            self.button(button, active);
         }
         self.flush();
+        self.color = full;
     }
 
     fn button(&mut self, button: &Button, active: bool) {
@@ -482,8 +555,11 @@ impl Canvas {
     /// sensor right of the bar. `nudge` (0..1) pushes the arrow towards the
     /// sensor: its tail moves by `ARROW_TAIL_TRAVEL`, its tip twice as far,
     /// so it stretches while it moves.
-    pub fn touch_id(&mut self, state: &str, nudge: f32) {
+    pub fn touch_id(&mut self, state: &str, nudge: f32, esc: Option<Button>, active: bool) {
         self.pixmap.fill(Color::BLACK);
+        if let Some(esc) = esc {
+            self.button(&esc, active);
+        }
         let (parts, color, arrow): (&[(&str, f32)], Rgb, bool) = match state {
             "matched" => (&[("Unlocked", STRONG_WEIGHT)], Rgb(0x34, 0xc7, 0x59), false),
             "retry" => (&[("Try Again", STRONG_WEIGHT)], Rgb(0xff, 0x9f, 0x0a), true),
@@ -690,7 +766,7 @@ impl Canvas {
         }
     }
 
-    /// Appends the glyph outlines of `text` at `weight`; returns the pen
+    /// Appends the glyph outlines of `text` at `weight` and returns the pen
     /// position after the last glyph.
     fn append_text(
         &mut self,
@@ -903,7 +979,7 @@ fn icon_shapes(icon: Icon) -> Vec<Shape> {
     shapes
 }
 
-/// Appends an open arc; angles are in degrees, clockwise from +x.
+/// Appends an open arc. Angles are in degrees, clockwise from +x.
 fn arc(path: &mut PathBuilder, cx: f32, cy: f32, radius: f32, from: f32, to: f32) {
     let steps = ((to - from).abs() / 6.0).ceil().max(2.0) as usize;
     for step in 0..=steps {
@@ -963,7 +1039,7 @@ mod tests {
 
     #[test]
     fn layouts_have_no_overlapping_buttons() {
-        for mode in [Mode::Media, Mode::Function] {
+        for mode in [Mode::Media, Mode::Function, Mode::Special] {
             let layout = Layout::new(mode, 2170, false);
             for pair in layout.buttons.windows(2) {
                 assert!(pair[0].right < pair[1].left);
@@ -981,12 +1057,42 @@ mod tests {
             (first.left, first.right, layout.buttons[1].left, last.right)
         };
         assert_eq!(edges(&media), edges(&function));
+        // The special row keeps esc and the right edge, and the media width.
+        let special = Layout::new(Mode::Special, 2170, false);
+        let (esc, last) = (
+            special.buttons[0],
+            special.buttons[special.buttons.len() - 1],
+        );
+        let media_last = media.buttons[media.buttons.len() - 1];
+        assert_eq!(
+            (esc.left, esc.right),
+            (media.buttons[0].left, media.buttons[0].right)
+        );
+        assert_eq!(last.right, media_last.right);
+        assert_eq!(last.right - last.left, media_last.right - media_last.left);
+    }
+
+    #[test]
+    fn personal_keys_fill_only_the_free_space() {
+        let labels = ["~", "|", "a", "b", "c", "d", "e"];
+        let special = Layout::with_custom(Mode::Special, 2170, false, &labels);
+        let custom: Vec<_> = special
+            .buttons
+            .iter()
+            .filter(|button| matches!(button.action, Action::Custom(_)))
+            .collect();
+        assert_eq!(custom.len(), 4, "four keys fit between esc and print");
+        assert_eq!(custom[0].action, Action::Custom(0));
+        assert!(custom[0].left > special.buttons[0].right + GROUP_GAP - 1);
+        for pair in special.buttons.windows(2) {
+            assert!(pair[0].right < pair[1].left);
+        }
     }
 
     #[test]
     fn touch_id_draws_only_near_the_sensor_and_label() {
         let mut canvas = Canvas::new(2170, 60, 0x00dce6ff).unwrap();
-        canvas.touch_id("waiting", 0.5);
+        canvas.touch_id("waiting", 0.5, None, false);
         assert!(canvas.pixels.iter().any(|pixel| *pixel != 0));
         assert_eq!(canvas.pixels[0], 0);
     }
@@ -1009,9 +1115,14 @@ mod tests {
         save("media", &canvas);
         canvas.keys(&Layout::new(Mode::Function, 2170, false), None);
         save("function", &canvas);
-        canvas.touch_id("waiting", 0.0);
+        canvas.keys(
+            &Layout::with_custom(Mode::Special, 2170, false, &["~", "|", "term"]),
+            None,
+        );
+        save("special", &canvas);
+        canvas.touch_id("waiting", 0.0, None, false);
         save("touchid", &canvas);
-        canvas.touch_id("waiting", 1.0);
+        canvas.touch_id("waiting", 1.0, None, false);
         save("touchid-nudged", &canvas);
         let media = Layout::new(Mode::Media, 2170, false);
         let keys = TrackLayout {
@@ -1028,11 +1139,17 @@ mod tests {
             keys,
         );
         save("track-long", &canvas);
-        canvas.touch_id("retry", 0.0);
+        canvas.touch_id("retry", 0.0, None, false);
         save("touchid-retry", &canvas);
-        canvas.level(LevelKind::Volume, Some(45), false, (560.0, 640.0));
+        canvas.level(LevelKind::Volume, Some(45), false, (560.0, 640.0), 100);
         save("volume", &canvas);
-        canvas.level(LevelKind::Brightness, Some(80), false, (1620.0, 1780.0));
+        canvas.level(
+            LevelKind::Brightness,
+            Some(80),
+            false,
+            (1620.0, 1780.0),
+            100,
+        );
         save("brightness", &canvas);
     }
 }
