@@ -1,0 +1,27 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] drm/amd/display: skip panel power savings on eDP links without a panel
+
+When GMUX routes the internal panel to the integrated GPU, the eDP link
+of the AMD GPU has no sink. It still exposed panel_power_savings, and
+tuned writes it on every switch between AC and battery. Each write sends
+a hotplug event and the following connector probe runtime resumes the
+GPU that GMUX had powered off. Only create the attribute when the link
+has a panel.
+
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -8177,6 +8177,14 @@
+ 	if (amdgpu_dm_connector->base.connector_type != DRM_MODE_CONNECTOR_eDP)
+ 		return false;
+ 
++	/*
++	 * An eDP link without a panel, like the one GMUX routes to the other
++	 * GPU, has no power to save. Writing the attribute would still send a
++	 * hotplug event that runtime resumes the GPU.
++	 */
++	if (!amdgpu_dm_connector->dc_link->edp_sink_present)
++		return false;
++
+ 	/* check for OLED panels */
+ 	if (amdgpu_dm_connector->bl_idx >= 0) {
+ 		struct drm_device *drm = amdgpu_dm_connector->base.dev;
