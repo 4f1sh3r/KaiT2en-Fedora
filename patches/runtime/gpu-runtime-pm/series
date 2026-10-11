@@ -5,3 +5,4 @@
 0005-drm-amd-display-refuse-DP-AUX-while-GMUX-keeps-the-GPU-off.patch
 0006-drm-amdgpu-skip-AC-DC-notification-while-the-GPU-is-runtime-suspended.patch
 0007-drm-amd-display-skip-panel-power-savings-on-eDP-links-without-a-panel.patch
+0008-drm-amd-pm-cap-UCLK-below-750-MHz-on-the-Navi-14-of-MacBookPro16-1.patch

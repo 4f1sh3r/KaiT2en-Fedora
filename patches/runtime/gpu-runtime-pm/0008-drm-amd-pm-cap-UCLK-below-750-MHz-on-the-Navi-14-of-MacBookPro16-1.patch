@@ -1,0 +1,58 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] drm/amd/pm: cap UCLK below 750 MHz on the Navi 14 of MacBookPro16,1
+
+The Radeon Pro 5300M and 5500M of the MacBookPro16,1 (Navi 14, revisions
+0x40 and 0x43) drop off the PCIe bus under load and at shutdown, which
+ends in a CPU machine check. Keeping UCLK off its top level of 750 MHz
+avoids both. The macOS driver does the same on these revisions and caps
+UCLK at 740 MHz, leaving 736 MHz as the highest level.
+
+Drop the UCLK levels above 740 MHz from the pptable before it is sent to
+the SMU, so the cap holds across resume and for every driver request.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+@@ -403,6 +403,32 @@
+ 	return 0;
+ }
+ 
++/*
++ * The Navi 14 of the MacBookPro16,1 drops off the PCIe bus under load and
++ * at shutdown, which ends in a machine check, while UCLK may reach its top
++ * level of 750 MHz. The macOS driver caps UCLK at 740 MHz on these
++ * revisions, leaving 736 MHz as the highest level. Drop the levels above
++ * that from the table the SMU runs on.
++ */
++static void navi10_apple_cap_uclk(struct smu_context *smu, PPTable_t *pptable)
++{
++	struct amdgpu_device *adev = smu->adev;
++	DpmDescriptor_t *uclk = &pptable->DpmDescriptor[PPCLK_UCLK];
++
++	if (amdgpu_ip_version(adev, MP1_HWIP, 0) != IP_VERSION(11, 0, 5) ||
++	    adev->pdev->subsystem_vendor != PCI_VENDOR_ID_APPLE ||
++	    (adev->pdev->revision != 0x40 && adev->pdev->revision != 0x43))
++		return;
++
++	while (uclk->NumDiscreteLevels > 1 &&
++	       pptable->FreqTableUclk[uclk->NumDiscreteLevels - 1] > 740)
++		uclk->NumDiscreteLevels--;
++
++	pptable->DcModeMaxFreq[PPCLK_UCLK] =
++		min(pptable->DcModeMaxFreq[PPCLK_UCLK],
++		    pptable->FreqTableUclk[uclk->NumDiscreteLevels - 1]);
++}
++
+ static int navi10_append_powerplay_table(struct smu_context *smu)
+ {
+ 	struct amdgpu_device *adev = smu->adev;
+@@ -453,6 +479,8 @@
+ 		smc_pptable->DebugOverrides |= DPM_OVERRIDE_DISABLE_DFLL_PLL_SHUTDOWN;
+ 	}
+ 
++	navi10_apple_cap_uclk(smu, smc_pptable);
++
+ 	return 0;
+ }
+ 
