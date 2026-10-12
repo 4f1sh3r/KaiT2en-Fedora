@@ -102,6 +102,7 @@ struct Sample {
 
 impl Sample {
     fn read(sensors: &SmcSensors) -> Self {
+        let plimits = sensors.plimits();
         let fin = [sensors.celsius("Th1H"), sensors.celsius("Th2H")].into_iter().flatten().reduce(f64::max);
         Self {
             heatpipe_w: sensors.micro("PZ0G"),
@@ -119,8 +120,8 @@ impl Sample {
             cpu_temp_c: sensors.celsius("TCXC"),
             gpu_temp_c: sensors.celsius("TG0P"),
             fin_temp_c: fin,
-            plimits: sensors.plimits(),
-            applied: Applied::read(),
+            plimits,
+            applied: Applied::read(sensors.dgpu(), plimits.map(|plimits| plimits.dgpu.step)),
         }
     }
 

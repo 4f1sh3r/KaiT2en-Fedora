@@ -1,6 +1,9 @@
 //! Linux counterparts of the macOS power limit listeners
 
-use std::path::{Path, PathBuf};
+use std::{
+    cell::Cell,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     error::Result,
@@ -99,6 +102,9 @@ pub struct DGpuCap {
     hwmon: PathBuf,
     tdp_w: u32,
     floor_w: u32,
+    /// Every hwmon access restarts the autosuspend timer of amdgpu, so the
+    /// cap is only touched when it changes or the GPU woke up
+    applied_w: Cell<Option<u32>>,
 }
 
 /// AGPM drives the dGPU through power states 0 to 15 on every Mac with one
@@ -116,7 +122,7 @@ impl DGpuCap {
             let Ok(tdp_uw) = read_value::<u64>(&hwmon.join("power1_cap_default")) else { continue };
             let tdp_w = u32::try_from(tdp_uw / 1_000_000).unwrap_or(u32::MAX);
             let floor_w = (f64::from(tdp_w) * floor_ratio).ceil() as u32;
-            return Ok(Some(Self { device, hwmon, tdp_w, floor_w }));
+            return Ok(Some(Self { device, hwmon, tdp_w, floor_w, applied_w: Cell::new(None) }));
         }
         Ok(None)
     }
@@ -132,6 +138,10 @@ impl DGpuCap {
     /// Leaves a runtime suspended GPU alone. The cap is applied once it wakes.
     pub fn apply(&self, watts: u32) -> Result<()> {
         if !self.is_active() {
+            self.applied_w.set(None);
+            return Ok(());
+        }
+        if self.applied_w.get() == Some(watts) {
             return Ok(());
         }
         let min: u64 = read_value(&self.hwmon.join("power1_cap_min"))?;
@@ -141,6 +151,7 @@ impl DGpuCap {
         if read_value::<u64>(&path).ok() != Some(microwatts) {
             write_value(&path, microwatts)?;
         }
+        self.applied_w.set(Some(watts));
         Ok(())
     }
 
@@ -148,7 +159,11 @@ impl DGpuCap {
         self.apply(self.tdp_w)
     }
 
-    fn is_active(&self) -> bool {
+    pub fn tdp_w(&self) -> u32 {
+        self.tdp_w
+    }
+
+    pub fn is_active(&self) -> bool {
         read_string(&self.device.join("power/runtime_status")).is_ok_and(|status| status == "active")
     }
 }
