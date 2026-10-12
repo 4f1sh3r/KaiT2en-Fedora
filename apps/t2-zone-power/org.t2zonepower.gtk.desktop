@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=T2 Zone Power
+Comment=Watch the SMC power zones of T2 Macs on Linux
+Exec=/usr/local/bin/t2-zonepower-gtk
+Icon=org.t2zonepower.gtk
+Terminal=false
+Categories=System;Monitor;HardwareSettings;
+Keywords=power;thermal;heatpipe;throttle;T2;Mac;
+StartupNotify=true

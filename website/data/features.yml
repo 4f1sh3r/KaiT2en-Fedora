@@ -372,3 +372,22 @@ items:
       Drives the internal 5K panel at full resolution by genlocking the two
       display streams that feed it. Ships as an amdgpu patch in the KAIT2EN
       kernel builds.
+
+  - id: smc-power-limits
+    title: "No more prochot throttling under load"
+    state: available
+    upstream: downstream
+    project: KAIT2EN Fedora
+    subsystem: t2smc / t2-zone-power
+    authors:
+      - deqrocks
+    link: post-install/kait2en-applications.md
+    updated: "2026-10-12"
+    notes: >-
+      The SMC shares the heatpipe between CPU, iGPU and dGPU and asks the OS
+      for lower limits in steps, which Linux used to ignore until prochot
+      dropped the CPU to 800 MHz. t2smc now exposes these steps and T2 Zone
+      Power applies them like macOS does, so CPU and GPU settle on steady
+      clocks under load. An amdgpu patch lets the Navi GPUs of Apple Macs
+      lower their power limit to 40 % of TDP, so the SMC can balance the
+      dGPU as well.
