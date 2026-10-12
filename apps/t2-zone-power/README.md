@@ -18,7 +18,7 @@ applies them every 250 ms.
 
 | Step | Linux | macOS counterpart |
 |---|---|---|
-| CPU | `scaling_max_freq` at the ACPI P-state the step indexes, step 0 is turbo | X86PlatformShim to XCPM |
+| CPU | `scaling_max_freq` = highest turbo - 100 MHz per step, down to the lowest clock | X86PlatformShim to XCPM |
 | Forced idle | `intel_powerclamp`, idle share of `100 - step` percent, at most 70 % | X86PlatformShim to XCPM |
 | dGPU | `power1_cap` from the PowerTune table, TDP down to the driver floor in 16 steps | AGPM to the AMD driver |
 | iGPU | i915 `gt_max_freq_mhz` = RP0 - 50 MHz per step, down to RPn | AGPM to the Intel framebuffer |
@@ -41,7 +41,7 @@ and CPU, dGPU and fin stack temperatures. It has no settings.
 
 ## Requirements
 
-- t2smc with `smc_plimit_raw`, `smc_plimit_version`, `cpu_pstates_mhz` and the GPU step count files
+- t2smc with `smc_plimit_raw`, `smc_plimit_version` and the GPU step count files
 - `intel_pstate` or another cpufreq driver
 - `intel_powerclamp`
 

@@ -131,8 +131,6 @@
 #define T2SMC_PLIMIT_IGPU_STEPS "HI0N"
 #define T2SMC_PLIMIT_EGPU3_STEPS "HE2N"
 enum { T2SMC_DGPU, T2SMC_IGPU, T2SMC_GPUS };
-/* The SMC CPU step indexes this list, as in X86PlatformPlugin::getCPUPStates */
-#define T2SMC_MAX_PSTATES       32
 #define FLOAT_TYPE      "flt "
 
 #define T2SMC_RTC_BYTES      6
@@ -216,8 +214,6 @@ struct t2smc_device {
 	struct work_struct thermal_work;  /* notifies thermal level readers */
 	u8 thermal_level[3];
 	struct work_struct plimit_work;   /* notifies PLimit readers */
-	u16 cpu_pstate_mhz[T2SMC_MAX_PSTATES];
-	u8 cpu_pstate_count;
 	u8 gpu_steps[T2SMC_GPUS];        /* set by user space, 0 keeps the SMC preset */
 	u8 plimit_version;               /* data layout of the PLimit words, 0 if unknown */
 
@@ -1635,21 +1631,6 @@ static ssize_t smc_plimit_raw_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(smc_plimit_raw);
 
-/* Core frequencies of the ACPI P-states the SMC CPU step indexes */
-static ssize_t cpu_pstates_mhz_show(struct device *dev,
-				    struct device_attribute *attr, char *buf)
-{
-	struct t2smc_device *t2 = dev_get_drvdata(dev);
-	int i, len = 0;
-
-	for (i = 0; i < t2->cpu_pstate_count; i++)
-		len += sysfs_emit_at(buf, len, "%s%u", i ? " " : "",
-				     t2->cpu_pstate_mhz[i]);
-	len += sysfs_emit_at(buf, len, "\n");
-	return len;
-}
-static DEVICE_ATTR_RO(cpu_pstates_mhz);
-
 static const char *t2smc_gpu_steps_key(struct t2smc_device *t2, int gpu)
 {
 	bool he2n;
@@ -1720,7 +1701,6 @@ static struct attribute *t2smc_thermal_attrs[] = {
 	&sensor_dev_attr_smc_thermal_level_io.dev_attr.attr,
 	&sensor_dev_attr_smc_thermal_level_gpu.dev_attr.attr,
 	&dev_attr_smc_plimit_raw.attr,
-	&dev_attr_cpu_pstates_mhz.attr,
 	&sensor_dev_attr_smc_dgpu_steps.dev_attr.attr,
 	&sensor_dev_attr_smc_igpu_steps.dev_attr.attr,
 	&dev_attr_smc_plimit_version.attr,
@@ -2705,8 +2685,10 @@ static void t2smc_set_plimit_ranges(struct t2smc_device *t2)
 }
 
 /*
- * As AppleSMC::smcInitPLimits: RGEN 3 means data version 3, otherwise the
- * data size of DPLM selects it, 5 for version 3, 4 for 2 and 3 for 1.
+ * As AppleSMC::smcInitPLimits: RGEN 3 means data version 3. Otherwise the
+ * data size of DPLM selects it, 5 for version 3, 4 for 2 and 3 for 1, and a
+ * missing DPLM means version 1. X86PlatformPlugin only acts on version 2 and
+ * later.
  */
 static void t2smc_read_plimit_version(struct t2smc_device *t2)
 {
@@ -2721,59 +2703,16 @@ static void t2smc_read_plimit_version(struct t2smc_device *t2)
 	}
 
 	entry = t2smc_get_entry_by_key(t2, T2SMC_PLIMIT_VERSION);
-	if (IS_ERR(entry))
+	if (IS_ERR(entry)) {
+		t2->plimit_version = 1;
 		return;
+	}
 	switch (entry->len) {
 	case 5: t2->plimit_version = 3; break;
 	case 4: t2->plimit_version = 2; break;
 	case 3: t2->plimit_version = 1; break;
+	default: t2->plimit_version = 0; break;
 	}
-}
-
-/*
- * X86PlatformPlugin::getCPUPStates evaluates APSS and falls back to _PSS.
- * Element 0 of every entry is the core frequency in MHz.
- */
-static void t2smc_read_cpu_pstates(struct t2smc_device *t2)
-{
-	static const char *const paths[] = {
-		"\\_PR.CPU0.APSS", "\\_PR.CPU0._PSS",
-		"\\_SB.PR00.APSS", "\\_SB.PR00._PSS",
-	};
-	struct acpi_buffer out = { ACPI_ALLOCATE_BUFFER, NULL };
-	union acpi_object *pss, *entry;
-	acpi_status status;
-	int p, i;
-
-	for (p = 0; p < ARRAY_SIZE(paths); p++) {
-		out = (struct acpi_buffer){ ACPI_ALLOCATE_BUFFER, NULL };
-		status = acpi_evaluate_object(NULL, (char *)paths[p], NULL, &out);
-		if (ACPI_SUCCESS(status))
-			break;
-	}
-	if (p == ARRAY_SIZE(paths)) {
-		dev_warn(t2->dev, "no CPU P-states: %s\n",
-			 acpi_format_exception(status));
-		return;
-	}
-
-	pss = out.pointer;
-	if (pss && pss->type == ACPI_TYPE_PACKAGE) {
-		for (i = 0; i < pss->package.count &&
-			    i < T2SMC_MAX_PSTATES; i++) {
-			entry = &pss->package.elements[i];
-			if (entry->type != ACPI_TYPE_PACKAGE ||
-			    !entry->package.count ||
-			    entry->package.elements[0].type != ACPI_TYPE_INTEGER)
-				break;
-			t2->cpu_pstate_mhz[i] =
-				entry->package.elements[0].integer.value;
-		}
-		t2->cpu_pstate_count = i;
-	}
-	kfree(out.pointer);
-	dev_info(t2->dev, "%u CPU P-states from %s\n", t2->cpu_pstate_count,
-		 paths[p]);
 }
 
 /* -- Platform driver callbacks -- */
@@ -2856,7 +2795,7 @@ static int t2smc_probe(struct platform_device *pdev)
 	t2smc_log_x86_state(t2);
 	t2smc_log_plimit_keys(t2);
 	t2smc_read_plimit_version(t2);
-	t2smc_read_cpu_pstates(t2);
+	dev_info(t2->dev, "PLimit data version %u\n", t2->plimit_version);
 
 	ret = t2smc_register_hwmon(t2);
 	if (ret)

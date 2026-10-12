@@ -9,7 +9,7 @@ use gtk4::{
 use crate::{
     plimit::PLimits,
     sensors::{Applied, SmcSensors},
-    sysfs::find_t2smc,
+    sysfs::{find_t2smc, glob_paths, read_string},
 };
 
 const APP_ID: &str = "org.t2zonepower.gtk";
@@ -232,7 +232,9 @@ fn build_ui(app: &Application) {
         .build();
     attach_pair_at(&summary, 0, 0, "Heatpipe", &ui.heatpipe);
     attach_pair_at(&summary, 2, 0, "CPU zone", &ui.cpu_zone);
-    attach_pair_at(&summary, 0, 1, "dGPU zone", &ui.gpu_zone);
+    // Zone 2 follows the dGPU rail on Macs with a dGPU, on others it is something else
+    let (zone2, zone2_key) = if has_dgpu() { ("dGPU", "dGPU zone") } else { ("Zone 2", "Zone 2") };
+    attach_pair_at(&summary, 0, 1, zone2_key, &ui.gpu_zone);
     attach_pair_at(&summary, 2, 1, "Fin stack", &ui.fin_stack);
     attach_pair_at(&summary, 0, 2, "CPU step", &ui.cpu_step);
     attach_pair_at(&summary, 2, 2, "dGPU step", &ui.dgpu_step);
@@ -240,8 +242,9 @@ fn build_ui(app: &Application) {
     attach_pair_at(&summary, 2, 3, "iGPU step", &ui.igpu_step);
     root.append(&summary);
 
-    root.append(&panel("Zone power", &ui.power_graph, "Heatpipe  •  CPU  •  dGPU"));
-    root.append(&panel("Zone throttle", &ui.throttle_graph, "Heatpipe  •  CPU  •  dGPU"));
+    let zone_legend = format!("Heatpipe  •  CPU  •  {zone2}");
+    root.append(&panel("Zone power", &ui.power_graph, &zone_legend));
+    root.append(&panel("Zone throttle", &ui.throttle_graph, &zone_legend));
     root.append(&panel("Applied limits", &ui.limit_graph, "CPU clock  •  iGPU clock  •  dGPU power  •  Forced idle"));
     root.append(&panel("Temperatures", &ui.temperature_graph, "CPU  •  dGPU  •  Fin stack"));
 
@@ -411,6 +414,13 @@ fn format_step(step: u8, hard: bool, applied: Option<u32>, unit: &str) -> String
     }
 }
 
+fn has_dgpu() -> bool {
+    glob_paths("/sys/class/drm/card*/device/hwmon/hwmon*/name")
+        .unwrap_or_default()
+        .iter()
+        .any(|name| read_string(name).is_ok_and(|name| name == "amdgpu"))
+}
+
 fn panel(title: &str, widget: &impl IsA<gtk4::Widget>, legend: &str) -> GtkBox {
     let box_ = GtkBox::new(Orientation::Vertical, 3);
     let label = Label::new(Some(title));
@@ -577,7 +587,7 @@ fn legend_markup(legend: &str) -> String {
             let dot = match item {
                 "Heatpipe" => palette.heatpipe,
                 "CPU" | "CPU clock" => palette.cpu,
-                "dGPU" | "dGPU power" => palette.gpu,
+                "dGPU" | "dGPU power" | "Zone 2" => palette.gpu,
                 "Forced idle" => palette.idle,
                 "iGPU clock" => palette.igpu,
                 "Fin stack" => palette.fin,

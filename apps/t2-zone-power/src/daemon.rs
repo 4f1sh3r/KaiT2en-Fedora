@@ -42,7 +42,7 @@ pub fn run() -> Result<()> {
         return Ok(());
     }
 
-    let cpu = CpuCap::discover(&t2smc)?;
+    let cpu = CpuCap::discover()?;
     let idle = ForcedIdle::discover()?;
     let igpu = IGpuCap::discover()?;
     if let Some(igpu) = &igpu {
@@ -144,7 +144,7 @@ fn report(result: Result<()>) {
 
 fn report_missing(cpu: &Option<CpuCap>, idle: &Option<ForcedIdle>, igpu: &Option<IGpuCap>, dgpu: &Option<DGpuCap>) {
     if cpu.is_none() {
-        eprintln!("no CPU P-states from t2smc or no cpufreq policy, CPU step is not applied");
+        eprintln!("no cpufreq policy, CPU step is not applied");
     }
     if idle.is_none() {
         eprintln!("intel_powerclamp is missing, idle step is not applied");

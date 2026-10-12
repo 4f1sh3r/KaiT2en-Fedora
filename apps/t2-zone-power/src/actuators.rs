@@ -7,43 +7,33 @@ use crate::{
     sysfs::{glob_paths, read_string, read_value, write_value},
 };
 
-/// X86PlatformShim caps XCPM at the core frequency of the P-state the CPU
-/// step indexes. Step 0 is the turbo entry and leaves the CPU uncapped.
+/// X86PlatformShim caps XCPM at the CPUPStates entry the CPU step indexes.
+/// CPUPStates is the XCPM ratio ladder from the highest turbo frequency down
+/// to the lowest one in 100 MHz steps (ioreg of a MacBookPro16,1 under
+/// macOS: 5000 down to 800 MHz, 43 entries). Step 0 leaves the CPU uncapped.
 pub struct CpuCap {
     policies: Vec<PathBuf>,
-    pstates_khz: Vec<u32>,
     min_khz: u32,
     max_khz: u32,
 }
 
+const CPU_RATIO_KHZ: u32 = 100_000;
+
 impl CpuCap {
-    pub fn discover(t2smc: &Path) -> Result<Option<Self>> {
-        // Older t2smc builds lack the list, then the CPU step is left alone
-        let Ok(pstates) = read_string(&t2smc.join("cpu_pstates_mhz")) else { return Ok(None) };
-        let pstates_khz: Vec<u32> = pstates
-            .split_whitespace()
-            .filter_map(|mhz| mhz.parse::<u32>().ok())
-            .map(|mhz| mhz * 1000)
-            .collect();
+    pub fn discover() -> Result<Option<Self>> {
         let policies = glob_paths("/sys/devices/system/cpu/cpufreq/policy*")?;
         let Some(first) = policies.first() else { return Ok(None) };
-        if pstates_khz.is_empty() {
-            return Ok(None);
-        }
         Ok(Some(Self {
             min_khz: read_value(&first.join("cpuinfo_min_freq"))?,
             max_khz: read_value(&first.join("cpuinfo_max_freq"))?,
             policies,
-            pstates_khz,
         }))
     }
 
     pub fn target_khz(&self, step: u8) -> u32 {
-        let index = usize::from(step).min(self.pstates_khz.len() - 1);
-        if index == 0 {
-            return self.max_khz;
-        }
-        self.pstates_khz[index].clamp(self.min_khz, self.max_khz)
+        self.max_khz
+            .saturating_sub(u32::from(step) * CPU_RATIO_KHZ)
+            .max(self.min_khz)
     }
 
     pub fn apply(&self, khz: u32) -> Result<()> {
