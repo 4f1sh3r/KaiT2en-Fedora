@@ -1,0 +1,55 @@
+From 381379b01d2551822f66631cab2fd12b093bb025 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Tue, 13 Oct 2026 20:42:14 +0200
+Subject: [PATCH 1/4] ACPI: SBS: Read full charge capacity and cycle count with
+ the state
+To: "Rafael J. Wysocki" <rafael@kernel.org>,
+    linux-acpi@vger.kernel.org
+Cc: Len Brown <lenb@kernel.org>,
+    Sebastian Reichel <sre@kernel.org>,
+    linux-pm@vger.kernel.org,
+    linux-kernel@vger.kernel.org
+
+FullChargeCapacity and CycleCount are read only when the battery is
+added or its presence changes. The gauge updates both at run time,
+FullChargeCapacity in particular after a learning cycle, so charge_full
+and cycle_count stay at their boot values until the next reboot.
+
+User space derives the state of charge from charge_now and charge_full.
+On a MacBookPro15,1, FullChargeCapacity changed from 6588 mAh at boot to
+6467 mAh after a full charge, which shifted the percentage reported by
+UPower by two points.
+
+Read both registers together with the other dynamic values.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ drivers/acpi/sbs.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/acpi/sbs.c b/drivers/acpi/sbs.c
+index 86b7c7975..ccd2b5865 100644
+--- a/drivers/acpi/sbs.c
++++ b/drivers/acpi/sbs.c
+@@ -301,8 +301,6 @@ struct acpi_battery_reader {
+ static struct acpi_battery_reader info_readers[] = {
+ 	{0x01, SMBUS_READ_WORD, offsetof(struct acpi_battery, alarm_capacity)},
+ 	{0x03, SMBUS_READ_WORD, offsetof(struct acpi_battery, mode)},
+-	{0x10, SMBUS_READ_WORD, offsetof(struct acpi_battery, full_charge_capacity)},
+-	{0x17, SMBUS_READ_WORD, offsetof(struct acpi_battery, cycle_count)},
+ 	{0x18, SMBUS_READ_WORD, offsetof(struct acpi_battery, design_capacity)},
+ 	{0x19, SMBUS_READ_WORD, offsetof(struct acpi_battery, design_voltage)},
+ 	{0x1a, SMBUS_READ_WORD, offsetof(struct acpi_battery, spec)},
+@@ -318,7 +316,9 @@ static struct acpi_battery_reader state_readers[] = {
+ 	{0x0a, SMBUS_READ_WORD, offsetof(struct acpi_battery, rate_now)},
+ 	{0x0b, SMBUS_READ_WORD, offsetof(struct acpi_battery, rate_avg)},
+ 	{0x0f, SMBUS_READ_WORD, offsetof(struct acpi_battery, capacity_now)},
++	{0x10, SMBUS_READ_WORD, offsetof(struct acpi_battery, full_charge_capacity)},
+ 	{0x0e, SMBUS_READ_WORD, offsetof(struct acpi_battery, state_of_charge)},
++	{0x17, SMBUS_READ_WORD, offsetof(struct acpi_battery, cycle_count)},
+ 	{0x16, SMBUS_READ_WORD, offsetof(struct acpi_battery, state)},
+ };
+ 
+-- 
+2.56.0
+
