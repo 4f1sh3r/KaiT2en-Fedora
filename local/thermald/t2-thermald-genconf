@@ -1,0 +1,42 @@
+#!/bin/bash
+# Resolves the t2smc hwmon sensor paths (hwmonN numbering is not stable across
+# boots) and expands /etc/thermald/thermal-conf.xml.in into the runtime config.
+set -euo pipefail
+
+TEMPLATE=/etc/thermald/thermal-conf.xml.in
+OUTDIR=/run/thermald
+OUT=$OUTDIR/thermal-conf.xml
+
+hwmon=""
+for h in /sys/class/hwmon/hwmon*; do
+	[ -r "$h/name" ] || continue
+	if [ "$(cat "$h/name")" = "t2smc" ]; then
+		hwmon=$h
+		break
+	fi
+done
+
+if [ -z "$hwmon" ]; then
+	echo "t2-thermald-genconf: no t2smc hwmon found" >&2
+	exit 1
+fi
+
+sed_args=()
+for label in Ts1S Ts0S; do
+	path=""
+	for l in "$hwmon"/temp*_label; do
+		[ -r "$l" ] || continue
+		if [ "$(cat "$l")" = "$label" ]; then
+			path="${l%_label}_input"
+			break
+		fi
+	done
+	if [ -z "$path" ]; then
+		echo "t2-thermald-genconf: sensor $label not exposed by $hwmon" >&2
+		exit 1
+	fi
+	sed_args+=(-e "s|@${label}@|${path}|g")
+done
+
+mkdir -p "$OUTDIR"
+sed "${sed_args[@]}" "$TEMPLATE" >"$OUT"
