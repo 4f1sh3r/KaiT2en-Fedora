@@ -189,3 +189,25 @@ require_min_kernel() {
 		fail "KaiT2en requires Linux kernel ${min_major}.${min_minor} or newer. Update Fedora first, reboot into the updated kernel, then run this installer again. Current kernel: $release"
 	fi
 }
+
+kernel_version_ge() {
+	local release=$1 req_major=$2 req_minor=$3 req_patch=${4:-0}
+	local major minor patch
+
+	if [[ ! "$release" =~ ^([0-9]+)\.([0-9]+)(\.([0-9]+))? ]]; then
+		return 1
+	fi
+
+	major="${BASH_REMATCH[1]}"
+	minor="${BASH_REMATCH[2]}"
+	patch="${BASH_REMATCH[4]:-0}"
+
+	if (( major > req_major )); then
+		return 0
+	elif (( major == req_major && minor > req_minor )); then
+		return 0
+	elif (( major == req_major && minor == req_minor && patch >= req_patch )); then
+		return 0
+	fi
+	return 1
+}
