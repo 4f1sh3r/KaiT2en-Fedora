@@ -270,7 +270,8 @@ fn sync_rtc_from_system(rtc: &Path) -> Result<(), String> {
         .ok_or_else(|| "Cannot derive the RTC device node".to_string())?;
 
     let output = Command::new("pkexec")
-        .args([HWCLOCK_PATH, "--rtc", &device, "--systohc"])
+        // The SMC clock is UTC like on macOS, whatever /etc/adjtime says
+        .args([HWCLOCK_PATH, "--rtc", &device, "--utc", "--systohc"])
         .output()
         .map_err(|err| format!("Cannot start pkexec: {err}"))?;
 

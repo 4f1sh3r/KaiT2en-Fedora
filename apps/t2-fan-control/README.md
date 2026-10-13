@@ -8,7 +8,7 @@
 <img src="assets/t2fancontrol_dark.png" alt="T2 Fan Control dark mode screenshot" style="height: 400px;">
 </p>
 Fan controller application written in Rust for T2 Macs running Linux.
-Supports applesmc, macsmc hwmon and t2smc (https://github.com/deqrocks/t2-smc) hwmon paths.
+Supports applesmc, macsmc hwmon and t2smc hwmon paths.
 
 
 T2 Fan Control provides a compact desktop interface for monitoring temperatures and editing a smooth fan curve with a model-specific system-temperature target.

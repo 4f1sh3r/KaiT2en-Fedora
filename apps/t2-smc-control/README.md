@@ -2,10 +2,6 @@
 
 Small GTK/libadwaita control app for T2 Macs using the `t2smc` kernel driver.
 
-The required kernel driver is maintained here:
-
-https://github.com/deqrocks/t2-smc
-
 ## Features
 
 - Shows fan speeds reported by `t2smc`

@@ -177,9 +177,8 @@ on macOS. It attaches the limit to `BAT0` as the standard
 `charge_control_end_threshold` property, so any desktop environment that
 speaks that interface can set it through its own power settings.
 
-We do offer a GUI program to inspect sensor data and the battery charge limit:
-(https://github.com/deqrocks/t2-smc-control).
-Anyways here is how to set battery charge limit manually:
+T2 SMC Control (`apps/t2-smc-control`) shows sensor data and the battery
+charge limit. To set the limit manually:
 
 ```sh
 # Read current charge limit
