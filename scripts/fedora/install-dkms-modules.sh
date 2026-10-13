@@ -20,6 +20,7 @@ MODULES=(
 	t2gmux
 	t2thunderbolt
 	t2smp
+	t2sbs
 )
 
 LEGACY_MODULES=(
@@ -86,6 +87,7 @@ modules=(
 	t2gmux
 	t2thunderbolt
 	t2smp
+	t2sbs
 )
 
 for name in "${modules[@]}"; do

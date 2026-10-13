@@ -128,8 +128,9 @@ fn tick(hwmon: &Path, state: &mut State) {
     ) else {
         return;
     };
-    // ACPI may report Full while the limit holds, so the SMC SoC must agree
-    let fully_charged = read_trimmed(Path::new(BATTERY_STATUS)).as_deref() == Some("Full")
+    // sbs reports Full while the limit holds, t2sbs only when the gauge flags
+    // it, so the SMC SoC decides
+    let fully_charged = matches!(read_trimmed(Path::new(BATTERY_STATUS)).as_deref(), Some("Full" | "Not charging"))
         && read_trimmed(&hwmon.join("smc_battery_capacity_percent"))
             .and_then(|soc| soc.parse::<u32>().ok())
             .is_some_and(|soc| soc >= 99);

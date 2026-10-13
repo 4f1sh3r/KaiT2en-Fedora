@@ -104,6 +104,7 @@ BLACKLIST_MODULES=(
 	apple_bce
 	apple_mfi_fastcharge
 	apple_gmux
+	sbs
 )
 MODULE_BLACKLIST="module_blacklist=$(IFS=,; printf '%s' "${BLACKLIST_MODULES[*]}")"
 SILENT_BLACKLIST_CONF="/etc/modprobe.d/kait2en-silent-blacklist.conf"

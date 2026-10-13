@@ -48,6 +48,7 @@ kernel updates. `modinfo -n <module>` prints the installed kernel object path.
 | `t2gmux` | `t2gmux` | GMUX handling on dual-GPU Macs |
 | `t2thunderbolt` | `t2thunderbolt` | Thunderbolt power-management ordering and T2 PCI quirks |
 | `t2smp` | `t2smp` | Defers secondary CPU hotplug to avoid firmware-sensitive resume delays |
+| `t2sbs` | `t2sbs` | Smart Battery driver that refreshes the full charge capacity and reports the charge relative to it, replaces `sbs` |
 
 The installer also writes
 `/etc/kernel/install.d/39-kait2en-dkms-cleanup.install`. The hook removes stale
@@ -103,7 +104,7 @@ pcie_aspm.policy=powersave
 pcie_ports=compat
 mem_sleep_default=deep
 initcall_blacklist=cmos_init,magicmouse_driver_init
-module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux
+module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_kbd,hid_magicmouse,appletbdrm,apple_bce,apple_mfi_fastcharge,apple_gmux,sbs
 ```
 
 On iMacs and the iMac Pro, `pcie_aspm=force` is left out, because their
@@ -173,7 +174,7 @@ audio behavior and diagnostics.
 | `/etc/dconf/db/gdm.d/00-kait2en` | Configures the GDM logo and solid black login background |
 | `/usr/share/backgrounds/kait2en/gdm-black.png` | Black GDM background image |
 | `/usr/share/gnome-shell/gnome-shell-theme.gresource` | GNOME Shell theme patched so the GDM and lock-screen shield render black |
-| `/etc/dracut.conf.d/90-kait2en-input.conf` | Keeps the internal keyboard drivers in initramfs images built during kernel updates |
+| `/etc/dracut.conf.d/90-kait2en-input.conf` | Keeps the internal keyboard drivers, `t2smc` and `t2sbs` in initramfs images built during kernel updates |
 | `/boot/initramfs-<running-kernel>.img` | Rebuilt by Dracut after modules and ACPI handling are complete |
 
 `kait2en-suspend.service` is enabled on every installation. Before suspend, it
