@@ -11,7 +11,7 @@ use std::{
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 
 use crate::{
-    actuators::{CpuCap, DGPU_STEPS, DGpuCap, ForcedIdle, IGpuCap},
+    actuators::{cpu_floor, CpuCap, DGPU_STEPS, DGpuCap, ForcedIdle, IGpuCap},
     error::{Result, ZonePowerError},
     plimit::PLimits,
     sysfs::{find_t2smc, read_value, write_value},
@@ -31,6 +31,12 @@ pub fn run() -> Result<()> {
     }
 
     let t2smc = find_t2smc()?;
+
+    // X86PlatformPlugin::publishPlist reports the CPU floor on every PLimit version
+    let floor_path = t2smc.join("smc_cpu_floor");
+    if let (true, Some((turbo, floor))) = (floor_path.exists(), cpu_floor()) {
+        report(write_value(&floor_path, format!("{turbo} {floor}")));
+    }
 
     // Only the data version 3 layout is known, see AppleSMC::smcGetPLimits
     let version: u8 = read_value(&t2smc.join("smc_plimit_version")).unwrap_or(0);

@@ -33,6 +33,10 @@ steps once a supported dGPU is found, the iGPU gets the RP0 to RPn range of
 i915. Without the dGPU count the SMC does not limit the dGPU and balances the
 heatpipe on the CPU alone.
 
+Like X86PlatformPlugin, the daemon also reports the CPU P-state range
+(`MSTS` and `MSPC` through `smc_cpu_floor`): the turbo P-states and the
+non-turbo P-states above the CPUFloor of the board plist.
+
 The daemon only acts on the data version 3 layout of the SMC power limits
 (`smc_plimit_version`). Other versions are not known yet.
 

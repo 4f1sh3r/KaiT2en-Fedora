@@ -131,6 +131,12 @@
 #define T2SMC_PLIMIT_IGPU_STEPS "HI0N"
 #define T2SMC_PLIMIT_EGPU3_STEPS "HE2N"
 enum { T2SMC_DGPU, T2SMC_IGPU, T2SMC_GPUS };
+/*
+ * X86PlatformPlugin::setCPUFloor writes the turbo P-state count to MSTS and
+ * the non-turbo P-states above CPUFloor to MSPC, in that order.
+ */
+#define T2SMC_CPU_TURBO_STATES  "MSTS"
+#define T2SMC_CPU_FLOOR_STATES  "MSPC"
 #define FLOAT_TYPE      "flt "
 
 #define T2SMC_RTC_BYTES      6
@@ -215,6 +221,8 @@ struct t2smc_device {
 	u8 thermal_level[3];
 	struct work_struct plimit_work;   /* notifies PLimit readers */
 	u8 gpu_steps[T2SMC_GPUS];        /* set by user space, 0 keeps the SMC preset */
+	u8 cpu_floor[2];                 /* MSTS and MSPC from user space */
+	bool cpu_floor_set;
 	u8 plimit_version;               /* data layout of the PLimit words, 0 if unknown */
 
 	/* Key cache */
@@ -1687,6 +1695,55 @@ static SENSOR_DEVICE_ATTR(smc_dgpu_steps, 0644, t2smc_gpu_steps_show,
 static SENSOR_DEVICE_ATTR(smc_igpu_steps, 0644, t2smc_gpu_steps_show,
 			  t2smc_gpu_steps_store, T2SMC_IGPU);
 
+static int t2smc_write_cpu_floor(struct t2smc_device *t2, const u8 *floor)
+{
+	int ret;
+
+	ret = t2smc_write_key(t2, T2SMC_CPU_TURBO_STATES, &floor[0], 1);
+	if (ret)
+		return ret;
+	return t2smc_write_key(t2, T2SMC_CPU_FLOOR_STATES, &floor[1], 1);
+}
+
+/*
+ * CPU P-state range as X86PlatformPlugin::setCPUFloor reports it. Only user
+ * space knows CPUFloor of the board and the P-state table.
+ */
+static ssize_t smc_cpu_floor_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	struct t2smc_device *t2 = dev_get_drvdata(dev);
+	u8 turbo, floor;
+	int ret;
+
+	ret = t2smc_read_key(t2, T2SMC_CPU_TURBO_STATES, &turbo, 1);
+	if (!ret)
+		ret = t2smc_read_key(t2, T2SMC_CPU_FLOOR_STATES, &floor, 1);
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%u %u\n", turbo, floor);
+}
+
+static ssize_t smc_cpu_floor_store(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t len)
+{
+	struct t2smc_device *t2 = dev_get_drvdata(dev);
+	u8 floor[2];
+	int ret;
+
+	if (sscanf(buf, "%hhu %hhu", &floor[0], &floor[1]) != 2)
+		return -EINVAL;
+
+	ret = t2smc_write_cpu_floor(t2, floor);
+	if (ret)
+		return ret;
+	memcpy(t2->cpu_floor, floor, sizeof(floor));
+	WRITE_ONCE(t2->cpu_floor_set, true);
+	return len;
+}
+static DEVICE_ATTR_RW(smc_cpu_floor);
+
 static ssize_t smc_plimit_version_show(struct device *dev,
 				       struct device_attribute *attr, char *buf)
 {
@@ -1704,16 +1761,24 @@ static struct attribute *t2smc_thermal_attrs[] = {
 	&sensor_dev_attr_smc_dgpu_steps.dev_attr.attr,
 	&sensor_dev_attr_smc_igpu_steps.dev_attr.attr,
 	&dev_attr_smc_plimit_version.attr,
+	&dev_attr_smc_cpu_floor.attr,
 	NULL,
 };
 
-/* Hide the step count of a GPU whose SMC key this Mac does not have */
+/* Hide the step counts whose SMC keys this Mac does not have */
 static umode_t t2smc_thermal_is_visible(struct kobject *kobj,
 					struct attribute *attr, int index)
 {
 	struct t2smc_device *t2 = dev_get_drvdata(kobj_to_dev(kobj));
 	bool present;
 	int gpu;
+
+	if (attr == &dev_attr_smc_cpu_floor.attr) {
+		if (t2smc_has_key(t2, T2SMC_CPU_TURBO_STATES, &present) || !present ||
+		    t2smc_has_key(t2, T2SMC_CPU_FLOOR_STATES, &present) || !present)
+			return 0;
+		return attr->mode;
+	}
 
 	if (attr == &sensor_dev_attr_smc_dgpu_steps.dev_attr.attr)
 		gpu = T2SMC_DGPU;
@@ -2646,7 +2711,8 @@ static void t2smc_log_plimit_keys(struct t2smc_device *t2)
 	static const char *const keys[] = {
 		T2SMC_PLIMIT_GEN, T2SMC_PLIMIT_VERSION,
 		T2SMC_PLIMIT_EGPU_STEPS, T2SMC_PLIMIT_IGPU_STEPS,
-		T2SMC_PLIMIT_EGPU3_STEPS,
+		T2SMC_PLIMIT_EGPU3_STEPS, T2SMC_CPU_TURBO_STATES,
+		T2SMC_CPU_FLOOR_STATES,
 	};
 	struct t2smc_entry *entry;
 	char line[128];
@@ -2666,12 +2732,21 @@ static void t2smc_log_plimit_keys(struct t2smc_device *t2)
 		dev_info(t2->dev, "PLimit keys:%s\n", line);
 }
 
-/* The SMC forgets the step counts over sleep, user space set them once */
+/*
+ * The SMC forgets the step counts over sleep, user space set them once.
+ * X86PlatformPlugin rewrites the CPU floor on wake as well.
+ */
 static void t2smc_set_plimit_ranges(struct t2smc_device *t2)
 {
 	const char *key;
 	u8 count;
 	int gpu, ret;
+
+	if (READ_ONCE(t2->cpu_floor_set)) {
+		ret = t2smc_write_cpu_floor(t2, t2->cpu_floor);
+		if (ret)
+			dev_warn(t2->dev, "failed to set the CPU floor: %d\n", ret);
+	}
 
 	for (gpu = 0; gpu < T2SMC_GPUS; gpu++) {
 		count = READ_ONCE(t2->gpu_steps[gpu]);
