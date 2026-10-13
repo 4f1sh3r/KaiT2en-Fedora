@@ -770,10 +770,26 @@ fn set_status(label: &gtk4::Label, text: &str, error: bool) {
     }
 }
 
+/// t2-smc-gaugingd lifts the limit for a calibration charge
+fn charge_limit_suspended(hwmon: &Path) -> bool {
+    fs::read_to_string(hwmon.join("battery_charge_limit_suspended")).is_ok_and(|value| value.trim() == "1")
+}
+
+const CHARGE_LIMIT_TOOLTIP: &str = "Set in the desktop environment's power settings";
+const CHARGE_CALIBRATION_TOOLTIP: &str =
+    "Lifted for a full charge so the battery gauge can recalibrate, like macOS does. The limit returns afterwards.";
+
 fn show_charge_limit(label: &gtk4::Label, meter: &gtk4::ProgressBar, hwmon: Option<&Path>) {
-    match hwmon.and_then(read_charge_limit) {
-        Some(limit) => {
-            label.set_text(&format!("{limit}%"));
+    match hwmon.and_then(|h| read_charge_limit(h).map(|limit| (limit, charge_limit_suspended(h)))) {
+        Some((limit, calibrating)) => {
+            let tooltip = if calibrating { CHARGE_CALIBRATION_TOOLTIP } else { CHARGE_LIMIT_TOOLTIP };
+            if calibrating {
+                label.set_text(&format!("{limit}% · calibrating"));
+            } else {
+                label.set_text(&format!("{limit}%"));
+            }
+            label.set_tooltip_text(Some(tooltip));
+            meter.set_tooltip_text(Some(tooltip));
             meter.set_fraction(limit as f64 / 100.0);
         }
         None => {
@@ -1017,7 +1033,7 @@ fn main() {
         charge_meter.set_hexpand(true);
         charge_meter.set_valign(gtk4::Align::Center);
         charge_meter.add_css_class("overview-meter");
-        charge_meter.set_tooltip_text(Some("Set in the desktop environment's power settings"));
+        charge_meter.set_tooltip_text(Some(CHARGE_LIMIT_TOOLTIP));
 
         // Battery state and remaining-time estimate
         let battery_title = gtk4::Label::new(Some("Battery"));

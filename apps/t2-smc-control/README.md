@@ -11,7 +11,8 @@ Small GTK/libadwaita control app for T2 Macs using the `t2smc` kernel driver.
 - Shows event-driven SMC battery and power-adapter telemetry
 - Shows the `t2smc` RTC (in UTC) when available and can write the current
   system time to it
-- Shows the battery charge limit read-only
+- Shows the battery charge limit read-only, and when it is lifted for a
+  calibration charge
 - `t2-smc-gaugingd` lifts the charge limit for a full charge from time to
   time, so the battery gauge can recalibrate, like macOS does
 
