@@ -31,6 +31,22 @@ and decided case by case.
 
 ## What is merged right now
 
+### thermald rig setup (`local/thermald`)
+
+- Touches: nothing in `apps/`; installs to `/etc/thermald/`,
+  `/usr/local/bin/t2-thermald-genconf` and a thermald drop-in.
+- What it does: skin-driven pre-PROCHOT RAPL control (trip 44.8 C, PPCC
+  floor 12 W) plus the package zone 90/93 C. Measurements and history:
+  `local/learnings/power/prochot-fan.md`.
+- Status since 2026-10-13: **uninstalled on the machine.** Upstream
+  `t2-zone-power` (`1fb1080`, merged via `main`) now applies the SMC power
+  limit steps themselves, which is the root cause this document identified;
+  running both the skin floor and zone-power risks double throttling. The
+  machine runs stock Fedora thermald until the zone-power PROCHOT test is
+  judged. Restore with `sudo local/thermald/install.sh`.
+- Upstream retired `t2-cpu-control` in the same series (`apps/deprecated/`);
+  the rig config had `enabled=0`, so the removal cost nothing.
+
 ### t2-fan-control platform bias
 
 - Source: `feat/fan-platform-bias` (`eb7f7bb`)

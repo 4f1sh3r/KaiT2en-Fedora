@@ -781,3 +781,58 @@ before it was removed, in case something like it is ever needed again:
 Method note: `pkill -f <pattern>` matches the invoking shell's own command line
 when the pattern appears in it, so it kills the tool call itself. Use a bracket
 pattern *and* keep the plain string out of the rest of the command.
+
+## Upstream t2-zone-power replaces the thermald skin zone (2026-10-13)
+
+Upstream `1fb1080` + `fad0eff` (merged into `local/rig` as `321fa5c`) replace
+`t2-cpu-control` with `apps/t2-zone-power`: a Rust daemon (`t2-zonepowerd`,
+250 ms, no user settings) that reads the SMC's own power-limit steps
+(`smc_plimit_raw`, I/O ports +0x10/+0x14, event 0x80) through new t2smc
+sysfs files and applies them the way macOS does — CPU step to
+`scaling_max_freq` on the XCPM 100 MHz ladder, forced-idle step to
+`intel_powerclamp`, iGPU step to i915 `gt_max_freq_mhz`, dGPU step to
+amdgpu `power1_cap` (Navi floor 40 % TDP, new kernel patch 0009). It also
+reports the GPU step counts back (HE0N/HI0N) so the SMC balances the
+heatpipe over CPU *and* GPUs. The daemon only acts on SMC data version 3
+(`smc_plimit_version`).
+
+This targets exactly the mechanism this document proved: Linux ignored the
+SMC steps, the SMC escalated, BD_PROCHOT collapsed the clock. Apply the
+steps and the escalation should never reach PROCHOT.
+
+Decision (Alex): go upstream for CPU power control. The rig thermald setup
+(skin zone 44.8 C trip, 12 W floor) is **uninstalled from the machine** and
+versioned in `local/thermald/` — `sudo local/thermald/install.sh` restores
+it, `uninstall.sh` returns to stock Fedora thermald. Reasons:
+
+- The SMC knows the real budget (adapter, battery, soak) and reacts in
+  250 ms with Apple's own hysteresis; the fixed 12 W floor is tuned to one
+  scenario and the 2026-09-04 Run C showed the skin clamp lingering long
+  after the load is gone.
+- Skin floor + SMC frequency caps would throttle the same package twice
+  with different time constants, which makes attribution impossible.
+- `t2-cpu-control` itself is inert on this rig (`enabled=0`), so upstream's
+  removal of it costs nothing.
+
+Unchanged: the t2-fan-control rig fork. zone-power touches no fans; the
+skin/system/battery bias and the emergency latch stay, and upstream
+fan-control v0.05 stays unpinned per the RIG.md note.
+
+Test protocol before judging:
+
+1. Reboot for the rebuilt t2smc, then
+   `cat /sys/class/hwmon/*/smc_plimit_version` (hwmon whose `name` is
+   `t2smc`). If it is not `3`, zone-power deliberately does nothing —
+   restore the thermald setup immediately, the upstream path is not usable
+   on this machine yet.
+2. `journalctl -u t2-zonepowerd` should show applied limits under load.
+3. Reproduce the 2026-09-08 scenario (warm room, video conference plus
+   synthetic load, docked variant if convenient) and count PROCHOT seconds
+   via MSR 0x1B1 bit 2 at 20 Hz. Baseline to beat: 0/140 at the 12 W floor.
+4. Zero PROCHOT -> keep upstream, thermald setup stays in the repo. PROCHOT
+   persists -> `install.sh` and re-measure; also log which actuator moved
+   first so the two mechanisms can be separated.
+
+Open question the measurement should answer: whether the SMC steps alone
+cover the soak-triggered mechanism (the one that actually hurts), not just
+the 52 W adapter-ceiling mechanism from 2026-08-10.
