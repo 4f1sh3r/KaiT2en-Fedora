@@ -820,6 +820,12 @@ fan-control v0.05 stays unpinned per the RIG.md note.
 
 Test protocol before judging:
 
+Note: t2smc is preloaded from the initramfs via `rd.driver.pre=t2smc`, so a
+DKMS rebuild alone does not take effect on reboot — always run
+`scripts/fedora/rebuild-initramfs.sh` after updating t2smc, or the old
+module keeps loading at boot (zone-power then reports "data version 0" and
+stays inert).
+
 1. Reboot for the rebuilt t2smc, then
    `cat /sys/class/hwmon/*/smc_plimit_version` (hwmon whose `name` is
    `t2smc`). If it is not `3`, zone-power deliberately does nothing —
