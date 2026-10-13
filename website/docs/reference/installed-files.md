@@ -245,7 +245,7 @@ All KAIT2EN desktop applications use the shared header wordmark at
 | Application | Installed files |
 | --- | --- |
 | T2 Fan Control | `/usr/local/bin/t2-fancontrol-gtk`, `/usr/local/share/applications/org.t2fancontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2fancontrol.gtk.svg`, `/usr/local/lib/systemd/system/t2-fancontrol.service` |
-| T2 SMC Control | `/usr/local/bin/t2-smc-control`, `/usr/local/share/applications/org.t2smccontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2smccontrol.gtk.svg` |
+| T2 SMC Control | `/usr/local/bin/t2-smc-control`, `/usr/local/share/applications/org.t2smccontrol.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2smccontrol.gtk.svg`, `/usr/local/lib/systemd/system/t2-smc-gaugingd.service`, `/var/lib/t2-smc-control/gauging` |
 | T2 Power Explorer | `/usr/local/bin/t2-power-explorer`, `/usr/local/libexec/t2-power-explorer-status`, `/usr/local/share/applications/org.t2powerexplorer.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2powerexplorer.gtk.svg`, `/usr/share/polkit-1/actions/org.t2powerexplorer.policy` |
 | T2 Journal | `/usr/local/bin/t2journal` |
 | T2 Zone Power | `/usr/local/bin/t2-zonepower-gtk`, `/usr/local/share/applications/org.t2zonepower.gtk.desktop`, `/usr/local/share/icons/hicolor/scalable/apps/org.t2zonepower.gtk.svg`, `/usr/local/lib/systemd/system/t2-zonepowerd.service` |

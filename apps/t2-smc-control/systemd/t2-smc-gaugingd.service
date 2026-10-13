@@ -1,0 +1,14 @@
+[Unit]
+Description=T2 SMC battery gauging mitigation
+After=multi-user.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/t2-smc-control --daemon
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

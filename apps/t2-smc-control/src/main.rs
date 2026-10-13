@@ -1,3 +1,5 @@
+mod gauging;
+
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::env;
@@ -742,7 +744,7 @@ fn read_power_telemetry(hwmon: &Path) -> Vec<(String, String, String)> {
 }
 
 fn print_usage() {
-    println!("Usage:\n  t2-smc-control");
+    println!("Usage:\n  t2-smc-control\n  t2-smc-control --daemon");
 }
 
 fn handle_cli_args() -> Option<Result<(), String>> {
@@ -751,6 +753,7 @@ fn handle_cli_args() -> Option<Result<(), String>> {
             print_usage();
             Some(Ok(()))
         }
+        "--daemon" => Some(find_hwmon().ok_or_else(|| "t2smc hwmon not found".to_owned()).and_then(gauging::run)),
         _ => None,
     }
 }
