@@ -89,9 +89,17 @@
 #define T2SMC_RTC_LATCH    "CLKL"  /* r-w latched 48-bit counter */
 #define T2SMC_RTC_OFFSET   "CLKO"  /* r-w 48-bit offset */
 #define T2SMC_RTC_RATE     "CLKR"  /* r-o 32-bit ticks per second */
-#define T2SMC_CHARGE_LIMIT "BCLM"
-#define T2SMC_CHARGE_LIMIT_SW  "CHLS"
-#define T2SMC_CHARGE_LIMIT_80  "CHWA"
+/*
+ * powerd sets the charge limit on T2 Macs through CHLS: byte 0 holds the SoC
+ * limit, 0 for none, byte 1 flags. BCLM is the charge limit of Macs before
+ * the T2. The SMC still honours it, but macOS does not write it on T2 Macs.
+ */
+#define T2SMC_CHARGE_LIMIT_LEGACY "BCLM"
+#define T2SMC_CHARGE_LIMIT        "CHLS"
+/* Gauge data powerd decides the calibration charge on, one key per cell */
+#define T2SMC_BATTERY_QMAX      "BQX%u"
+#define T2SMC_BATTERY_DOD0      "BQD%u"
+#define T2SMC_BATTERY_MAX_CELLS 4
 #define T2SMC_BATTERY_STATUS    "BNCR"
 #define T2SMC_BATTERY_CAPACITY  "BRSC"
 #define T2SMC_BATTERY_VOLTAGE   "B0AV"
@@ -149,9 +157,6 @@ enum { T2SMC_DGPU, T2SMC_IGPU, T2SMC_GPUS };
 #define T2SMC_RTC_LATCH_READ_RETRIES   20
 /* Sampling the system clock and latching the counter are a few ms apart */
 #define T2SMC_RTC_SYNC_TOLERANCE_MS    50
-#define T2SMC_CHLS_START_OFFSET  5
-#define T2SMC_CHWA_FIXED_LIMIT   80
-#define T2SMC_CHWA_DISABLE_AT    95
 #define T2SMC_WDT_LEGACY_RESTART 2
 /* Shutdown causes that AppleSMC::smcPublishShutdownCause treats specially */
 #define T2SMC_CAUSE_FLAGGED      0xc0  /* -64, only valid while MSSW is 1 */
@@ -252,7 +257,9 @@ struct t2smc_device {
 	u32 rtc_rate;
 	struct device *hwmon_dev;
 	bool has_chls;
-	bool has_chwa;
+	struct mutex charge_lock;       /* guards the two fields below */
+	u8 charge_limit;                /* user limit in percent, 100 for none */
+	bool charge_limit_suspended;    /* lifted for a calibration charge */
 
 	/* guards @battery against the async attach from power_event_work */
 	struct mutex battery_lock;
@@ -836,6 +843,8 @@ static void t2smc_free_sensors(struct t2smc_device *t2)
 }
 
 /* -- Initialization -- */
+static void t2smc_init_charge_limit(struct t2smc_device *t2);
+
 static int t2smc_init_keycache(struct t2smc_device *t2)
 {
 	unsigned int count;
@@ -873,20 +882,15 @@ static int t2smc_init_keycache(struct t2smc_device *t2)
 	if (ret)
 		return ret;
 
-	ret = t2smc_has_key(t2, T2SMC_CHARGE_LIMIT_SW, &t2->has_chls);
+	ret = t2smc_has_key(t2, T2SMC_CHARGE_LIMIT, &t2->has_chls);
 	if (ret)
 		return ret;
-	ret = t2smc_has_key(t2, T2SMC_CHARGE_LIMIT_80, &t2->has_chwa);
-	if (ret)
-		return ret;
+	t2smc_init_charge_limit(t2);
 
 	dev_info(t2->dev,
 		 "initialized: keys=%u fans=%u temps=%u currents=%u voltages=%u power=%u\n",
 		 t2->key_count, t2->fan_count, t2->temp.count, t2->curr.count,
 		 t2->in.count, t2->power.count);
-	dev_info(t2->dev,
-		 "charge keys: CHLS=%d CHWA=%d\n", t2->has_chls,
-		 t2->has_chwa);
 	return 0;
 }
 
@@ -1237,49 +1241,60 @@ static const struct hwmon_ops t2smc_hwmon_ops = {
 	.read_string = t2smc_hwmon_read_string,
 };
 
-/* -- Battery charge limit as extra hwmon attribute group -- */
-static int t2smc_write_charge_limit_method(struct t2smc_device *t2, u8 val)
+/* -- Battery charge limit and gauge data as extra hwmon attribute group -- */
+static int t2smc_write_chls(struct t2smc_device *t2)
 {
 	u8 buf[2] = { 0, 0 };
-	u8 flag;
 
-	if (t2->has_chls) {
-		if (val > 0 && val < 100)
-			buf[0] = val + T2SMC_CHLS_START_OFFSET;
+	lockdep_assert_held(&t2->charge_lock);
 
-		return t2smc_write_key(t2, T2SMC_CHARGE_LIMIT_SW, buf, 2);
-	}
-
-	if (t2->has_chwa) {
-		flag = val < T2SMC_CHWA_DISABLE_AT ? 1 : 0;
-		if (val != T2SMC_CHWA_FIXED_LIMIT && flag)
-			dev_info(t2->dev,
-				 "CHWA only supports a fixed %u%% charge limit\n",
-				 T2SMC_CHWA_FIXED_LIMIT);
-
-		return t2smc_write_key(t2, T2SMC_CHARGE_LIMIT_80, &flag, 1);
-	}
-
-	return 0;
+	if (!t2->charge_limit_suspended && t2->charge_limit < 100)
+		buf[0] = t2->charge_limit;
+	return t2smc_write_key(t2, T2SMC_CHARGE_LIMIT, buf, sizeof(buf));
 }
 
-static int t2smc_get_charge_limit(struct t2smc_device *t2, u8 *val)
+/*
+ * The SMC keeps CHLS and BCLM over reboots and across operating systems.
+ * Take the limit over from CHLS and clear a BCLM limit left behind, macOS on
+ * T2 Macs has no way to lift it.
+ */
+static void t2smc_init_charge_limit(struct t2smc_device *t2)
 {
-	if (t2smc_read_key(t2, T2SMC_CHARGE_LIMIT, val, 1))
-		return -ENODEV;
-	return 0;
+	u8 buf[2], bclm, full = 100;
+	bool has_bclm;
+
+	t2->charge_limit = 100;
+	if (!t2->has_chls)
+		return;
+
+	if (!t2smc_read_key(t2, T2SMC_CHARGE_LIMIT, buf, sizeof(buf)) &&
+	    buf[0] > 0 && buf[0] < 100)
+		t2->charge_limit = buf[0];
+
+	if (t2smc_has_key(t2, T2SMC_CHARGE_LIMIT_LEGACY, &has_bclm) || !has_bclm ||
+	    t2smc_read_key(t2, T2SMC_CHARGE_LIMIT_LEGACY, &bclm, 1) || bclm == full)
+		return;
+	if (t2smc_write_key(t2, T2SMC_CHARGE_LIMIT_LEGACY, &full, 1))
+		dev_warn(t2->dev, "failed to clear the BCLM charge limit %u\n", bclm);
+	else
+		dev_info(t2->dev, "cleared the BCLM charge limit %u\n", bclm);
 }
 
 static int t2smc_set_charge_limit(struct t2smc_device *t2, u8 val)
 {
-	if (val > 100)
-		return -EINVAL;
-	if (t2smc_write_key(t2, T2SMC_CHARGE_LIMIT, &val, 1))
-		return -ENODEV;
-	if (t2smc_write_charge_limit_method(t2, val))
-		return -ENODEV;
+	int ret;
 
-	dev_dbg(t2->dev, "charge limit set to %u%%\n", val);
+	if (!t2->has_chls)
+		return -ENODEV;
+	if (val < 1 || val > 100)
+		return -EINVAL;
+
+	mutex_lock(&t2->charge_lock);
+	t2->charge_limit = val;
+	ret = t2smc_write_chls(t2);
+	mutex_unlock(&t2->charge_lock);
+	if (ret)
+		return ret;
 
 	mutex_lock(&t2->battery_lock);
 	if (t2->battery)
@@ -1293,16 +1308,13 @@ static ssize_t charge_limit_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct t2smc_device *t2 = dev_get_drvdata(dev);
-	u8 val;
 
-	if (t2smc_get_charge_limit(t2, &val))
-		return -ENODEV;
-	return sysfs_emit(buf, "%d\n", val);
+	return sysfs_emit(buf, "%u\n", READ_ONCE(t2->charge_limit));
 }
 
 static ssize_t charge_limit_store(struct device *dev,
-					   struct device_attribute *attr,
-					   const char *buf, size_t count)
+				   struct device_attribute *attr,
+				   const char *buf, size_t count)
 {
 	struct t2smc_device *t2 = dev_get_drvdata(dev);
 	u8 val;
@@ -1320,13 +1332,97 @@ static ssize_t charge_limit_store(struct device *dev,
 static DEVICE_ATTR(battery_charge_limit, 0644,
 		   charge_limit_show, charge_limit_store);
 
+/*
+ * Like the gauging mitigation of powerd, user space lifts the limit for a
+ * full charge from time to time. The user limit stays as it is.
+ */
+static ssize_t battery_charge_limit_suspended_show(struct device *dev,
+						   struct device_attribute *attr,
+						   char *buf)
+{
+	struct t2smc_device *t2 = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%u\n", READ_ONCE(t2->charge_limit_suspended));
+}
+
+static ssize_t battery_charge_limit_suspended_store(struct device *dev,
+						    struct device_attribute *attr,
+						    const char *buf, size_t count)
+{
+	struct t2smc_device *t2 = dev_get_drvdata(dev);
+	bool suspended;
+	int ret;
+
+	ret = kstrtobool(buf, &suspended);
+	if (ret)
+		return ret;
+
+	mutex_lock(&t2->charge_lock);
+	t2->charge_limit_suspended = suspended;
+	ret = t2smc_write_chls(t2);
+	mutex_unlock(&t2->charge_lock);
+	return ret ? ret : count;
+}
+static DEVICE_ATTR_RW(battery_charge_limit_suspended);
+
+/* One value per cell, the SMC keys are big endian ui16 */
+static ssize_t t2smc_cell_values_show(struct t2smc_device *t2, const char *fmt,
+				      char *buf)
+{
+	char key[5];
+	ssize_t len = 0;
+	unsigned int cell;
+	u16 val;
+
+	for (cell = 1; cell <= T2SMC_BATTERY_MAX_CELLS; cell++) {
+		snprintf(key, sizeof(key), fmt, cell);
+		if (t2smc_read_be16(t2, key, &val))
+			break;
+		len += sysfs_emit_at(buf, len, "%s%u", len ? " " : "", val);
+	}
+	if (!len)
+		return -ENODEV;
+	return len + sysfs_emit_at(buf, len, "\n");
+}
+
+static ssize_t smc_battery_qmax_mah_show(struct device *dev,
+					 struct device_attribute *attr, char *buf)
+{
+	return t2smc_cell_values_show(dev_get_drvdata(dev), T2SMC_BATTERY_QMAX, buf);
+}
+static DEVICE_ATTR_RO(smc_battery_qmax_mah);
+
+static ssize_t smc_battery_dod0_show(struct device *dev,
+				     struct device_attribute *attr, char *buf)
+{
+	return t2smc_cell_values_show(dev_get_drvdata(dev), T2SMC_BATTERY_DOD0, buf);
+}
+static DEVICE_ATTR_RO(smc_battery_dod0);
+
 static struct attribute *t2smc_bclm_attrs[] = {
 	&dev_attr_battery_charge_limit.attr,
+	&dev_attr_battery_charge_limit_suspended.attr,
+	&dev_attr_smc_battery_qmax_mah.attr,
+	&dev_attr_smc_battery_dod0.attr,
 	NULL,
 };
 
+static umode_t t2smc_bclm_is_visible(struct kobject *kobj,
+				     struct attribute *attr, int index)
+{
+	struct t2smc_device *t2 = dev_get_drvdata(kobj_to_dev(kobj));
+	bool present;
+
+	if (attr == &dev_attr_smc_battery_qmax_mah.attr)
+		return t2smc_has_key(t2, "BQX1", &present) || !present ? 0 : attr->mode;
+	if (attr == &dev_attr_smc_battery_dod0.attr)
+		return t2smc_has_key(t2, "BQD1", &present) || !present ? 0 : attr->mode;
+	return t2->has_chls ? attr->mode : 0;
+}
+
 static const struct attribute_group t2smc_bclm_group = {
 	.attrs = t2smc_bclm_attrs,
+	.is_visible = t2smc_bclm_is_visible,
 };
 
 static int t2smc_psy_ext_get(struct power_supply *psy,
@@ -1335,17 +1431,11 @@ static int t2smc_psy_ext_get(struct power_supply *psy,
 			     union power_supply_propval *val)
 {
 	struct t2smc_device *t2 = data;
-	u8 limit;
-	int ret;
 
 	if (psp != POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD)
 		return -EINVAL;
 
-	ret = t2smc_get_charge_limit(t2, &limit);
-	if (ret)
-		return ret;
-
-	val->intval = limit;
+	val->intval = READ_ONCE(t2->charge_limit);
 	return 0;
 }
 
@@ -1358,7 +1448,7 @@ static int t2smc_psy_ext_set(struct power_supply *psy,
 
 	if (psp != POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD)
 		return -EINVAL;
-	if (val->intval < 0 || val->intval > 100)
+	if (val->intval < 1 || val->intval > 100)
 		return -EINVAL;
 
 	return t2smc_set_charge_limit(t2, val->intval);
@@ -1388,6 +1478,9 @@ static void t2smc_attach_battery(struct t2smc_device *t2)
 {
 	struct power_supply *psy;
 	int ret;
+
+	if (!t2->has_chls)
+		return;
 
 	mutex_lock(&t2->battery_lock);
 	if (t2->battery)
@@ -2575,6 +2668,7 @@ static void t2smc_devm_cleanup(void *data)
 		iounmap(t2->iomem);
 	mutex_destroy(&t2->mutex);
 	mutex_destroy(&t2->battery_lock);
+	mutex_destroy(&t2->charge_lock);
 	kfree(t2->cache);
 	t2smc_free_sensors(t2);
 }
@@ -2808,6 +2902,7 @@ static int t2smc_probe(struct platform_device *pdev)
 	t2->dev = &pdev->dev;
 	mutex_init(&t2->mutex);
 	mutex_init(&t2->battery_lock);
+	mutex_init(&t2->charge_lock);
 	INIT_WORK(&t2->power_event_work, t2smc_power_event_work);
 	INIT_WORK(&t2->sync_work, t2smc_sync_work);
 	INIT_WORK(&t2->thermal_work, t2smc_thermal_work);

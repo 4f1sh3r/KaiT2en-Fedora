@@ -172,7 +172,8 @@ every fan that was set through `fanN_target`.
 
 ### Battery charge limit
 
-`t2smc` also attaches the limit to `BAT0` as the standard
+`t2smc` sets the charge limit through the SMC key `CHLS`, the way powerd does
+on macOS. It attaches the limit to `BAT0` as the standard
 `charge_control_end_threshold` property, so any desktop environment that
 speaks that interface can set it through its own power settings.
 
@@ -185,12 +186,26 @@ Anyways here is how to set battery charge limit manually:
 cat "$HWMON/battery_charge_limit"
 
 # Set charge limit to 80 percent
-echo 80 | sudo tee "$HWMON/battery_charge_limit"
 echo 80 | sudo tee /sys/class/power_supply/BAT0/charge_control_end_threshold
 ```
 
-Valid range is 0-100. Persistence across reboot, shutdown, or SMC reset is not
-guaranteed and may depend on the machine and firmware state.
+Valid range is 1-100, 100 means no limit. The SMC keeps the limit over
+reboots and across operating systems.
+
+The legacy key `BCLM` of Macs before the T2 still limits charging, but macOS
+does not use it on T2 Macs and cannot lift it. `t2smc` clears a `BCLM` limit
+at probe.
+
+A permanent limit keeps the gauge from recalibrating. macOS therefore lifts
+it for a full charge from time to time. User space does the same through
+`battery_charge_limit_suspended` and decides on the gauge data the SMC
+reports per cell:
+
+| Attribute | SMC keys | Meaning |
+|---|---|---|
+| `battery_charge_limit_suspended` | `CHLS` | 1 lifts the limit, the user limit stays |
+| `smc_battery_qmax_mah` | `BQX1`.. | Qmax per cell in mAh |
+| `smc_battery_dod0` | `BQD1`.. | DOD0 per cell |
 
 ### Temperature sensors
 
