@@ -1,0 +1,38 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] drm/amd/pm: let Apple Navi boards lower the power limit to 40 % of TDP
+
+The pptables of the Navi GPUs in Apple Macs carry no overdrive power limit
+range, so the power limit can only be set to exactly the TDP. The Mac SMC
+shares one heatpipe between CPU and GPU and asks the GPU driver for lower
+power limits when it runs out of budget. The macOS driver builds these
+steps from the TDP down to 40 % of it.
+
+Allow the same range on Apple boards when the pptable has no lower bound.
+
+Tested on a MacBookPro16,1 (Navi 14, 50 W TDP) under combined CPU and GPU
+load, with a user space daemon that applies the SMC steps. The power cap
+range is now 20 to 50 W. When the shared heatpipe ran over its target, the
+SMC lowered the dGPU zone target from 70 to 45 W and asked for dGPU steps 2
+to 5. The cap followed at 46, 44, 42 and 40 W, and the SMC handed the freed
+budget back to the CPU, from 1300 to 2200 MHz. Without this change the cap
+stays at 50 W and the CPU alone has to absorb the heatpipe limit.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+@@ -2206,6 +2206,14 @@
+ 		}
+ 	}
+ 
++	/*
++	 * Apple boards have no overdrive power limit range. The macOS driver
++	 * builds its power limit steps from the TDP down to 40 % of it, and the
++	 * Mac SMC uses them to share the heatpipe between CPU and GPU.
++	 */
++	if (!od_percent_lower && smu->adev->pdev->subsystem_vendor == PCI_VENDOR_ID_APPLE)
++		od_percent_lower = 60;
++
+ 	dev_dbg(smu->adev->dev, "od percent upper:%d, od percent lower:%d (default power: %d)\n",
+ 					od_percent_upper, od_percent_lower, power_limit);
+ 

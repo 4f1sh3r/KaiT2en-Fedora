@@ -1,0 +1,61 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] drm/amdgpu: skip AC/DC notification while the GPU is runtime suspended
+
+Plugging or unplugging the charger raises an ACPI AC event. The handler
+sent the new power source to the SMU without a runtime PM reference, so
+with GMUX keeping the GPU off every SMU message spun on skipped register
+reads for seconds. A runtime resume racing with that left the SMU
+firmware unable to start on MacBookPro15,1 and the GPU in runtime PM
+error state. Record the power source only and let the resume apply it.
+
+--- a/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
++++ b/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
+@@ -31,6 +31,7 @@
+ #include "amdgpu_display.h"
+ #include "hwmgr.h"
+ #include <linux/power_supply.h>
++#include <linux/pm_runtime.h>
+ #include "amdgpu_smu.h"
+ 
+ #define amdgpu_dpm_notify_ac_dc(adev) \
+@@ -498,21 +499,35 @@
+ 
+ void amdgpu_pm_acpi_event_handler(struct amdgpu_device *adev)
+ {
++	int active;
++
+ 	if (adev->pm.dpm_enabled) {
++		/*
++		 * The ACPI notifier holds no runtime PM reference. Only record
++		 * the power source while the GPU is not active, the resume path
++		 * applies adev->pm.ac_power when it sets the power state again.
++		 */
++		active = pm_runtime_get_if_active(adev->dev);
++
+ 		mutex_lock(&adev->pm.mutex);
+ 		if (power_supply_is_system_supplied() > 0)
+ 			adev->pm.ac_power = true;
+ 		else
+ 			adev->pm.ac_power = false;
+ 
+-		if (adev->powerplay.pp_funcs &&
+-		    adev->powerplay.pp_funcs->notify_ac_dc)
+-			amdgpu_dpm_notify_ac_dc(adev);
++		if (active) {
++			if (adev->powerplay.pp_funcs &&
++			    adev->powerplay.pp_funcs->notify_ac_dc)
++				amdgpu_dpm_notify_ac_dc(adev);
+ 
+-		if (is_support_sw_smu(adev))
+-			smu_set_ac_dc(adev->powerplay.pp_handle);
++			if (is_support_sw_smu(adev))
++				smu_set_ac_dc(adev->powerplay.pp_handle);
++		}
+ 
+ 		mutex_unlock(&adev->pm.mutex);
++
++		if (active > 0)
++			pm_runtime_put_autosuspend(adev->dev);
+ 	}
+ }
+ 

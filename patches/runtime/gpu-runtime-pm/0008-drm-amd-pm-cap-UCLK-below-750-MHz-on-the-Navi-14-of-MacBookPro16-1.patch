@@ -1,0 +1,75 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] drm/amd/pm: cap UCLK below 750 MHz on the Navi 14 of MacBookPro16,1
+
+The Radeon Pro 5300M and 5500M of the MacBookPro16,1 (Navi 14, revisions
+0x40 and 0x43) drop off the PCIe bus under load and at shutdown, which
+ends in a CPU machine check. Keeping UCLK off its top level of 750 MHz
+avoids both. The macOS driver sets a hard UCLK maximum of 740 MHz on
+these revisions, which leaves 736 MHz as the highest level.
+
+Clamp the UCLK hard maximum the driver sends on display config changes
+and the sustainable UCLK used when memory clock switching is disabled
+to 740 MHz on these revisions.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+@@ -1582,6 +1582,40 @@
+ 	return ret;
+ }
+ 
++/*
++ * The Navi 14 of the MacBookPro16,1 drops off the PCIe bus under load and
++ * at shutdown, which ends in a machine check, while UCLK may reach its top
++ * level of 750 MHz. The macOS driver sets a hard UCLK maximum of 740 MHz on
++ * these revisions, which leaves 736 MHz as the highest level.
++ */
++static uint32_t navi10_apple_uclk_max(struct smu_context *smu, uint32_t freq)
++{
++	struct amdgpu_device *adev = smu->adev;
++
++	if (amdgpu_ip_version(adev, MP1_HWIP, 0) != IP_VERSION(11, 0, 5) ||
++	    adev->pdev->subsystem_vendor != PCI_VENDOR_ID_APPLE ||
++	    (adev->pdev->revision != 0x40 && adev->pdev->revision != 0x43))
++		return freq;
++
++	return min(freq, 740U);
++}
++
++static int navi10_init_max_sustainable_clocks(struct smu_context *smu)
++{
++	struct smu_11_0_max_sustainable_clocks *max_sustainable_clocks;
++	int ret;
++
++	ret = smu_v11_0_init_max_sustainable_clocks(smu);
++	if (ret)
++		return ret;
++
++	max_sustainable_clocks = smu->smu_table.max_sustainable_clocks;
++	max_sustainable_clocks->uclock =
++		navi10_apple_uclk_max(smu, max_sustainable_clocks->uclock);
++
++	return 0;
++}
++
+ static int navi10_pre_display_config_changed(struct smu_context *smu)
+ {
+ 	int ret = 0;
+@@ -1595,6 +1629,7 @@
+ 		ret = smu_v11_0_get_dpm_ultimate_freq(smu, SMU_UCLK, NULL, &max_freq);
+ 		if (ret)
+ 			return ret;
++		max_freq = navi10_apple_uclk_max(smu, max_freq);
+ 		ret = smu_v11_0_set_hard_freq_limited_range(smu, SMU_UCLK, 0, max_freq);
+ 		if (ret)
+ 			return ret;
+@@ -3325,7 +3360,7 @@
+ 	.disable_all_features_with_exception = smu_cmn_disable_all_features_with_exception,
+ 	.notify_display_change = smu_v11_0_notify_display_change,
+ 	.set_power_limit = smu_v11_0_set_power_limit,
+-	.init_max_sustainable_clocks = smu_v11_0_init_max_sustainable_clocks,
++	.init_max_sustainable_clocks = navi10_init_max_sustainable_clocks,
+ 	.enable_thermal_alert = smu_v11_0_enable_thermal_alert,
+ 	.disable_thermal_alert = smu_v11_0_disable_thermal_alert,
+ 	.set_min_dcef_deep_sleep = smu_v11_0_set_min_deep_sleep_dcefclk,

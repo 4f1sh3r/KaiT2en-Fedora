@@ -32,6 +32,45 @@ remove_obsolete_apps() {
 	[[ "$reload" -eq 0 ]] || systemctl daemon-reload
 }
 
+# t2-zone-power replaces t2-cpu-control. Its helper restores the firmware
+# power limits, no_turbo, TCC target, maximum frequency and thermald state it
+# captured at boot. Every step is skipped when there is nothing left to do,
+# so a removed or half removed installation is handled as well.
+remove_t2_cpu_control() {
+	local helper=/usr/local/libexec/t2-cpu-control-helper path found=0
+	local paths=(
+		/usr/local/bin/t2-cpu-control
+		"$helper"
+		/usr/local/libexec/t2-cpu-control-status
+		/usr/local/libexec/t2-cpu-kernel-benchmark
+		/usr/local/lib/systemd/system/t2-cpu-control.service
+		/usr/local/lib/systemd/system-sleep/t2-cpu-control
+		/usr/local/share/applications/org.t2cpucontrol.gtk.desktop
+		/usr/local/share/icons/hicolor/scalable/apps/org.t2cpucontrol.gtk.svg
+		/usr/share/polkit-1/actions/org.t2cpucontrol.policy
+		/etc/t2-cpu-control.conf
+		/var/lib/t2-cpu-control
+		/run/t2-cpu-control
+	)
+
+	for path in "${paths[@]}"; do
+		[[ -e "$path" ]] && found=1
+	done
+	[[ "$found" -eq 1 ]] || return 0
+	info "removing t2-cpu-control, replaced by t2-zone-power"
+
+	if [[ -x "$helper" && -r /run/t2-cpu-control/firmware-defaults ]]; then
+		"$helper" restore || warn "could not restore the firmware CPU limits, they return on the next boot"
+	fi
+	if systemctl list-unit-files t2-cpu-control.service &>/dev/null; then
+		systemctl disable --now t2-cpu-control.service || warn "could not disable t2-cpu-control.service"
+	fi
+	rm -rf "${paths[@]}"
+	systemctl daemon-reload
+	gtk-update-icon-cache --force --ignore-theme-index /usr/local/share/icons/hicolor ||
+		warn "could not refresh the icon cache"
+}
+
 clean_rust_build() {
 	local path=$1 target_user=$2
 	clean_cargo_build "$path" "$target_user"
@@ -125,9 +164,8 @@ else
 fi
 run_step "t2-journal" install_rust_app "$REPO_ROOT/t2-services/t2-journal" "t2-journal"
 run_step "GPU control" install_gpu_control
-if ! "$REPO_ROOT/apps/t2-cpu-control/install.sh"; then
-	warn "t2-cpu-control installation failed; continuing"
-fi
+run_step "remove t2-cpu-control" remove_t2_cpu_control
+run_step "t2-zone-power" install_rust_app "$REPO_ROOT/apps/t2-zone-power" "t2-zone-power"
 if ! "$REPO_ROOT/apps/t2-kernel-builder/install.sh"; then
 	warn "t2-kernel-builder installation failed; continuing because it is optional"
 	warn "retry it later with: sudo $REPO_ROOT/apps/t2-kernel-builder/install.sh"
