@@ -144,6 +144,9 @@ struct LayerFade {
     direction: i32,
     /// Everything left of this column (esc) stays in place.
     clip_left: usize,
+    /// A swipe switched the row: a firm click confirms it once the new row
+    /// has settled.
+    confirm: bool,
 }
 
 /// "Artist – Title" shown on the dark bar when a new track starts.
@@ -390,6 +393,9 @@ impl Runtime {
         };
         let elapsed = now.saturating_sub(fade.start_ms);
         if elapsed >= LAYER_FADE_MS {
+            if fade.confirm {
+                self.haptic.firm();
+            }
             self.layer_fade = None;
             return self.display.present(
                 &self.canvas.pixels,
@@ -1434,7 +1440,6 @@ impl Runtime {
                 Ok(())
             }
             SwipeKind::Mode => {
-                self.haptic.click();
                 // The rows follow the fingers: swiping left brings in the
                 // next row from the right. The ring wraps around.
                 let mode = if steps < 0 {
@@ -1442,7 +1447,11 @@ impl Runtime {
                 } else {
                     self.state.mode.previous()
                 };
-                self.switch_mode(mode, now)
+                self.switch_mode(mode, now)?;
+                if let Some(fade) = self.layer_fade.as_mut() {
+                    fade.confirm = true;
+                }
+                Ok(())
             }
         }
     }
@@ -1598,6 +1607,7 @@ impl Runtime {
             next_ms: now,
             direction,
             clip_left,
+            confirm: false,
         });
         self.state.set_mode(mode);
         self.save();
