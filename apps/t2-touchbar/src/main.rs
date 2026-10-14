@@ -659,7 +659,7 @@ impl Runtime {
         if pending.dark && pending.button.is_some() {
             self.contacts.insert(pending.slot, Contact::DarkEsc);
             self.keyboard.press(Key::Esc)?;
-            self.haptic.click();
+            self.haptic.key_press();
             return Ok(());
         }
         if pending.dark {
@@ -1287,7 +1287,7 @@ impl Runtime {
                 None => {}
             },
         }
-        self.haptic.click();
+        self.haptic.key_press();
         self.active_button = Some(index);
         if self
             .learner
@@ -1467,13 +1467,15 @@ impl Runtime {
                     if pending.dark && pending.button.is_some() {
                         self.keyboard.press(Key::Esc)?;
                         self.keyboard.release()?;
-                        self.haptic.click();
+                        self.haptic.key_press();
+                        self.haptic.key_release();
                         self.overlay_hide_ms = Some(now + ESC_LINGER_MS);
                     } else if pending.dark {
                         self.wake(true)?;
                     } else if let Some(index) = pending.button {
                         self.press_button(index, now)?;
                         self.keyboard.release()?;
+                        self.haptic.key_release();
                         self.active_button = None;
                         self.present_keys()?;
                     }
@@ -1481,13 +1483,15 @@ impl Runtime {
             }
             Some(Contact::Button(_)) => {
                 self.keyboard.release()?;
+                self.haptic.key_release();
                 self.active_button = None;
                 self.present_keys()?;
             }
             Some(Contact::TouchIdEsc(_)) => {
                 self.keyboard.press(Key::Esc)?;
                 self.keyboard.release()?;
-                self.haptic.click();
+                self.haptic.key_press();
+                self.haptic.key_release();
                 self.active_button = None;
                 self.render_touch_id(now)?;
             }
@@ -1500,11 +1504,13 @@ impl Runtime {
                     self.press_button(index, now)?;
                     self.keyboard.release()?;
                 }
+                self.haptic.key_release();
                 self.active_button = None;
                 self.present_keys()?;
             }
             Some(Contact::DarkEsc) => {
                 self.keyboard.release()?;
+                self.haptic.key_release();
                 if self.activity_esc_shown {
                     self.escape_opacity = 1.0;
                     self.escape_fade = None;
@@ -1521,7 +1527,8 @@ impl Runtime {
                 };
                 self.keyboard.press(key)?;
                 self.keyboard.release()?;
-                self.haptic.click();
+                self.haptic.key_press();
+                self.haptic.key_release();
                 if let Some(toast) = self.toast.as_mut() {
                     // Stay fully visible. The next track replaces the text.
                     toast.pressed = None;
