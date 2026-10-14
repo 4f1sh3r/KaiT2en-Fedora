@@ -21,10 +21,11 @@ Install (always from `local/rig`, never from a topic branch):
 
     sudo scripts/fedora/install-dkms-modules.sh     # kernel modules
     sudo scripts/fedora/install-apps.sh             # userspace apps
-    sudo scripts/fedora/install-apps.sh --react-drm-only
 
-App updates and module updates are independent: `--react-drm-only` does not
-touch the DKMS stack.
+App updates and module updates are independent: `install-apps.sh` builds the
+Rust/GTK apps only and has no step filter, module work lives in
+`install-dkms-modules.sh`. react-drm is gone from the installer and from
+`third-party/`; only `scripts/fedora/deprecated/uninstall-react-drm.sh` is left.
 
 Adding something new to `local/rig` is never automatic — it is asked about
 and decided case by case.
@@ -60,10 +61,15 @@ and decided case by case.
 - Upstream drift: upstream released t2-fan-control v0.05 (`3935b19`,
   `80cc852`) and has since kept building on it (`5cf6467` advanced options,
   `bc13a73` fewer idle wakeups), a rewrite of the same five source files. It is
-  deliberately *not* taken here — the whole `apps/t2-fan-control/` directory, README
-  included, is resolved to the `local/rig` side on every `merge main`, so this
-  app stays pinned to the pre-v0.05 base the bias work was written against.
-  `rerere` has that resolution recorded. The 2026-09-01 merge added packaging drift
+  deliberately *not* taken here — the pinned set (`Cargo.lock`, `Cargo.toml`,
+  `Makefile`, `assets/fancontrol.svg`,
+  `assets/icons/hicolor/scalable/apps/org.t2fancontrol.gtk.svg`, `src/config.rs`,
+  `src/control.rs`, `src/ipc.rs`, `src/main.rs`, `src/sysfs.rs`,
+  `systemd/t2-fancontrol.service`) is resolved to the `local/rig` side on every
+  `merge main`, so this app stays pinned to the pre-v0.05 base the bias work was
+  written against. `README.md` is *not* part of that set and follows upstream — the
+  2026-10-14 merge took upstream's link cleanup there. `rerere` has the pinned
+  resolutions recorded. The 2026-09-01 merge added packaging drift
   on top of the code drift: upstream's branding pass redrew the app icon and its
   `Makefile` grew a `check-build` guard against installing without a prior
   `make build`. Neither is taken here, so this app keeps the old icon while every
