@@ -291,6 +291,16 @@ individual application events and rate-limit repeated playback themselves.
 The parameter is write-only and requires the module to be loaded and bound to
 the T2 actuator interface.
 
+Each report takes about 6 ms over the T2 USB transport. While a waveform still
+plays, the actuator stalls the next report. The module then resends it once,
+as macOS does, so a stall only shows up in the kernel log when the retry
+fails as well. Shorter waveforms allow denser sequences.
+
+For diagnostics, root can compose a waveform through the `probe_*` parameters
+and play it with `test_fire=9`. Every amplitude is capped at 70, the
+`AmplitudeMax` the actuator reports to macOS. macOS itself sends plain
+Gaussian clicks with amplitudes between 9 and 38.
+
 T2 Power Tune reads package C-state residency and exposes PCIe ASPM, runtime
 power management, LTR ignore, and additional power tunables. The optional
 `/etc/systemd/system/kait2en-power-tune.service` is created by the app only when
