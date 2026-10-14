@@ -13,8 +13,9 @@
  *  of FullChargeCapacity, not AbsoluteStateOfCharge (0x0e), which is relative
  *  to the design capacity. A battery that neither charges nor discharges
  *  is only full when the gauge sets FULLY_CHARGED in BatteryStatus, otherwise
- *  a charge limit holds it and it reports not charging. On AC it does not
- *  report discharging, like the ACPI battery driver.
+ *  a charge limit holds it and it reports not charging. On AC, discharge
+ *  currents below 100 mA count as idle, because the gauge reports them while
+ *  a charge limit holds the battery.
  */
 
 #define pr_fmt(fmt) "ACPI: " fmt
@@ -55,6 +56,9 @@ MODULE_PARM_DESC(cache_time, "cache time in milliseconds");
 
 /* BatteryStatus (0x16) */
 #define ACPI_SBS_BATTERY_FULLY_CHARGED	0x0020
+
+/* Discharge current the gauge reports on AC while a charge limit holds it */
+#define ACPI_SBS_AC_IDLE_CURRENT	100	/* mA */
 #define ACPI_SBS_BLOCK_MAX		32
 
 static const struct acpi_device_id sbs_device_ids[] = {
@@ -139,6 +143,13 @@ static inline int acpi_battery_scale(struct acpi_battery *battery)
 	    acpi_battery_ipscale(battery);
 }
 
+static bool acpi_battery_idle_on_ac(struct acpi_battery *battery)
+{
+	return abs(battery->rate_now) * acpi_battery_ipscale(battery) <
+		ACPI_SBS_AC_IDLE_CURRENT &&
+	       power_supply_is_system_supplied() > 0;
+}
+
 static int sbs_get_ac_property(struct power_supply *psy,
 			       enum power_supply_property psp,
 			       union power_supply_propval *val)
@@ -179,8 +190,7 @@ static int acpi_sbs_battery_get_property(struct power_supply *psy,
 	acpi_battery_get_state(battery);
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		/* the gauge reports small discharge currents on AC while the limit holds */
-		if (battery->rate_now < 0 && power_supply_is_system_supplied() <= 0)
+		if (battery->rate_now < 0 && !acpi_battery_idle_on_ac(battery))
 			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 		else if (battery->rate_now > 0)
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;

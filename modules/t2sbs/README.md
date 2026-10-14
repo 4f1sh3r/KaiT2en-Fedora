@@ -22,8 +22,10 @@ so `BAT0` comes from this driver.
 - `status`: `sbs` reports `Full` whenever no current flows, also while a
   charge limit holds the battery, and `Discharging` for the small currents the
   gauge reports on AC. `t2sbs` reports `Full` only when the gauge sets
-  FULLY_CHARGED in BatteryStatus (0x16), otherwise `Not charging`, and does
-  not report `Discharging` on AC, like the ACPI battery driver.
+  FULLY_CHARGED in BatteryStatus (0x16), otherwise `Not charging`. On AC,
+  discharge currents below 100 mA count as idle. The gauge reports 25 to
+  80 mA there while a charge limit holds the battery, a real discharge on AC
+  draws several amperes and stays `Discharging`.
 
 `rebuild-initramfs.sh` loads `t2sbs` in the initramfs after `t2smc`. `BAT0`
 then already has `charge_control_end_threshold` when udev and UPower in the
