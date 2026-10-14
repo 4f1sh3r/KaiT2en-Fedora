@@ -10,7 +10,10 @@ require_command dracut install
 # t2smc is included so its SMC-backed RTC registers during the initramfs and
 # the kernel sets the wall clock early, instead of falling back to epoch until
 # the driver loads from the real root.
-EARLY_MODULES=(t2bce_dma t2bce_core t2bce_vhci t2hid t2smc)
+# t2sbs follows t2smc so BAT0 already carries charge_control_end_threshold
+# when udev and UPower in the real root first see it. UPower decides only then
+# whether the battery supports a charge limit.
+EARLY_MODULES=(t2bce_dma t2bce_core t2bce_vhci t2hid t2smc t2sbs)
 DRACUT_CONF="/etc/dracut.conf.d/90-kait2en-input.conf"
 KVER="$(kernel_release)"
 INITRAMFS="/boot/initramfs-$KVER.img"

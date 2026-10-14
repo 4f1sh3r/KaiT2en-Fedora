@@ -54,6 +54,59 @@ impl CpuCap {
     }
 }
 
+/// CPUFloor of the X86PlatformPlugin board plists (macOS 15.4.1). Macmini8,1
+/// has none, so macOS reports no CPU floor there.
+const CPU_FLOOR_MHZ: &[(&str, u32)] = &[
+    ("MacBookAir8,", 800),
+    ("MacBookAir9,", 800),
+    ("MacBookPro15,", 1000),
+    ("MacBookPro16,", 1000),
+    ("iMacPro1,", 1200),
+    ("MacPro7,", 1200),
+    ("iMac20,", 1300),
+];
+
+/// MSTS and MSPC as X86PlatformPlugin::setCPUFloor computes them from the
+/// XCPM P-state table: the turbo P-state count and the non-turbo P-states
+/// above CPUFloor
+pub fn cpu_floor() -> Option<(u8, u8)> {
+    let product = read_string(Path::new("/sys/class/dmi/id/product_name")).ok()?;
+    let floor = CPU_FLOOR_MHZ.iter().find(|(prefix, _)| product.starts_with(prefix))?.1;
+    let policy = Path::new("/sys/devices/system/cpu/cpufreq/policy0");
+    let mhz = |file: &str| read_value::<u32>(&policy.join(file)).ok().map(|khz| khz / 1000);
+    floor_states(mhz("cpuinfo_min_freq")?, mhz("cpuinfo_max_freq")?, mhz("base_frequency")?, floor)
+}
+
+fn floor_states(min: u32, max_turbo: u32, max_non_turbo: u32, floor: u32) -> Option<(u8, u8)> {
+    let states = (max_turbo - min) / 100 + 1;
+    let turbo = (max_turbo - max_non_turbo) / 100;
+    let non_turbo = states - turbo;
+    if floor < min {
+        return None;
+    }
+    let ps_delta = ((floor - min) / 100) as u8;
+    match non_turbo {
+        0 => None,
+        1 => Some(((turbo as u8).wrapping_sub(ps_delta), 1)),
+        _ if non_turbo > u32::from(ps_delta) => Some((turbo as u8, (non_turbo - u32::from(ps_delta)) as u8)),
+        _ => Some((((non_turbo + turbo) as u8).wrapping_sub(ps_delta).wrapping_sub(1), 1)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::floor_states;
+
+    #[test]
+    fn floor_states_like_set_cpu_floor() {
+        // MacBookPro15,1 with i7-9750H
+        assert_eq!(floor_states(800, 4500, 2600, 1000), Some((19, 17)));
+        // iMac20,x from a macOS log: 41 states, 15 turbo, 26 non-turbo
+        assert_eq!(floor_states(800, 4800, 3300, 1300), Some((15, 21)));
+        assert_eq!(floor_states(800, 4500, 2600, 700), None);
+    }
+}
+
 /// X86PlatformShim turns the idle step into a run ratio of 100 - step
 /// percent, at least 30 %. intel_powerclamp takes the idle share.
 pub struct ForcedIdle {
