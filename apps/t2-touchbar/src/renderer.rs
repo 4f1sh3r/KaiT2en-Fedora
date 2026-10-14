@@ -44,6 +44,10 @@ enum Icon {
 
 const KEY_GAP: u16 = 10;
 const KEY_GAP_F: f32 = KEY_GAP as f32;
+/// Swipe level feedback: icon slot, gap and meter.
+const LEVEL_ICON_SLOT: f32 = 60.0;
+const LEVEL_SPACING: f32 = 22.0;
+const LEVEL_METER: f32 = 320.0;
 const GROUP_GAP: u16 = 56;
 
 /// Previous and next key spans (left, right) of the track overlay.
@@ -337,85 +341,75 @@ impl Canvas {
         self.flush();
     }
 
-    /// Level feedback for a swipe on the dark bar: icon, meter and percent,
-    /// placed beside the fingers on whichever side has more room.
-    /// `fingers` is the x range from the leftmost to the rightmost finger.
+    /// Level feedback for a swipe on the dark bar: icon and meter beside the
+    /// fingers. `fingers` is the x range from the leftmost to the rightmost
+    /// finger. `right` is how much of it shows on their right side (0 to 1),
+    /// the rest shows on their left, so a side change can crossfade.
     pub fn level(
         &mut self,
         kind: LevelKind,
         percent: Option<u32>,
         muted: bool,
         fingers: (f32, f32),
+        right: f32,
         fade: u32,
     ) {
-        const ICON_SIZE: f32 = 1.6;
-        const ICON_SLOT: f32 = 60.0;
-        const METER: f32 = 320.0;
-        const METER_HEIGHT: f32 = 10.0;
-        const VALUE_SIZE: f32 = 30.0;
-        const VALUE_SLOT: f32 = 92.0;
-        const SPACING: f32 = 22.0;
         // From the touch point of the finger nearest to the feedback, so any
         // number of fingers keeps the same clearance.
         const DISTANCE: f32 = 110.0;
-        let total = ICON_SLOT + SPACING + METER + SPACING + VALUE_SLOT;
+        let total = LEVEL_ICON_SLOT + LEVEL_SPACING + LEVEL_METER;
         let width = f32::from(self.width);
         let (first, last) = fingers;
-        let left = if (first + last) / 2.0 < width / 2.0 {
-            last + DISTANCE
-        } else {
-            first - DISTANCE - total
-        }
-        .clamp(KEY_GAP_F, width - KEY_GAP_F - total)
-        .round();
-        let cy = f32::from(self.height) / 2.0;
-
         let full = self.color;
-        self.color = full.scale(fade.min(100));
         self.pixmap.fill(Color::BLACK);
+        let right = right.clamp(0.0, 1.0);
+        for (left, share) in [
+            (first - DISTANCE - total, 1.0 - right),
+            (last + DISTANCE, right),
+        ] {
+            let opacity = (fade.min(100) as f32 * share).round() as u32;
+            if opacity == 0 {
+                continue;
+            }
+            let left = left.clamp(KEY_GAP_F, width - KEY_GAP_F - total).round();
+            self.color = full.scale(opacity);
+            self.level_at(left, kind, percent, muted);
+        }
+        self.flush();
+        self.color = full;
+    }
+
+    fn level_at(&mut self, left: f32, kind: LevelKind, percent: Option<u32>, muted: bool) {
+        const ICON_SIZE: f32 = 1.6;
+        const METER_HEIGHT: f32 = 10.0;
+        let cy = f32::from(self.height) / 2.0;
         let icon = match (kind, muted) {
             (LevelKind::Volume, true) => Icon::Mute,
             (LevelKind::Volume, false) => Icon::Volume(true),
             (LevelKind::Brightness, _) => Icon::Brightness(true),
         };
-        self.icon_sized(left + ICON_SLOT / 2.0, cy, icon, BLACK, ICON_SIZE);
+        self.icon_sized(left + LEVEL_ICON_SLOT / 2.0, cy, icon, BLACK, ICON_SIZE);
 
-        let meter_left = left + ICON_SLOT + SPACING;
+        let meter_left = left + LEVEL_ICON_SLOT + LEVEL_SPACING;
         let (top, bottom) = (cy - METER_HEIGHT / 2.0, cy + METER_HEIGHT / 2.0);
         let radius = METER_HEIGHT / 2.0;
-        let track = rounded_rect(meter_left, top, meter_left + METER, bottom, radius);
+        let track = rounded_rect(meter_left, top, meter_left + LEVEL_METER, bottom, radius);
         self.fill(&track, self.color.scale(22));
         let fraction = percent.map_or(0.0, |percent| percent.min(100) as f32 / 100.0);
         if fraction > 0.0 && !muted {
-            let right = meter_left + (METER * fraction).max(METER_HEIGHT);
+            let right = meter_left + (LEVEL_METER * fraction).max(METER_HEIGHT);
             self.fill(
                 &rounded_rect(meter_left, top, right, bottom, radius),
                 self.color,
             );
         }
-
-        let value = match (percent, muted) {
-            (_, true) => "muted".to_owned(),
-            (Some(percent), false) => format!("{percent}%"),
-            (None, false) => "–".to_owned(),
-        };
-        let value_left = meter_left + METER + SPACING;
-        let value_width = self.text_width(&value, VALUE_SIZE);
-        self.center_text(
-            value_left + value_width / 2.0,
-            cy,
-            &value,
-            VALUE_SIZE,
-            self.color,
-        );
-        self.flush();
-        self.color = full;
     }
 
     /// "**Artist** – Title" on the dark bar with borderless previous/next
     /// keys at `keys`, the fixed slots at both ends of the bar. `fade`
     /// scales everything (percent) for the fade in and out; `pressed`
-    /// highlights next (`true`) or previous (`false`).
+    /// highlights next (`true`) or previous (`false`). `esc` is the esc
+    /// key with its own opacity, drawn while it is shown on the dark bar.
     pub fn track(
         &mut self,
         artist: &str,
@@ -423,6 +417,7 @@ impl Canvas {
         fade: u32,
         pressed: Option<bool>,
         keys: TrackLayout,
+        esc: Option<(Button, u32)>,
     ) {
         let space_left = f32::from(keys.prev.1) + TRACK_GAP;
         let space_right = f32::from(keys.next.0) - TRACK_GAP;
@@ -439,8 +434,12 @@ impl Canvas {
             .sum();
 
         let full = self.color;
-        self.color = full.scale(fade.min(100));
         self.pixmap.fill(Color::BLACK);
+        if let Some((esc, opacity)) = esc {
+            self.color = full.scale(opacity.min(100));
+            self.button(&esc, false);
+        }
+        self.color = full.scale(fade.min(100));
         let top = KEY_INSET;
         let bottom = f32::from(self.height) - KEY_INSET;
         let cy = f32::from(self.height) / 2.0;
@@ -1129,27 +1128,47 @@ mod tests {
             prev: (media.buttons[1].left, media.buttons[1].right),
             next: (2170 - media.buttons[1].right, 2170 - media.buttons[1].left),
         };
-        canvas.track("Slipknot", "Duality", 100, None, keys);
+        canvas.track("Slipknot", "Duality", 100, None, keys, None);
         save("track", &canvas);
+        canvas.track(
+            "Slipknot",
+            "Duality",
+            100,
+            None,
+            keys,
+            Some((media.buttons[0], 100)),
+        );
+        save("track-esc", &canvas);
         canvas.track(
             "Heino",
             "Blau blüht der Enzian (Live aus der Festhalle mit Orchester und sehr langem Titel, der gekürzt werden muss, weil er sonst nicht passt)",
             60,
             Some(true),
             keys,
+            None,
         );
         save("track-long", &canvas);
         canvas.touch_id("retry", 0.0, None, false);
         save("touchid-retry", &canvas);
-        canvas.level(LevelKind::Volume, Some(45), false, (560.0, 640.0), 100);
+        canvas.level(LevelKind::Volume, Some(45), false, (560.0, 640.0), 1.0, 100);
         save("volume", &canvas);
         canvas.level(
             LevelKind::Brightness,
             Some(80),
             false,
             (1620.0, 1780.0),
+            0.0,
             100,
         );
         save("brightness", &canvas);
+        canvas.level(
+            LevelKind::Volume,
+            Some(45),
+            false,
+            (1000.0, 1100.0),
+            0.3,
+            100,
+        );
+        save("volume-crossfade", &canvas);
     }
 }

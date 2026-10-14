@@ -32,7 +32,20 @@ impl Haptic {
     }
 
     pub fn click(&mut self) {
-        if !self.enabled || self.last.is_some_and(|last| last.elapsed() < MIN_INTERVAL) {
+        if self.last.is_some_and(|last| last.elapsed() < MIN_INTERVAL) {
+            return;
+        }
+        self.play(b"light\n");
+    }
+
+    /// The strongest captured click, for running into a stop. It is never
+    /// rate limited, so it also lands right after a light click.
+    pub fn firm(&mut self) {
+        self.play(b"firm\n");
+    }
+
+    fn play(&mut self, waveform: &[u8]) {
+        if !self.enabled {
             return;
         }
         let Some(file) = self.file.as_mut() else {
@@ -40,7 +53,7 @@ impl Haptic {
         };
         if file
             .seek(SeekFrom::Start(0))
-            .and_then(|_| file.write_all(b"light\n"))
+            .and_then(|_| file.write_all(waveform))
             .is_ok()
         {
             self.last = Some(Instant::now());

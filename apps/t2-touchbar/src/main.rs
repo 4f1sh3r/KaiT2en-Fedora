@@ -64,8 +64,12 @@ const ACTIVITY_FADE_MS: u64 = 700;
 const ACTIVITY_FRAME_MS: u64 = 33;
 /// The desktop applies a volume or brightness key asynchronously, so the
 /// value is read back repeatedly for a short while after each step.
-const LEVEL_POLL_MS: u64 = 80;
+const LEVEL_POLL_MS: u64 = 50;
 const LEVEL_POLL_WINDOW_MS: u64 = 600;
+/// The level feedback crossfades to the other side of the fingers once
+/// they pass the middle of the bar by this much.
+const LEVEL_SIDE_HYSTERESIS_PX: f64 = 60.0;
+const LEVEL_SIDE_FADE_MS: u64 = 700;
 /// Switching rows move far enough to read as a swipe across the bar.
 const LAYER_SLIDE_PX: f32 = 190.0;
 /// Switching rows take 195 ms.
@@ -208,6 +212,11 @@ struct Runtime {
     level: Level,
     /// Leftmost and rightmost finger the feedback was last placed against.
     level_fingers: (f64, f64),
+    /// How much of the feedback shows right of the fingers, moving towards
+    /// `level_right_target` for the crossfade.
+    level_right: f32,
+    level_right_target: bool,
+    level_right_ms: u64,
     level_poll_ms: Option<u64>,
     level_poll_until_ms: u64,
     /// The level feedback changed and is drawn once the pending input is
@@ -215,6 +224,10 @@ struct Runtime {
     level_dirty: bool,
     level_fade_start_ms: Option<u64>,
     level_frame_ms: Option<u64>,
+    /// This swipe has sent a key, so a level at 0 or 100 was reached by it.
+    level_stepped: bool,
+    /// The stop the level sits at was already felt as a firm click.
+    level_stop_felt: bool,
     activity_deadline_ms: Option<u64>,
     activity_dimmed: bool,
     activity_restore_brightness: Option<u32>,
@@ -300,11 +313,16 @@ impl Runtime {
             level_kind: None,
             level: Level::default(),
             level_fingers: (0.0, 0.0),
+            level_right: 1.0,
+            level_right_target: true,
+            level_right_ms: 0,
             level_poll_ms: None,
             level_poll_until_ms: 0,
             level_dirty: false,
             level_fade_start_ms: None,
             level_frame_ms: None,
+            level_stepped: false,
+            level_stop_felt: false,
             activity_deadline_ms,
             activity_dimmed,
             activity_restore_brightness,
@@ -676,8 +694,9 @@ impl Runtime {
             return self.track_frame(now);
         }
         // Only on a quiet dark bar: never over keys, gestures or Touch ID.
+        // The esc key from activity stays and is drawn alongside.
         if self.visible
-            || self.overlay_shown
+            || (self.overlay_shown && !self.activity_esc_shown)
             || self.touch_id != TouchIdState::Idle
             || !self.contacts.is_empty()
         {
@@ -717,18 +736,34 @@ impl Runtime {
                 Some(now + TRACK_FRAME_MS),
             )
         } else {
+            self.toast = None;
+            if self.activity_esc_shown {
+                return self.render_activity_esc();
+            }
             return self.hide_overlay();
         };
         // Smoothstep, so the fades start and end softly.
         let eased = opacity * opacity * (3.0 - 2.0 * opacity);
         toast.next_ms = next;
         let (track, pressed, keys) = (toast.track.clone(), toast.pressed, toast.layout);
+        let esc = self
+            .activity_esc_shown
+            .then(|| {
+                self.layout
+                    .buttons
+                    .iter()
+                    .find(|button| button.action == Action::Key(Key::Esc))
+                    .copied()
+            })
+            .flatten()
+            .map(|button| (button, (self.escape_opacity * 100.0).round() as u32));
         self.canvas.track(
             &track.artist,
             &track.title,
             (eased * 100.0).round() as u32,
             pressed,
             keys,
+            esc,
         );
         self.present_overlay()
     }
@@ -772,11 +807,48 @@ impl Runtime {
         self.level_fade_start_ms = None;
         self.level_frame_ms = None;
         self.level = self.level_cache[cache_slot(kind)];
+        self.level_stepped = false;
+        self.level_stop_felt = false;
         self.level_reader.request(kind);
         self.level_fingers = self.swipe_span();
+        self.update_level_side(self.now_ms(), true);
         self.overlay_hide_ms = None;
         self.level_dirty = true;
         Ok(())
+    }
+
+    /// Places the feedback on the side of the fingers with more room. A
+    /// change crossfades unless `snap` is set.
+    fn update_level_side(&mut self, now: u64, snap: bool) {
+        let centre = (self.level_fingers.0 + self.level_fingers.1) / 2.0;
+        let middle = f64::from(self.canvas.width) / 2.0;
+        // Progress so far counts towards the old target.
+        self.advance_level_side(now);
+        let margin = if snap { 0.0 } else { LEVEL_SIDE_HYSTERESIS_PX };
+        if centre < middle - margin {
+            self.level_right_target = true;
+        } else if centre >= middle + margin {
+            self.level_right_target = false;
+        }
+        if snap {
+            self.level_right = f32::from(u8::from(self.level_right_target));
+        }
+        if self.level_right != f32::from(u8::from(self.level_right_target)) {
+            self.level_frame_ms.get_or_insert(now + LEVEL_FRAME_MS);
+        }
+    }
+
+    /// Moves the side crossfade on to `now`. Returns whether it still runs.
+    fn advance_level_side(&mut self, now: u64) -> bool {
+        let target = f32::from(u8::from(self.level_right_target));
+        let step = now.saturating_sub(self.level_right_ms) as f32 / LEVEL_SIDE_FADE_MS as f32;
+        self.level_right_ms = now;
+        self.level_right = if self.level_right < target {
+            (self.level_right + step).min(target)
+        } else {
+            (self.level_right - step).max(target)
+        };
+        self.level_right != target
     }
 
     /// Draws the level feedback if anything changed since the last frame.
@@ -787,6 +859,9 @@ impl Runtime {
         let Some(kind) = self.level_kind.filter(|_| !self.visible) else {
             return Ok(());
         };
+        let now = self.now_ms();
+        self.advance_level_side(now);
+        let right = self.level_right * self.level_right * (3.0 - 2.0 * self.level_right);
         let opacity = self.level_fade_start_ms.map_or(100, |start| {
             let elapsed = self.now_ms().saturating_sub(start).min(LEVEL_FADE_MS);
             let opacity = 1.0 - elapsed as f32 / LEVEL_FADE_MS as f32;
@@ -797,6 +872,7 @@ impl Runtime {
             self.level.percent,
             self.level.muted,
             (self.level_fingers.0 as f32, self.level_fingers.1 as f32),
+            right,
             opacity,
         );
         self.present_overlay()
@@ -850,6 +926,14 @@ impl Runtime {
             }
             self.level = level;
             self.level_dirty = true;
+            // Reaching a stop is only known once the desktop has applied
+            // the key, so the firm click follows the read.
+            if !at_stop(kind, level, None) {
+                self.level_stop_felt = false;
+            } else if self.level_stepped && !self.level_stop_felt {
+                self.level_stop_felt = true;
+                self.haptic.firm();
+            }
             // Keep a lingering overlay alive until the value has settled.
             self.overlay_hide_ms = self
                 .overlay_hide_ms
@@ -963,7 +1047,7 @@ impl Runtime {
         else {
             return Ok(());
         };
-        self.toast = None;
+        // A track overlay stays and draws the esc key with it.
         self.level_kind = None;
         self.overlay_hide_ms = None;
         self.level_fade_start_ms = None;
@@ -1043,6 +1127,9 @@ impl Runtime {
     }
 
     fn render_activity_esc_with_index(&mut self, index: usize) -> Result<()> {
+        if self.toast.is_some() {
+            return self.track_frame(self.now_ms());
+        }
         self.canvas.single_key(
             &self.layout,
             index,
@@ -1100,7 +1187,13 @@ impl Runtime {
             self.escape_opacity = target;
             self.escape_fade = None;
             if target <= 0.0 {
-                self.hide_overlay()?;
+                if self.toast.is_some() {
+                    // The track overlay goes on alone.
+                    self.activity_esc_shown = false;
+                    self.track_frame(now)?;
+                } else {
+                    self.hide_overlay()?;
+                }
             }
         }
         Ok(())
@@ -1304,13 +1397,16 @@ impl Runtime {
             // The feedback follows the fingers.
             self.level_fingers = span;
             self.level_dirty = true;
+            self.update_level_side(now, false);
         }
         if steps == 0 {
             return Ok(());
         }
         match kind {
             SwipeKind::Volume | SwipeKind::Brightness => {
-                self.level_poll_ms = Some(now + LEVEL_POLL_MS);
+                // A fast swipe steps more often than the poll interval, so
+                // a pending poll is never pushed back.
+                self.level_poll_ms.get_or_insert(now + LEVEL_POLL_MS);
                 self.level_poll_until_ms = now + LEVEL_POLL_WINDOW_MS;
                 let key = match (kind, steps > 0) {
                     (SwipeKind::Volume, true) => Key::VolumeUp,
@@ -1322,7 +1418,19 @@ impl Runtime {
                     self.keyboard.press(key)?;
                     self.keyboard.release()?;
                 }
-                self.haptic.click();
+                self.level_stepped = true;
+                // Pushing against a stop clicks firmly once, then stays
+                // silent like the level does.
+                if self
+                    .level_kind
+                    .is_some_and(|level_kind| at_stop(level_kind, self.level, Some(steps > 0)))
+                {
+                    if !std::mem::replace(&mut self.level_stop_felt, true) {
+                        self.haptic.firm();
+                    }
+                } else {
+                    self.haptic.click();
+                }
                 Ok(())
             }
             SwipeKind::Mode => {
@@ -1595,7 +1703,10 @@ impl Runtime {
             } else {
                 self.level_dirty = true;
                 self.flush_level()?;
-                self.level_frame_ms = Some(now + LEVEL_FRAME_MS);
+                // Frames run while fading out or crossfading sides.
+                let moving = self.level_right != f32::from(u8::from(self.level_right_target));
+                self.level_frame_ms =
+                    (self.level_fade_start_ms.is_some() || moving).then_some(now + LEVEL_FRAME_MS);
             }
         }
         if self
@@ -1947,6 +2058,23 @@ fn provides_activity(device: &InputDevice) -> bool {
     device.name() != "T2 Touch Bar"
         && (device.has_capability(DeviceCapability::Keyboard)
             || device.has_capability(DeviceCapability::Pointer))
+}
+
+/// Whether `level` sits at the bottom or at 100, or only at the one `up`
+/// points to. GNOME never dims the display below 1%, which is its bottom.
+fn at_stop(kind: LevelKind, level: Level, up: Option<bool>) -> bool {
+    let Some(percent) = level.percent else {
+        return false;
+    };
+    let bottom = match kind {
+        LevelKind::Volume => 0,
+        LevelKind::Brightness => 1,
+    };
+    match up {
+        Some(true) => percent >= 100,
+        Some(false) => percent <= bottom,
+        None => percent <= bottom || percent >= 100,
+    }
 }
 
 fn cache_slot(kind: LevelKind) -> usize {
