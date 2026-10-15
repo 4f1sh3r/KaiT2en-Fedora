@@ -1,0 +1,112 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] drm/amd/pm: hold GFXCLK and UCLK on the Navi 14 of MacBookPro16,1
+
+The Radeon Pro 5300M and 5500M of the MacBookPro16,1 hang under load
+within seconds while the SMU picks GFXCLK and UCLK levels itself. The gfx
+ring times out, the SMU stops responding and the CPU reports a machine
+check. This happens with the 3D and the default workload profile, with
+GFXOFF on or off, with and without runtime PM and with nothing else
+touching the GPU. With both clocks held at one level the same load ran
+stable at every combination tested, the highest one included. This is
+a temporary workaround until we traced macOS behaviour.
+
+Hold GFXCLK and UCLK at their highest level whenever the SMU starts and
+whenever the performance level returns to auto. The dGPU only runs while
+something uses it, and the power limit still throttles below these
+levels.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+index 9a5f11a..e17bf63 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+@@ -1588,18 +1588,60 @@ static int navi10_get_clock_by_type_with_latency(struct smu_context *smu,
+  * level of 750 MHz. The macOS driver sets a hard UCLK maximum of 740 MHz on
+  * these revisions, which leaves 736 MHz as the highest level.
+  */
+-static uint32_t navi10_apple_uclk_max(struct smu_context *smu, uint32_t freq)
++static bool navi10_is_apple_navi14(struct smu_context *smu)
+ {
+ 	struct amdgpu_device *adev = smu->adev;
+ 
+-	if (amdgpu_ip_version(adev, MP1_HWIP, 0) != IP_VERSION(11, 0, 5) ||
+-	    adev->pdev->subsystem_vendor != PCI_VENDOR_ID_APPLE ||
+-	    (adev->pdev->revision != 0x40 && adev->pdev->revision != 0x43))
++	return amdgpu_ip_version(adev, MP1_HWIP, 0) == IP_VERSION(11, 0, 5) &&
++	       adev->pdev->subsystem_vendor == PCI_VENDOR_ID_APPLE &&
++	       (adev->pdev->revision == 0x40 || adev->pdev->revision == 0x43);
++}
++
++static uint32_t navi10_apple_uclk_max(struct smu_context *smu, uint32_t freq)
++{
++	if (!navi10_is_apple_navi14(smu))
+ 		return freq;
+ 
+ 	return min(freq, 740U);
+ }
+ 
++/*
++ * The Navi 14 of the MacBookPro16,1 hangs under load within seconds while the
++ * SMU picks GFXCLK and UCLK levels itself, with the 3D and the default
++ * workload profile alike. With both held at one level it ran stable at every
++ * combination tested, the highest one included. Hold both at their highest
++ * level. The dGPU only runs while something uses it, and the power limit
++ * still throttles below these levels.
++ */
++static int navi10_apple_pin_clocks(struct smu_context *smu)
++{
++	struct smu_11_0_dpm_context *dpm_context = smu->smu_dpm.dpm_context;
++	uint32_t sclk = SMU_DPM_TABLE_MAX(&dpm_context->dpm_tables.gfx_table);
++	uint32_t mclk = SMU_DPM_TABLE_MAX(&dpm_context->dpm_tables.uclk_table);
++	int ret;
++
++	mclk = navi10_apple_uclk_max(smu, mclk);
++
++	ret = smu_v11_0_set_soft_freq_limited_range(smu, SMU_GFXCLK, sclk, sclk, false);
++	if (ret)
++		return ret;
++
++	return smu_v11_0_set_soft_freq_limited_range(smu, SMU_UCLK, mclk, mclk, false);
++}
++
++static int navi10_set_performance_level(struct smu_context *smu,
++					enum amd_dpm_forced_level level)
++{
++	int ret;
++
++	ret = smu_v11_0_set_performance_level(smu, level);
++	if (ret || level != AMD_DPM_FORCED_LEVEL_AUTO ||
++	    !navi10_is_apple_navi14(smu))
++		return ret;
++
++	return navi10_apple_pin_clocks(smu);
++}
++
+ static int navi10_init_max_sustainable_clocks(struct smu_context *smu)
+ {
+ 	struct smu_11_0_max_sustainable_clocks *max_sustainable_clocks;
+@@ -3267,6 +3309,14 @@ static int navi10_post_smu_init(struct smu_context *smu)
+ 	if (ret)
+ 		dev_err(adev->dev, "Failed to apply umc cdr workaround!\n");
+ 
++	/* The SMU starts unpinned after every resume, post_init runs each time */
++	if (!ret && navi10_is_apple_navi14(smu) &&
++	    smu->smu_dpm.dpm_level == AMD_DPM_FORCED_LEVEL_AUTO) {
++		ret = navi10_apple_pin_clocks(smu);
++		if (ret)
++			dev_err(adev->dev, "Failed to pin GFXCLK and UCLK!\n");
++	}
++
+ 	return ret;
+ }
+ 
+@@ -3340,7 +3390,7 @@ static const struct pptable_funcs navi10_ppt_funcs = {
+ 	.set_watermarks_table = navi10_set_watermarks_table,
+ 	.read_sensor = navi10_read_sensor,
+ 	.get_uclk_dpm_states = navi10_get_uclk_dpm_states,
+-	.set_performance_level = smu_v11_0_set_performance_level,
++	.set_performance_level = navi10_set_performance_level,
+ 	.get_thermal_temperature_range = navi10_get_thermal_temperature_range,
+ 	.display_disable_memory_clock_switch = navi10_display_disable_memory_clock_switch,
+ 	.get_power_limit = navi10_get_power_limit,
