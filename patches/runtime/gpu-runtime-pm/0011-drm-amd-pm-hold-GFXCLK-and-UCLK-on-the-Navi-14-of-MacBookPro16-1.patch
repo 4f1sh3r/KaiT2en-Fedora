@@ -17,11 +17,110 @@ levels.
 
 Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 ---
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+index f465cd9..4e37482 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+@@ -3106,8 +3106,14 @@ static void amdgpu_device_delayed_init_work_handler(struct work_struct *work)
+ 	int r;
+ 
+ 	r = amdgpu_ib_ring_tests(adev);
+-	if (r)
++	if (r) {
+ 		dev_err(adev->dev, "ib ring test failed (%d).\n", r);
++		return;
++	}
++
++	r = amdgpu_dpm_hold_clocks(adev);
++	if (r)
++		dev_err(adev->dev, "failed to hold clocks (%d).\n", r);
+ }
+ 
+ static void amdgpu_device_delay_enable_gfx_off(struct work_struct *work)
+diff --git a/drivers/gpu/drm/amd/pm/amdgpu_dpm.c b/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
+index f51778b..4413af6 100644
+--- a/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
++++ b/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
+@@ -858,6 +858,16 @@ int amdgpu_dpm_get_dpm_freq_range(struct amdgpu_device *adev,
+ 	return ret;
+ }
+ 
++int amdgpu_dpm_hold_clocks(struct amdgpu_device *adev)
++{
++	if (!is_support_sw_smu(adev))
++		return 0;
++
++	guard(mutex)(&adev->pm.mutex);
++
++	return smu_hold_clocks(adev->powerplay.pp_handle);
++}
++
+ int amdgpu_dpm_set_soft_freq_range(struct amdgpu_device *adev,
+ 				   enum pp_clock_type type,
+ 				   uint32_t min,
+diff --git a/drivers/gpu/drm/amd/pm/inc/amdgpu_dpm.h b/drivers/gpu/drm/amd/pm/inc/amdgpu_dpm.h
+index df24b01..2a9cfe2 100644
+--- a/drivers/gpu/drm/amd/pm/inc/amdgpu_dpm.h
++++ b/drivers/gpu/drm/amd/pm/inc/amdgpu_dpm.h
+@@ -459,6 +459,7 @@ int amdgpu_dpm_get_dpm_freq_range(struct amdgpu_device *adev,
+ 				       enum pp_clock_type type,
+ 				       uint32_t *min,
+ 				       uint32_t *max);
++int amdgpu_dpm_hold_clocks(struct amdgpu_device *adev);
+ int amdgpu_dpm_set_soft_freq_range(struct amdgpu_device *adev,
+ 				        enum pp_clock_type type,
+ 				        uint32_t min,
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c b/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
+index 3969a76..3fb770d 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
+@@ -139,6 +139,16 @@ int smu_get_status_gfxoff(struct smu_context *smu, uint32_t *value)
+ 	return 0;
+ }
+ 
++int smu_hold_clocks(struct smu_context *smu)
++{
++	if (!smu->pm_enabled || !smu->adev->pm.dpm_enabled ||
++	    !smu->ppt_funcs->hold_clocks ||
++	    smu->smu_dpm.dpm_level != AMD_DPM_FORCED_LEVEL_AUTO)
++		return 0;
++
++	return smu->ppt_funcs->hold_clocks(smu);
++}
++
+ int smu_set_soft_freq_range(struct smu_context *smu,
+ 			    enum pp_clock_type type,
+ 			    uint32_t min,
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/inc/amdgpu_smu.h b/drivers/gpu/drm/amd/pm/swsmu/inc/amdgpu_smu.h
+index 64a6497..3b8dce6 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/inc/amdgpu_smu.h
++++ b/drivers/gpu/drm/amd/pm/swsmu/inc/amdgpu_smu.h
+@@ -1508,6 +1508,12 @@ struct pptable_funcs {
+ 	 */
+ 	int (*post_init)(struct smu_context *smu);
+ 
++	/**
++	 * @hold_clocks: Hold clocks the board cannot leave to the SMU. Called
++	 * once the GPU passed its IB tests after init and after every resume.
++	 */
++	int (*hold_clocks)(struct smu_context *smu);
++
+ 	/**
+ 	 * @interrupt_work: Work task scheduled from SMU interrupt handler.
+ 	 */
+@@ -1969,6 +1975,7 @@ int smu_write_watermarks_table(struct smu_context *smu);
+ int smu_get_dpm_freq_range(struct smu_context *smu, enum smu_clk_type clk_type,
+ 			   uint32_t *min, uint32_t *max);
+ 
++int smu_hold_clocks(struct smu_context *smu);
+ int smu_set_soft_freq_range(struct smu_context *smu, enum pp_clock_type clk_type,
+ 			    uint32_t min, uint32_t max);
+ 
 diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
-index 9a5f11a..e17bf63 100644
+index 9a5f11a..72e39ce 100644
 --- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
 +++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
-@@ -1588,18 +1588,60 @@ static int navi10_get_clock_by_type_with_latency(struct smu_context *smu,
+@@ -1588,18 +1588,69 @@ static int navi10_get_clock_by_type_with_latency(struct smu_context *smu,
   * level of 750 MHz. The macOS driver sets a hard UCLK maximum of 740 MHz on
   * these revisions, which leaves 736 MHz as the highest level.
   */
@@ -51,8 +150,9 @@ index 9a5f11a..e17bf63 100644
 + * SMU picks GFXCLK and UCLK levels itself, with the 3D and the default
 + * workload profile alike. With both held at one level it ran stable at every
 + * combination tested, the highest one included. Hold both at their highest
-+ * level. The dGPU only runs while something uses it, and the power limit
-+ * still throttles below these levels.
++ * level once the GPU is up. Raising them from post_init during late init
++ * already dropped the GPU off the bus. The dGPU only runs while something
++ * uses it, and the power limit still throttles below these levels.
 + */
 +static int navi10_apple_pin_clocks(struct smu_context *smu)
 +{
@@ -68,6 +168,14 @@ index 9a5f11a..e17bf63 100644
 +		return ret;
 +
 +	return smu_v11_0_set_soft_freq_limited_range(smu, SMU_UCLK, mclk, mclk, false);
++}
++
++static int navi10_hold_clocks(struct smu_context *smu)
++{
++	if (!navi10_is_apple_navi14(smu))
++		return 0;
++
++	return navi10_apple_pin_clocks(smu);
 +}
 +
 +static int navi10_set_performance_level(struct smu_context *smu,
@@ -86,22 +194,7 @@ index 9a5f11a..e17bf63 100644
  static int navi10_init_max_sustainable_clocks(struct smu_context *smu)
  {
  	struct smu_11_0_max_sustainable_clocks *max_sustainable_clocks;
-@@ -3267,6 +3309,14 @@ static int navi10_post_smu_init(struct smu_context *smu)
- 	if (ret)
- 		dev_err(adev->dev, "Failed to apply umc cdr workaround!\n");
- 
-+	/* The SMU starts unpinned after every resume, post_init runs each time */
-+	if (!ret && navi10_is_apple_navi14(smu) &&
-+	    smu->smu_dpm.dpm_level == AMD_DPM_FORCED_LEVEL_AUTO) {
-+		ret = navi10_apple_pin_clocks(smu);
-+		if (ret)
-+			dev_err(adev->dev, "Failed to pin GFXCLK and UCLK!\n");
-+	}
-+
- 	return ret;
- }
- 
-@@ -3340,7 +3390,7 @@ static const struct pptable_funcs navi10_ppt_funcs = {
+@@ -3340,7 +3391,7 @@ static const struct pptable_funcs navi10_ppt_funcs = {
  	.set_watermarks_table = navi10_set_watermarks_table,
  	.read_sensor = navi10_read_sensor,
  	.get_uclk_dpm_states = navi10_get_uclk_dpm_states,
@@ -110,3 +203,11 @@ index 9a5f11a..e17bf63 100644
  	.get_thermal_temperature_range = navi10_get_thermal_temperature_range,
  	.display_disable_memory_clock_switch = navi10_display_disable_memory_clock_switch,
  	.get_power_limit = navi10_get_power_limit,
+@@ -3400,6 +3451,7 @@ static const struct pptable_funcs navi10_ppt_funcs = {
+ 	.deep_sleep_control = smu_v11_0_deep_sleep_control,
+ 	.get_fan_parameters = navi10_get_fan_parameters,
+ 	.post_init = navi10_post_smu_init,
++	.hold_clocks = navi10_hold_clocks,
+ 	.interrupt_work = smu_v11_0_interrupt_work,
+ 	.set_mp1_state = smu_cmn_set_mp1_state,
+ 	.get_default_config_table_settings = navi10_get_default_config_table_settings,
