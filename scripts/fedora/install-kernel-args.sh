@@ -91,6 +91,21 @@ if [[ "$model" == iMac* ]]; then
 	info "not forcing PCIe ASPM on $model"
 fi
 
+# The Navi 14 of the MacBookPro16,1 drops off the PCIe bus under load on
+# several machines. Leave ASPM on its link to the firmware and to amdgpu's own
+# decision while this is investigated.
+if [[ "$model" == MacBookPro16,1 ]]; then
+	kept_args=()
+	for arg in "${ADD_ARGS[@]}"; do
+		case "$arg" in
+			amdgpu.aspm=1 | pcie_aspm=force | pcie_aspm.policy=powersave) ;;
+			*) kept_args+=("$arg") ;;
+		esac
+	done
+	ADD_ARGS=("${kept_args[@]}")
+	info "not forcing PCIe or AMDGPU ASPM on $model"
+fi
+
 INITCALL_BLACKLIST="initcall_blacklist=cmos_init,magicmouse_driver_init"
 BLACKLIST_MODULES=(
 	acpi_tad

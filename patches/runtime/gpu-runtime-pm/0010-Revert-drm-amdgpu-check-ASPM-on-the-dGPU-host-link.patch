@@ -1,0 +1,89 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] Revert "drm/amdgpu: check ASPM on the dGPU host link"
+
+This reverts commit 2a9c5154a5650c09ad44ff5e1dff74754e15a3c6.
+
+The Navi 14 of the MacBookPro16,1 sits below the internal PCIe switch of
+the GPU. Since this commit the automatic ASPM decision looks at the host
+link between the switch upstream port and the root port instead of the
+link to the display endpoint, so amdgpu now programs ASPM on these GPUs
+when the host link has it enabled. Several of them drop off the PCIe bus
+under load since the 7.x kernels. Go back to checking the endpoint link
+while this is investigated.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+@@ -1442,31 +1442,6 @@ static bool amdgpu_device_aspm_support_quirk(struct amdgpu_device *adev)
+ #endif
+ }
+ 
+-/*
+- * Some dGPUs expose their display endpoint below an internal PCIe switch.
+- * Use the switch upstream port to query the host-facing link.
+- */
+-static struct pci_dev *amdgpu_device_get_aspm_pdev(struct amdgpu_device *adev)
+-{
+-	struct pci_dev *swds, *swus;
+-
+-	swds = pci_upstream_bridge(adev->pdev);
+-	if (!swds ||
+-	    (swds->vendor != PCI_VENDOR_ID_ATI &&
+-	     swds->vendor != PCI_VENDOR_ID_AMD) ||
+-	    pci_pcie_type(swds) != PCI_EXP_TYPE_DOWNSTREAM)
+-		return adev->pdev;
+-
+-	swus = pci_upstream_bridge(swds);
+-	if (!swus ||
+-	    (swus->vendor != PCI_VENDOR_ID_ATI &&
+-	     swus->vendor != PCI_VENDOR_ID_AMD) ||
+-	    pci_pcie_type(swus) != PCI_EXP_TYPE_UPSTREAM)
+-		return adev->pdev;
+-
+-	return swus;
+-}
+-
+ /**
+  * amdgpu_device_should_use_aspm - check if the device should program ASPM
+  *
+@@ -1479,9 +1454,6 @@ static struct pci_dev *amdgpu_device_get_aspm_pdev(struct amdgpu_device *adev)
+  */
+ bool amdgpu_device_should_use_aspm(struct amdgpu_device *adev)
+ {
+-	struct pci_dev *aspm_pdev, *parent;
+-	bool enabled;
+-
+ 	switch (amdgpu_aspm) {
+ 	case -1:
+ 		break;
+@@ -1496,27 +1468,7 @@ bool amdgpu_device_should_use_aspm(struct amdgpu_device *adev)
+ 		return false;
+ 	if (amdgpu_device_aspm_support_quirk(adev))
+ 		return false;
+-
+-	/*
+-	 * pcie_aspm_enabled() checks the link between its argument and
+-	 * the immediate upstream bridge. Use SWUS for dGPUs with an
+-	 * internal switch so that this is the host-facing link.
+-	 */
+-	aspm_pdev = amdgpu_device_get_aspm_pdev(adev);
+-	parent = pci_upstream_bridge(aspm_pdev);
+-	if (!parent) {
+-		dev_dbg(adev->dev, "ASPM: no upstream PCIe link for %s\n",
+-			pci_name(aspm_pdev));
+-		return false;
+-	}
+-
+-	enabled = pcie_aspm_enabled(aspm_pdev);
+-	/* Report the exact link used for the automatic ASPM decision. */
+-	dev_dbg(adev->dev, "ASPM: link %s <-> %s is %s\n",
+-		pci_name(parent), pci_name(aspm_pdev),
+-		enabled ? "enabled" : "disabled");
+-
+-	return enabled;
++	return pcie_aspm_enabled(adev->pdev);
+ }
+ 
+ /* if we get transitioned to only one device, take VGA back */

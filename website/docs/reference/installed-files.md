@@ -57,7 +57,8 @@ DKMS build state before a kernel installation is retried.
 On the MacBookPro15,1, MacBookPro16,1, MacBookPro16,4, iMac20,1 and iMac20,2,
 the installer also builds the AMDGPU module with the patches from
 `patches/runtime/gpu-runtime-pm` (hybrid runtime PM, 5K iMac panel support,
-the Navi 14 memory clock cap and the Apple Navi power limit range)
+the Navi 14 memory clock cap, the Apple Navi power limit range and a revert
+of the 7.2 ASPM host-link check)
 and installs it for the running kernel at:
 
 ```text
@@ -108,7 +109,9 @@ module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_k
 ```
 
 On iMacs and the iMac Pro, `pcie_aspm=force` is left out, because their
-Ethernet controllers do not work with forced ASPM.
+Ethernet controllers do not work with forced ASPM. On the MacBookPro16,1,
+`amdgpu.aspm=1`, `pcie_aspm=force` and `pcie_aspm.policy=powersave` are left
+out while its Navi 14 drops off the PCIe bus under load.
 
 On every T2 Mac, the installer enables HuC firmware loading for the Intel GPU:
 
