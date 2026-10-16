@@ -57,9 +57,8 @@ DKMS build state before a kernel installation is retried.
 On the MacBookPro15,1, MacBookPro16,1, MacBookPro16,4, iMac20,1 and iMac20,2,
 the installer also builds the AMDGPU module with the patches from
 `patches/runtime/gpu-runtime-pm` (hybrid runtime PM, 5K iMac panel support,
-the Navi 14 memory clock cap, fixed GPU and memory clocks on the Navi 14 of
-the MacBookPro16,1, the Apple Navi power limit range and a revert of the 7.2
-ASPM host-link check)
+the Navi 14 memory clock cap, the Apple Navi power limit range and a revert
+of the 7.2 ASPM host-link check)
 and installs it for the running kernel at:
 
 ```text
