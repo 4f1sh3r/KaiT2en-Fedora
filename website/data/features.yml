@@ -218,7 +218,7 @@ items:
   - id: ignore-trackpad
     title: "Trackpad on T2 Macs is incorrectly bound by the hid-apple driver"
     state: available
-    upstream: submitted
+    upstream: merged
     version: v1
     project: Linux kernel
     subsystem: HID / Input
