@@ -69,6 +69,7 @@ ADD_ARGS=(
 	"i915.enable_guc=2"
 	"intel_iommu=on"
 	"iommu=pt"
+	"pm_async=off"
 	"brcmfmac.p2pon=0"
 	"pcie_aspm=force"
 	"pcie_aspm.policy=powersave"
