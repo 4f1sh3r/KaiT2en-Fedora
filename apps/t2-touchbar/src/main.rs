@@ -283,7 +283,7 @@ impl Runtime {
             .flat_map(|key| key.keys().iter().copied())
             .collect();
         let layout = Layout::with_custom(state.mode, width, physical_escape, &custom_labels);
-        let haptic = Haptic::open(config.haptic_feedback);
+        let haptic = Haptic::open(config.haptic_feedback, config.haptic_touch_up);
         let (level_reader, level_wake) = LevelReader::spawn()?;
         level_wake.set_nonblocking(true)?;
         let initial_keyboard_brightness = config
