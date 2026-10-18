@@ -594,26 +594,30 @@ fn power_label(key: &str) -> String {
         "PP0R" => "PBus".into(),
         "PPBR" => "PBus battery discharge".into(),
         "PSTR" => "System total (1 s delayed)".into(),
-        "PZ0E" => "Zone 0 average target".into(),
-        "PZ0F" => "Zone 0 filtered".into(),
-        "PZ0G" => "Zone 0 average".into(),
-        "PZ0T" => "Zone 0 throttle".into(),
-        "PZ1E" => "Zone 1 target".into(),
-        "PZ1F" => "Zone 1 filtered".into(),
-        "PZ1G" => "Zone 1 average".into(),
-        "PZ1T" => "Zone 1 throttle".into(),
-        "PZ2E" => "Zone 2 target".into(),
-        "PZ2F" => "Zone 2 filtered".into(),
-        "PZ2G" => "Zone 2 average".into(),
-        "PZ2T" => "Zone 2 throttle".into(),
-        "PZ3E" => "Zone 3 target".into(),
-        "PZ3F" => "Zone 3 filtered".into(),
-        "PZ3G" => "Zone 3 average".into(),
-        "PZ3T" => "Zone 3 throttle".into(),
-        "PZ4E" => "Zone 4 target".into(),
-        "PZ4F" => "Zone 4 filtered".into(),
-        "PZ4G" => "Zone 4 average".into(),
-        "PZ4T" => "Zone 4 throttle".into(),
+        // Power zones: 0 heatpipe, 1 CPU, 2 the dGPU rail on Macs with a dGPU
+        // (something else without one). E target, F filtered, G short average.
+        "PZ0E" => "Heatpipe average target".into(),
+        "PZ0F" => "Heatpipe filtered".into(),
+        "PZ0G" => "Heatpipe average".into(),
+        "PZ0T" => "Heatpipe throttle".into(),
+        "PZ1E" => "CPU target".into(),
+        "PZ1F" => "CPU filtered".into(),
+        "PZ1G" => "CPU average".into(),
+        "PZ1T" => "CPU throttle".into(),
+        "PZ2E" => "dGPU target".into(),
+        "PZ2F" => "dGPU filtered".into(),
+        "PZ2G" => "dGPU average".into(),
+        "PZ2T" => "dGPU throttle".into(),
+        // Zones 3 and 4 are battery discharge zones, ~0 on AC. Zone 4 is the
+        // total battery power (slow filtered), zone 3 a small load-scaled rail.
+        "PZ3E" => "Batt aux target".into(),
+        "PZ3F" => "Batt aux filtered".into(),
+        "PZ3G" => "Batt aux average".into(),
+        "PZ3T" => "Batt aux throttle".into(),
+        "PZ4E" => "Battery target".into(),
+        "PZ4F" => "Battery filtered".into(),
+        "PZ4G" => "Battery average".into(),
+        "PZ4T" => "Battery throttle".into(),
         "PZAP" => "Power zone AP".into(),
         "PZBL" => "Power zone backlight".into(),
         "PZHD" => "Power zone storage".into(),
@@ -1461,10 +1465,10 @@ mod tests {
         assert_eq!(power_label("PAPC"), "WiFi");
         assert_eq!(power_label("PG0C"), "GPU");
         assert_eq!(power_label("PLDC"), "LCD panel");
-        assert_eq!(power_label("PZ4G"), "Zone 4 average");
+        assert_eq!(power_label("PZ4G"), "Battery average");
         assert_eq!(power_label("PD0R"), "DC-In MLB S0 rail");
         assert_eq!(power_label("PG0R"), "GPU 0 rail");
-        assert_eq!(power_label("PZ0G"), "Zone 0 average");
+        assert_eq!(power_label("PZ0G"), "Heatpipe average");
         assert_eq!(power_label("PDTR"), "DC-In total");
         assert_eq!(power_label("PSTR"), "System total (1 s delayed)");
         assert_eq!(power_label("PA8C"), "A8 load-side rail");
