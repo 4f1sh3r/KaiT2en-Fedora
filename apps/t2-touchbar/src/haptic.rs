@@ -19,12 +19,13 @@ const RELEASE_GAP: Duration = Duration::from_millis(80);
 /// release back until it is due without stalling touch handling.
 pub struct Haptic {
     worker: Option<Sender<(&'static [u8], Instant)>>,
+    touch_up_enabled: bool,
     last: Option<Instant>,
     last_press: Option<Instant>,
 }
 
 impl Haptic {
-    pub fn open(enabled: bool) -> Self {
+    pub fn open(enabled: bool, touch_up_enabled: bool) -> Self {
         let file = enabled
             .then(|| OpenOptions::new().write(true).open(Path::new(PLAY)).ok())
             .flatten();
@@ -34,6 +35,7 @@ impl Haptic {
         let worker = file.and_then(|file| spawn(file).ok());
         Self {
             worker,
+            touch_up_enabled,
             last: None,
             last_press: None,
         }
@@ -61,6 +63,9 @@ impl Haptic {
     /// A key coming back up: the firm click, never sooner than
     /// `RELEASE_GAP` after the press.
     pub fn key_release(&mut self) {
+        if !self.touch_up_enabled {
+            return;
+        }
         let due = self
             .last_press
             .take()

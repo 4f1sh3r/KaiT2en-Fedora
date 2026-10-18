@@ -68,6 +68,8 @@ track can be skipped without waking the bar. `show_track_changes = false`
 turns this off.
 
 Accepted key presses use `t2_trackpad_actuator` to give a bit of haptic feedback.
+Set `haptic_touch_up = false` in the Touch Bar config to actuate only on
+touch-down; `haptic_feedback = false` disables haptic feedback entirely.
 
 The panel itself only has two brightness steps. The key glyphs are therefore
 dimmed in software to follow the keyboard backlight, so the bar and the keys
