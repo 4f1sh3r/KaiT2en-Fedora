@@ -13,7 +13,7 @@ use crate::{
 };
 
 const APP_ID: &str = "org.t2zonepower.gtk";
-const APP_VERSION: &str = "0.01";
+const APP_VERSION: &str = "0.02";
 const HISTORY_CAPACITY: usize = 90;
 
 fn kait2en_brand() -> DrawingArea {
@@ -125,19 +125,22 @@ impl Sample {
         }
     }
 
+    // The "Applied limits" panel shows the share that is taken away, so an
+    // untouched rail reads 0 and a hard cap reads high, like the forced idle
+    // share. Step 0 restores the cap to the maximum, which maps to 0 percent.
     fn cpu_limit_percent(&self) -> Option<f64> {
         let applied = self.applied;
-        Some(f64::from(applied.cpu_cap_mhz?) * 100.0 / f64::from(applied.cpu_max_mhz?))
+        Some(f64::from(applied.cpu_max_mhz?.saturating_sub(applied.cpu_cap_mhz?)) * 100.0 / f64::from(applied.cpu_max_mhz?))
     }
 
     fn igpu_limit_percent(&self) -> Option<f64> {
         let applied = self.applied;
-        Some(f64::from(applied.igpu_cap_mhz?) * 100.0 / f64::from(applied.igpu_max_mhz?))
+        Some(f64::from(applied.igpu_max_mhz?.saturating_sub(applied.igpu_cap_mhz?)) * 100.0 / f64::from(applied.igpu_max_mhz?))
     }
 
     fn dgpu_limit_percent(&self) -> Option<f64> {
         let applied = self.applied;
-        Some(f64::from(applied.dgpu_cap_w?) * 100.0 / f64::from(applied.dgpu_tdp_w?))
+        Some(f64::from(applied.dgpu_tdp_w?.saturating_sub(applied.dgpu_cap_w?)) * 100.0 / f64::from(applied.dgpu_tdp_w?))
     }
 }
 
