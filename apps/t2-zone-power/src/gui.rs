@@ -13,7 +13,7 @@ use crate::{
 };
 
 const APP_ID: &str = "org.t2zonepower.gtk";
-const APP_VERSION: &str = "0.01";
+const APP_VERSION: &str = "0.03";
 const HISTORY_CAPACITY: usize = 90;
 
 fn kait2en_brand() -> DrawingArea {
@@ -90,6 +90,10 @@ struct Sample {
     gpu_w: Option<f64>,
     gpu_filtered_w: Option<f64>,
     gpu_target_w: Option<f64>,
+    zone3_filtered_w: Option<f64>,
+    zone3_target_w: Option<f64>,
+    zone4_filtered_w: Option<f64>,
+    zone4_target_w: Option<f64>,
     heatpipe_throttle: Option<f64>,
     cpu_throttle: Option<f64>,
     gpu_throttle: Option<f64>,
@@ -114,6 +118,10 @@ impl Sample {
             gpu_w: sensors.micro("PZ2G"),
             gpu_filtered_w: sensors.micro("PZ2F"),
             gpu_target_w: sensors.micro("PZ2E"),
+            zone3_filtered_w: sensors.micro("PZ3F"),
+            zone3_target_w: sensors.micro("PZ3E"),
+            zone4_filtered_w: sensors.micro("PZ4F"),
+            zone4_target_w: sensors.micro("PZ4E"),
             heatpipe_throttle: sensors.micro("PZ0T"),
             cpu_throttle: sensors.micro("PZ1T"),
             gpu_throttle: sensors.micro("PZ2T"),
@@ -125,19 +133,22 @@ impl Sample {
         }
     }
 
+    // The "Applied limits" panel shows the share that is taken away, so an
+    // untouched rail reads 0 and a hard cap reads high, like the forced idle
+    // share. Step 0 restores the cap to the maximum, which maps to 0 percent.
     fn cpu_limit_percent(&self) -> Option<f64> {
         let applied = self.applied;
-        Some(f64::from(applied.cpu_cap_mhz?) * 100.0 / f64::from(applied.cpu_max_mhz?))
+        Some(f64::from(applied.cpu_max_mhz?.saturating_sub(applied.cpu_cap_mhz?)) * 100.0 / f64::from(applied.cpu_max_mhz?))
     }
 
     fn igpu_limit_percent(&self) -> Option<f64> {
         let applied = self.applied;
-        Some(f64::from(applied.igpu_cap_mhz?) * 100.0 / f64::from(applied.igpu_max_mhz?))
+        Some(f64::from(applied.igpu_max_mhz?.saturating_sub(applied.igpu_cap_mhz?)) * 100.0 / f64::from(applied.igpu_max_mhz?))
     }
 
     fn dgpu_limit_percent(&self) -> Option<f64> {
         let applied = self.applied;
-        Some(f64::from(applied.dgpu_cap_w?) * 100.0 / f64::from(applied.dgpu_tdp_w?))
+        Some(f64::from(applied.dgpu_tdp_w?.saturating_sub(applied.dgpu_cap_w?)) * 100.0 / f64::from(applied.dgpu_tdp_w?))
     }
 }
 
@@ -173,15 +184,30 @@ impl AppModel {
     }
 }
 
+/// A labelled bar meter: the drawn bar and the numeric caption beside it
+struct MeterRow {
+    bar: DrawingArea,
+    value: Label,
+}
+
+/// How a bar draws: fill is the length from 0 to 1, severity drives the colour
+/// from green when healthy to red when limited
+#[derive(Clone, Copy)]
+struct Meter {
+    fill: f64,
+    severity: f64,
+}
+
 struct UiRefs {
-    heatpipe: Label,
-    cpu_zone: Label,
-    gpu_zone: Label,
-    fin_stack: Label,
-    cpu_step: Label,
-    dgpu_step: Label,
-    idle_step: Label,
-    igpu_step: Label,
+    heatpipe: MeterRow,
+    cpu_zone: MeterRow,
+    gpu_zone: MeterRow,
+    zone3: MeterRow,
+    zone4: MeterRow,
+    cpu_step: MeterRow,
+    igpu_step: MeterRow,
+    dgpu_step: MeterRow,
+    idle_step: MeterRow,
     power_graph: DrawingArea,
     throttle_graph: DrawingArea,
     limit_graph: DrawingArea,
@@ -207,7 +233,7 @@ fn build_ui(app: &Application) {
         .application(app)
         .title("T2 Zone Power")
         .default_width(480)
-        .default_height(720)
+        .default_height(880)
         .build();
     window.set_resizable(true);
 
@@ -225,23 +251,25 @@ fn build_ui(app: &Application) {
     header.pack_start(&brand);
     window.set_titlebar(Some(&header));
 
-    let summary = Grid::builder()
-        .column_spacing(12)
-        .row_spacing(4)
-        .column_homogeneous(true)
-        .hexpand(true)
-        .build();
-    attach_pair_at(&summary, 0, 0, "Heatpipe", &ui.heatpipe);
-    attach_pair_at(&summary, 2, 0, "CPU zone", &ui.cpu_zone);
     // Zone 2 follows the dGPU rail on Macs with a dGPU, on others it is something else
     let (zone2, zone2_key) = if has_dgpu() { ("dGPU", "dGPU zone") } else { ("Zone 2", "Zone 2") };
-    attach_pair_at(&summary, 0, 1, zone2_key, &ui.gpu_zone);
-    attach_pair_at(&summary, 2, 1, "Fin stack", &ui.fin_stack);
-    attach_pair_at(&summary, 0, 2, "CPU step", &ui.cpu_step);
-    attach_pair_at(&summary, 2, 2, "dGPU step", &ui.dgpu_step);
-    attach_pair_at(&summary, 0, 3, "Idle step", &ui.idle_step);
-    attach_pair_at(&summary, 2, 3, "iGPU step", &ui.igpu_step);
-    root.append(&summary);
+
+    root.append(&section_title("Zones"));
+    let zones = meter_grid();
+    attach_meter_row(&zones, 0, "Heatpipe", &ui.heatpipe);
+    attach_meter_row(&zones, 1, "CPU zone", &ui.cpu_zone);
+    attach_meter_row(&zones, 2, zone2_key, &ui.gpu_zone);
+    attach_meter_row(&zones, 3, "Batt aux", &ui.zone3);
+    attach_meter_row(&zones, 4, "Battery", &ui.zone4);
+    root.append(&zones);
+
+    root.append(&section_title("Control"));
+    let control = meter_grid();
+    attach_meter_row(&control, 0, "CPU clock", &ui.cpu_step);
+    attach_meter_row(&control, 1, "iGPU clock", &ui.igpu_step);
+    attach_meter_row(&control, 2, "dGPU power", &ui.dgpu_step);
+    attach_meter_row(&control, 3, "Forced idle", &ui.idle_step);
+    root.append(&control);
 
     let zone_legend = format!("Heatpipe  •  CPU  •  {zone2}");
     root.append(&panel("Zone power", &ui.power_graph, &zone_legend));
@@ -269,6 +297,7 @@ fn build_ui(app: &Application) {
     window.set_child(Some(&root));
     watch_theme_changes(&css_provider, &ui);
     connect_drawings(&model, &ui);
+    connect_meters(&model, &ui);
     sync_ui(&model.borrow(), &ui);
 
     {
@@ -288,13 +317,13 @@ fn build_ui(app: &Application) {
 fn build_widgets() -> UiRefs {
     let make_value = || {
         let label = Label::new(None);
-        label.set_halign(Align::Start);
-        label.set_xalign(0.0);
-        label.set_max_width_chars(18);
-        label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        label.set_halign(Align::End);
+        label.set_xalign(1.0);
+        label.set_width_chars(10);
         label.add_css_class("metric-value");
         label
     };
+    let make_meter = || MeterRow { bar: make_bar(), value: make_value() };
     let make_graph = || {
         let graph = DrawingArea::new();
         graph.set_content_width(248);
@@ -305,19 +334,29 @@ fn build_widgets() -> UiRefs {
     };
 
     UiRefs {
-        heatpipe: make_value(),
-        cpu_zone: make_value(),
-        gpu_zone: make_value(),
-        fin_stack: make_value(),
-        cpu_step: make_value(),
-        dgpu_step: make_value(),
-        idle_step: make_value(),
-        igpu_step: make_value(),
+        heatpipe: make_meter(),
+        cpu_zone: make_meter(),
+        gpu_zone: make_meter(),
+        zone3: make_meter(),
+        zone4: make_meter(),
+        cpu_step: make_meter(),
+        igpu_step: make_meter(),
+        dgpu_step: make_meter(),
+        idle_step: make_meter(),
         power_graph: make_graph(),
         throttle_graph: make_graph(),
         limit_graph: make_graph(),
         temperature_graph: make_graph(),
     }
+}
+
+fn make_bar() -> DrawingArea {
+    let bar = DrawingArea::new();
+    bar.set_content_width(120);
+    bar.set_content_height(14);
+    bar.set_hexpand(true);
+    bar.set_valign(Align::Center);
+    bar
 }
 
 fn connect_drawings(model: &Rc<RefCell<AppModel>>, ui: &Rc<UiRefs>) {
@@ -375,44 +414,101 @@ fn connect_drawings(model: &Rc<RefCell<AppModel>>, ui: &Rc<UiRefs>) {
     }
 }
 
+fn connect_meters(model: &Rc<RefCell<AppModel>>, ui: &Rc<UiRefs>) {
+    bind_meter(&ui.heatpipe.bar, model, |s| zone_meter(s.heatpipe_filtered_w, s.heatpipe_target_w));
+    bind_meter(&ui.cpu_zone.bar, model, |s| zone_meter(s.cpu_filtered_w, s.cpu_target_w));
+    bind_meter(&ui.gpu_zone.bar, model, |s| zone_meter(s.gpu_filtered_w, s.gpu_target_w));
+    bind_meter(&ui.zone3.bar, model, |s| zone_meter(s.zone3_filtered_w, s.zone3_target_w));
+    bind_meter(&ui.zone4.bar, model, |s| zone_meter(s.zone4_filtered_w, s.zone4_target_w));
+    bind_meter(&ui.cpu_step.bar, model, |s| headroom_meter(s.applied.cpu_cap_mhz, s.applied.cpu_max_mhz));
+    bind_meter(&ui.igpu_step.bar, model, |s| headroom_meter(s.applied.igpu_cap_mhz, s.applied.igpu_max_mhz));
+    bind_meter(&ui.dgpu_step.bar, model, |s| headroom_meter(s.applied.dgpu_cap_w, s.applied.dgpu_tdp_w));
+    bind_meter(&ui.idle_step.bar, model, |s| idle_meter(s.applied.idle_percent));
+}
+
+fn bind_meter(bar: &DrawingArea, model: &Rc<RefCell<AppModel>>, meter: impl Fn(&Sample) -> Option<Meter> + 'static) {
+    let model = model.clone();
+    bar.set_draw_func(move |_area, cr, width, height| {
+        let value = meter(&model.borrow().latest());
+        draw_meter(cr, width as f64, height as f64, value);
+    });
+}
+
+/// A zone fills toward its budget, so the bar grows long and red at the limit
+fn zone_meter(actual: Option<f64>, budget: Option<f64>) -> Option<Meter> {
+    let (actual, budget) = (actual?, budget?);
+    if budget <= 0.0 {
+        return None;
+    }
+    let ratio = actual / budget;
+    Some(Meter { fill: ratio, severity: ratio })
+}
+
+/// A controlled rail is full and green at step 0 and shrinks toward red as the
+/// applied cap drops below the maximum
+fn headroom_meter(cap: Option<u32>, max: Option<u32>) -> Option<Meter> {
+    let (cap, max) = (cap?, max?);
+    if max == 0 {
+        return None;
+    }
+    let headroom = f64::from(cap) / f64::from(max);
+    Some(Meter { fill: headroom, severity: 1.0 - headroom })
+}
+
+/// Forced idle has no maximum, the run share is what is left after the idle cut
+fn idle_meter(idle_percent: Option<u32>) -> Option<Meter> {
+    let idle = f64::from(idle_percent?) / 100.0;
+    Some(Meter { fill: 1.0 - idle, severity: idle })
+}
+
 fn sync_ui(model: &AppModel, ui: &UiRefs) {
     let sample = model.latest();
     let applied = sample.applied;
-    ui.heatpipe.set_label(&format_zone(sample.heatpipe_filtered_w, sample.heatpipe_target_w));
-    ui.cpu_zone.set_label(&format_zone(sample.cpu_filtered_w, sample.cpu_target_w));
-    ui.gpu_zone.set_label(&format_zone(sample.gpu_filtered_w, sample.gpu_target_w));
-    ui.fin_stack.set_label(&format_value(sample.fin_temp_c, " C"));
+    set_zone_value(&ui.heatpipe, sample.heatpipe_filtered_w, sample.heatpipe_target_w);
+    set_zone_value(&ui.cpu_zone, sample.cpu_filtered_w, sample.cpu_target_w);
+    set_zone_value(&ui.gpu_zone, sample.gpu_filtered_w, sample.gpu_target_w);
+    set_zone_value(&ui.zone3, sample.zone3_filtered_w, sample.zone3_target_w);
+    set_zone_value(&ui.zone4, sample.zone4_filtered_w, sample.zone4_target_w);
 
     let plimits = sample.plimits.unwrap_or_default();
-    ui.cpu_step.set_label(&format_step(plimits.cpu.step, plimits.cpu.hard, applied.cpu_cap_mhz, " MHz"));
-    ui.dgpu_step.set_label(&format_step(plimits.dgpu.step, plimits.dgpu.hard, applied.dgpu_cap_w, " W"));
-    ui.idle_step.set_label(&format_step(plimits.idle.step, plimits.idle.hard, applied.idle_percent, " %"));
-    ui.igpu_step.set_label(&format_step(plimits.igpu.step, plimits.igpu.hard, applied.igpu_cap_mhz, " MHz"));
+    set_step_value(&ui.cpu_step, applied.cpu_cap_mhz, plimits.cpu.hard, " MHz");
+    set_step_value(&ui.igpu_step, applied.igpu_cap_mhz, plimits.igpu.hard, " MHz");
+    set_step_value(&ui.dgpu_step, applied.dgpu_cap_w, plimits.dgpu.hard, " W");
+    set_step_value(&ui.idle_step, applied.idle_percent, plimits.idle.hard, " %");
 
+    for row in [
+        &ui.heatpipe, &ui.cpu_zone, &ui.gpu_zone, &ui.zone3, &ui.zone4,
+        &ui.cpu_step, &ui.igpu_step, &ui.dgpu_step, &ui.idle_step,
+    ] {
+        row.bar.queue_draw();
+    }
     ui.power_graph.queue_draw();
     ui.throttle_graph.queue_draw();
     ui.limit_graph.queue_draw();
     ui.temperature_graph.queue_draw();
 }
 
-fn format_value(value: Option<f64>, unit: &str) -> String {
-    value.map(|value| format!("{value:.0}{unit}")).unwrap_or_else(|| String::from("unavailable"))
-}
-
-fn format_zone(value: Option<f64>, target: Option<f64>) -> String {
-    match (value, target) {
-        (Some(value), Some(target)) => format!("{value:.0} / {target:.0} W"),
-        (Some(value), None) => format!("{value:.0} W"),
-        _ => String::from("unavailable"),
+fn set_zone_value(row: &MeterRow, actual: Option<f64>, budget: Option<f64>) {
+    row.value.set_label(&match (actual, budget) {
+        (Some(actual), Some(budget)) => format!("{actual:.0} / {budget:.0} W"),
+        (Some(actual), None) => format!("{actual:.0} W"),
+        _ => String::from("—"),
+    });
+    // The zone sits at its limit when the filtered power is above the budget
+    let over = matches!((actual, budget), (Some(actual), Some(budget)) if actual > budget);
+    if over {
+        row.value.add_css_class("over-budget");
+    } else {
+        row.value.remove_css_class("over-budget");
     }
 }
 
-fn format_step(step: u8, hard: bool, applied: Option<u32>, unit: &str) -> String {
+fn set_step_value(row: &MeterRow, applied: Option<u32>, hard: bool, unit: &str) {
     let hard = if hard { "!" } else { "" };
-    match applied {
-        Some(applied) => format!("{step}{hard} → {applied}{unit}"),
-        None => format!("{step}{hard}"),
-    }
+    row.value.set_label(&match applied {
+        Some(applied) => format!("{applied}{unit}{hard}"),
+        None => String::from("—"),
+    });
 }
 
 fn has_dgpu() -> bool {
@@ -438,20 +534,77 @@ fn panel(title: &str, widget: &impl IsA<gtk4::Widget>, legend: &str) -> GtkBox {
     box_
 }
 
-fn attach_pair_at(grid: &Grid, column: i32, row: i32, title: &str, value: &Label) {
-    let key = Label::new(Some(title));
-    key.set_halign(Align::Start);
-    key.set_xalign(0.0);
-    key.add_css_class("metric-key");
-    key.set_hexpand(true);
-    key.set_max_width_chars(12);
-    key.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    key.set_tooltip_text(Some(title));
-    value.set_hexpand(true);
-    value.set_max_width_chars(14);
-    value.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    grid.attach(&key, column, row, 1, 1);
-    grid.attach(value, column + 1, row, 1, 1);
+fn meter_grid() -> Grid {
+    Grid::builder().column_spacing(12).row_spacing(8).hexpand(true).build()
+}
+
+fn section_title(text: &str) -> Label {
+    let label = Label::new(Some(text));
+    label.set_halign(Align::Start);
+    label.add_css_class("panel-title");
+    label
+}
+
+fn row_name(text: &str) -> Label {
+    let label = Label::new(Some(text));
+    label.set_halign(Align::Start);
+    label.set_xalign(0.0);
+    label.set_width_chars(11);
+    label.add_css_class("metric-key");
+    label
+}
+
+/// Name on the left, the hexpanding bar in the middle, the caption on the right
+fn attach_meter_row(grid: &Grid, row: i32, name: &str, cells: &MeterRow) {
+    grid.attach(&row_name(name), 0, row, 1, 1);
+    grid.attach(&cells.bar, 1, row, 1, 1);
+    grid.attach(&cells.value, 2, row, 1, 1);
+}
+
+/// A rounded bar: a muted trough with a filled portion coloured by severity
+fn draw_meter(cr: &cairo::Context, width: f64, height: f64, meter: Option<Meter>) {
+    let palette = current_palette();
+    let radius = height / 2.0;
+    rounded_rect(cr, 0.5, 0.5, width - 1.0, height - 1.0, radius);
+    cr.set_source_rgba(palette.grid.0, palette.grid.1, palette.grid.2, 0.35);
+    let _ = cr.fill();
+
+    let Some(meter) = meter else { return };
+    let fill = meter.fill.clamp(0.0, 1.0) * (width - 1.0);
+    if fill <= 0.0 {
+        return;
+    }
+    rounded_rect(cr, 0.5, 0.5, fill.max(height - 1.0), height - 1.0, radius);
+    set_color(cr, severity_color(meter.severity));
+    let _ = cr.fill();
+}
+
+fn rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    let r = r.min(w / 2.0).min(h / 2.0);
+    cr.new_sub_path();
+    cr.arc(x + w - r, y + r, r, -FRAC_PI_2, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, FRAC_PI_2);
+    cr.arc(x + r, y + h - r, r, FRAC_PI_2, PI);
+    cr.arc(x + r, y + r, r, PI, 3.0 * FRAC_PI_2);
+    cr.close_path();
+}
+
+/// Green while there is headroom, amber midway, red once limited
+fn severity_color(severity: f64) -> (f64, f64, f64) {
+    let good = (0.36, 0.72, 0.40);
+    let warn = (0.92, 0.66, 0.20);
+    let bad = (0.88, 0.28, 0.24);
+    let severity = severity.clamp(0.0, 1.0);
+    if severity < 0.5 {
+        lerp_color(good, warn, severity / 0.5)
+    } else {
+        lerp_color(warn, bad, (severity - 0.5) / 0.5)
+    }
+}
+
+fn lerp_color(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
+    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t)
 }
 
 /// Fills the panel, draws the grid and returns the plot area. Every graph
@@ -669,6 +822,9 @@ headerbar {{
   color: {};
   font-size: 11pt;
   font-weight: 400;
+}}
+.over-budget {{
+  color: @warning_color;
 }}",
         palette.window_bg,
         palette.meta_fg,

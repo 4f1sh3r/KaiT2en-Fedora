@@ -44,6 +44,15 @@ enum t2_actuator_tone_type {
 	T2_ACT_TONE_SAWTOOTH = 3,
 };
 
+/*
+ * MultitouchSupport actuations on macOS 15 (MacBookAir9,1, traced with
+ * DTrace) send plain Gaussian reports such as 01 12 a8 with amplitudes from
+ * 0x09 to 0x26. The actuator advertises ActuatorLimits AmplitudeMax=70.
+ * Probe amplitudes are capped there, so diagnostics stay in the range macOS
+ * uses.
+ */
+#define T2_ACTUATOR_AMP_MAX		70
+
 /* Captured click reports use base amplitudes near 0x1c and 0x2d. */
 static const u8 t2_actuator_click_light[] = {
 	0x01, 0x1c, 0x8f, 0x01, 0x03, 0x00, 0x53, 0x37, 0x02, 0x02, 0x00, 0x18, 0x4d,
@@ -88,17 +97,17 @@ static int t2_actuator_encode_probe(u8 *buf, size_t buf_size)
 		return -ENOSPC;
 
 	buf[0] = (u8)probe_type;
-	buf[1] = (u8)clamp_t(unsigned int, probe_amp, 0, 255);
+	buf[1] = (u8)clamp_t(unsigned int, probe_amp, 0, T2_ACTUATOR_AMP_MAX);
 	buf[2] = (u8)clamp_t(unsigned int, probe_dur, 0, 255);
 
 	buf[3] = (u8)probe_t0_type;
-	buf[4] = (u8)clamp_t(unsigned int, probe_t0_amp, 0, 255);
+	buf[4] = (u8)clamp_t(unsigned int, probe_t0_amp, 0, T2_ACTUATOR_AMP_MAX);
 	buf[5] = (u8)clamp_t(unsigned int, probe_t0_delay, 0, 255);
 	buf[6] = (u8)clamp_t(unsigned int, probe_t0_dur, 0, 255);
 	buf[7] = (u8)clamp_t(unsigned int, probe_t0_param, 0, 255);
 
 	buf[8] = (u8)probe_t1_type;
-	buf[9] = (u8)clamp_t(unsigned int, probe_t1_amp, 0, 255);
+	buf[9] = (u8)clamp_t(unsigned int, probe_t1_amp, 0, T2_ACTUATOR_AMP_MAX);
 	buf[10] = (u8)clamp_t(unsigned int, probe_t1_delay, 0, 255);
 	buf[11] = (u8)clamp_t(unsigned int, probe_t1_dur, 0, 255);
 	buf[12] = (u8)clamp_t(unsigned int, probe_t1_param, 0, 255);
@@ -163,8 +172,19 @@ static void t2_actuator_fire_work_fn(struct work_struct *work)
 			ret = hid_hw_raw_request(act->hdev, T2_ACTUATOR_WAVEFORM_REPORT_ID,
 						  buf, len + 1, HID_OUTPUT_REPORT,
 						  HID_REQ_SET_REPORT);
+			/*
+			 * The actuator stalls a report while the previous
+			 * waveform still plays. macOS resends it once right
+			 * away, which then succeeds.
+			 */
+			if (ret == -EPIPE)
+				ret = hid_hw_raw_request(act->hdev,
+							 T2_ACTUATOR_WAVEFORM_REPORT_ID,
+							 buf, len + 1, HID_OUTPUT_REPORT,
+							 HID_REQ_SET_REPORT);
 			if (ret < 0)
-				hid_warn(act->hdev, "actuator report failed: %d\n", ret);
+				hid_warn_ratelimited(act->hdev,
+						     "actuator report failed: %d\n", ret);
 		}
 	}
 	mutex_unlock(&t2_actuator_lock);

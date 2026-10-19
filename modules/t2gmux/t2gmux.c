@@ -175,6 +175,23 @@ static int gmux_collect_bridges(struct apple_gmux_data *gmux_data,
 	return count;
 }
 
+/*
+ * PWRD cuts the rail below the root port, which takes the switch ports above
+ * the GPU with it. Tell the PCI core, so it leaves their config space alone
+ * while they are off, as it does for any bridge in D3cold.
+ */
+static void gmux_set_bridges_state(struct apple_gmux_data *gmux_data,
+				   pci_power_t state)
+{
+	struct pci_dev *bridges[GMUX_DGPU_MAX_BRIDGES];
+	int count = gmux_collect_bridges(gmux_data, bridges);
+	int i;
+
+	for (i = 0; i < count; i++)
+		if (pci_pcie_type(bridges[i]) != PCI_EXP_TYPE_ROOT_PORT)
+			bridges[i]->current_state = state;
+}
+
 /* The GPU's HDA function, caller must pci_dev_put() it. */
 static struct pci_dev *gmux_get_dgpu_hda(struct apple_gmux_data *gmux_data)
 {
@@ -320,6 +337,7 @@ static int gmux_restore_dgpu_state(struct apple_gmux_data *gmux_data)
 
 	for (i = count - 1; i >= 0; i--)
 		pci_restore_state(bridges[i]);
+	gmux_set_bridges_state(gmux_data, PCI_D0);
 	pr_debug("power up: %d bridges restored\n", count);
 
 	for (ms = 0; ms < GMUX_DGPU_CFG_WAIT_MS; ms++) {
@@ -922,10 +940,13 @@ static int __gmux_set_discrete_state(struct apple_gmux_data *gmux_data,
 			if (ret)
 				goto out_unlock;
 
+			gmux_set_bridges_state(gmux_data, PCI_D3cold);
 			pr_debug("power down: PWRD(1)\n");
 			ret = gmux_call_pwrd(gmux_data, true);
-			if (ret)
+			if (ret) {
+				gmux_set_bridges_state(gmux_data, PCI_D0);
 				goto out_unlock;
+			}
 		}
 
 		pr_debug("power down: port 1\n");

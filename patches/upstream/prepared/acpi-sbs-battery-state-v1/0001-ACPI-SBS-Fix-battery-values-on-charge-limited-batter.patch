@@ -1,0 +1,121 @@
+From ca97ba4c9f28bf32968fb799a5d4ecd3aed9e7b0 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Wed, 14 Oct 2026 14:47:33 +0200
+Subject: [PATCH] ACPI: SBS: Fix battery values on charge-limited batteries
+To: "Rafael J. Wysocki" <rafael@kernel.org>,
+    linux-acpi@vger.kernel.org
+Cc: Len Brown <lenb@kernel.org>,
+    Sebastian Reichel <sre@kernel.org>,
+    linux-pm@vger.kernel.org,
+    linux-kernel@vger.kernel.org
+
+T2 Macs expose their battery through the ACPI Smart Battery System.
+With charge limits set from user space, several values reported by sbs
+no longer match the battery:
+
+- FullChargeCapacity and CycleCount are read only when the battery is
+  added. The gauge updates both at run time, so charge_full and
+  cycle_count keep their boot values. User space derives the state of
+  charge from charge_now and charge_full. On a MacBookPro15,1,
+  FullChargeCapacity changed from 6588 mAh at boot to 6467 mAh after a
+  full charge, which shifted the percentage by two points. Read both
+  with the other dynamic values.
+
+- capacity is AbsoluteStateOfCharge, which the Smart Battery
+  specification defines relative to DesignCapacity. The power supply
+  ABI defines capacity relative to a full battery, which is
+  RelativeStateOfCharge. A worn battery reported 87 percent at a
+  relative state of charge of 98 percent.
+
+- A battery that neither charges nor discharges is reported as full,
+  also when a charge limit holds it below full. Report full only when
+  BatteryStatus has FULLY_CHARGED set, which the driver already reads,
+  and not charging otherwise. BatteryStatus reads 0x00c0 while the
+  limit holds the battery at 90 percent, and the bit is set once the
+  battery is fully charged.
+
+- While a charge limit holds the battery on AC, the gauge reports
+  discharge currents of 25 to 80 mA from time to time, and user space
+  shows a remaining time of several days. Treat discharge currents
+  below 100 mA as idle while the system is supplied. A real discharge
+  on AC draws several amperes and is still reported as discharging.
+
+Tested on a MacBookPro15,1 and a MacBookAir9,1, each with a charge
+limit of 80 percent and with a full charge.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ drivers/acpi/sbs.c | 25 ++++++++++++++++++++-----
+ 1 file changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/acpi/sbs.c b/drivers/acpi/sbs.c
+index 86b7c7975..6f929e559 100644
+--- a/drivers/acpi/sbs.c
++++ b/drivers/acpi/sbs.c
+@@ -44,6 +44,12 @@ MODULE_PARM_DESC(cache_time, "cache time in milliseconds");
+ #define MAX_SBS_BAT			4
+ #define ACPI_SBS_BLOCK_MAX		32
+ 
++/* BatteryStatus */
++#define ACPI_SBS_BATTERY_FULLY_CHARGED	BIT(5)
++
++/* Discharge current the gauge reports on AC while a charge limit holds it */
++#define ACPI_SBS_AC_IDLE_CURRENT	100	/* mA */
++
+ static const struct acpi_device_id sbs_device_ids[] = {
+ 	{"ACPI0002", 0},
+ 	{"", 0},
+@@ -126,6 +132,13 @@ static inline int acpi_battery_scale(struct acpi_battery *battery)
+ 	    acpi_battery_ipscale(battery);
+ }
+ 
++static bool acpi_battery_idle_on_ac(struct acpi_battery *battery)
++{
++	return abs(battery->rate_now) * acpi_battery_ipscale(battery) <
++		ACPI_SBS_AC_IDLE_CURRENT &&
++	       power_supply_is_system_supplied() > 0;
++}
++
+ static int sbs_get_ac_property(struct power_supply *psy,
+ 			       enum power_supply_property psp,
+ 			       union power_supply_propval *val)
+@@ -166,12 +179,14 @@ static int acpi_sbs_battery_get_property(struct power_supply *psy,
+ 	acpi_battery_get_state(battery);
+ 	switch (psp) {
+ 	case POWER_SUPPLY_PROP_STATUS:
+-		if (battery->rate_now < 0)
++		if (battery->rate_now < 0 && !acpi_battery_idle_on_ac(battery))
+ 			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+ 		else if (battery->rate_now > 0)
+ 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
+-		else
++		else if (battery->state & ACPI_SBS_BATTERY_FULLY_CHARGED)
+ 			val->intval = POWER_SUPPLY_STATUS_FULL;
++		else
++			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+ 		break;
+ 	case POWER_SUPPLY_PROP_PRESENT:
+ 		val->intval = battery->present;
+@@ -301,8 +316,6 @@ struct acpi_battery_reader {
+ static struct acpi_battery_reader info_readers[] = {
+ 	{0x01, SMBUS_READ_WORD, offsetof(struct acpi_battery, alarm_capacity)},
+ 	{0x03, SMBUS_READ_WORD, offsetof(struct acpi_battery, mode)},
+-	{0x10, SMBUS_READ_WORD, offsetof(struct acpi_battery, full_charge_capacity)},
+-	{0x17, SMBUS_READ_WORD, offsetof(struct acpi_battery, cycle_count)},
+ 	{0x18, SMBUS_READ_WORD, offsetof(struct acpi_battery, design_capacity)},
+ 	{0x19, SMBUS_READ_WORD, offsetof(struct acpi_battery, design_voltage)},
+ 	{0x1a, SMBUS_READ_WORD, offsetof(struct acpi_battery, spec)},
+@@ -318,7 +331,9 @@ static struct acpi_battery_reader state_readers[] = {
+ 	{0x0a, SMBUS_READ_WORD, offsetof(struct acpi_battery, rate_now)},
+ 	{0x0b, SMBUS_READ_WORD, offsetof(struct acpi_battery, rate_avg)},
+ 	{0x0f, SMBUS_READ_WORD, offsetof(struct acpi_battery, capacity_now)},
+-	{0x0e, SMBUS_READ_WORD, offsetof(struct acpi_battery, state_of_charge)},
++	{0x10, SMBUS_READ_WORD, offsetof(struct acpi_battery, full_charge_capacity)},
++	{0x0d, SMBUS_READ_WORD, offsetof(struct acpi_battery, state_of_charge)},
++	{0x17, SMBUS_READ_WORD, offsetof(struct acpi_battery, cycle_count)},
+ 	{0x16, SMBUS_READ_WORD, offsetof(struct acpi_battery, state)},
+ };
+ 
+-- 
+2.56.0
+

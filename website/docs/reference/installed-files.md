@@ -57,7 +57,8 @@ DKMS build state before a kernel installation is retried.
 On the MacBookPro15,1, MacBookPro16,1, MacBookPro16,4, iMac20,1 and iMac20,2,
 the installer also builds the AMDGPU module with the patches from
 `patches/runtime/gpu-runtime-pm` (hybrid runtime PM, 5K iMac panel support,
-the Navi 14 memory clock cap and the Apple Navi power limit range)
+the Navi 14 memory clock cap, the Apple Navi power limit range and a revert
+of the 7.2 ASPM host-link check)
 and installs it for the running kernel at:
 
 ```text
@@ -108,7 +109,9 @@ module_blacklist=acpi_tad,applesmc,macsmc,hid_apple,hid_appletb_bl,hid_appletb_k
 ```
 
 On iMacs and the iMac Pro, `pcie_aspm=force` is left out, because their
-Ethernet controllers do not work with forced ASPM.
+Ethernet controllers do not work with forced ASPM. On the MacBookPro16,1,
+`amdgpu.aspm=1`, `pcie_aspm=force` and `pcie_aspm.policy=powersave` are left
+out while its Navi 14 drops off the PCIe bus under load.
 
 On every T2 Mac, the installer enables HuC firmware loading for the Intel GPU:
 
@@ -290,6 +293,16 @@ captured reports used by the precision trackpad driver. Callers should trigger
 individual application events and rate-limit repeated playback themselves.
 The parameter is write-only and requires the module to be loaded and bound to
 the T2 actuator interface.
+
+Each report takes about 6 ms over the T2 USB transport. While a waveform still
+plays, the actuator stalls the next report. The module then resends it once,
+as macOS does, so a stall only shows up in the kernel log when the retry
+fails as well. Shorter waveforms allow denser sequences.
+
+For diagnostics, root can compose a waveform through the `probe_*` parameters
+and play it with `test_fire=9`. Every amplitude is capped at 70, the
+`AmplitudeMax` the actuator reports to macOS. macOS itself sends plain
+Gaussian clicks with amplitudes between 9 and 38.
 
 T2 Power Tune reads package C-state residency and exposes PCIe ASPM, runtime
 power management, LTR ignore, and additional power tunables. The optional

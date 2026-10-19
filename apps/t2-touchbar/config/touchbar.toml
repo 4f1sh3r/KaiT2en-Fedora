@@ -9,6 +9,8 @@ fn_long_press_ms = 600
 # clamped by the daemon.
 active_brightness = 128
 haptic_feedback = true
+# Set false to play the key-press waveform only, without a touch-up waveform.
+haptic_touch_up = true
 
 
 # Glyph color as #rrggbb. The default is a cool white that matches the slightly
