@@ -83,6 +83,18 @@ and decided case by case.
   onto v0.05 once the approach has proven itself; until then upstream's
   fan-control changes do not reach this machine.
 
+### t2-touchbar finger-count swipe switching
+
+- Source: `touchbar/finger-count-switch` (`89cd18d`)
+- Touches: `apps/t2-touchbar`
+- What it does: a dark-bar swipe re-reads the finger count mid-gesture —
+  a third finger always upgrades volume to brightness, even after volume
+  steps have fired, and lifting back to two fingers downgrades to volume;
+  each switch re-anchors the swipe on the new centroid.
+- Status: Alex confirmed the feel on hardware (2026-10-23), installed via
+  `apps/t2-touchbar/install.sh`. Topic branch pushed to `origin`; the PR
+  is opened by Alex. Design history: `local/learnings/modules/touchbar-gestures.md`.
+
 ## Landed upstream
 
 - t2-touchbar three-finger brightness swipe — merged into `main` via PR #88
