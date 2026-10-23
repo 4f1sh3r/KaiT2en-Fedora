@@ -518,9 +518,9 @@ impl Runtime {
         if self.touch_id == TouchIdState::Idle
             && self
                 .swipe
-                .is_some_and(|swipe| swipe.kind == SwipeKind::Volume && !swipe.fired())
+                .is_some_and(|swipe| swipe.kind != SwipeKind::Mode)
         {
-            return self.start_brightness_swipe(slot);
+            return self.join_dark_swipe(slot);
         }
         if self.touch_id != TouchIdState::Idle {
             let esc_index = self
@@ -616,9 +616,15 @@ impl Runtime {
         Ok(())
     }
 
-    /// A third finger joining a dark-bar swipe before any volume step turns
-    /// it into a brightness swipe.
-    fn start_brightness_swipe(&mut self, slot: u32) -> Result<()> {
+    /// Three fingers on the dark bar always mean brightness.
+    fn join_dark_swipe(&mut self, slot: u32) -> Result<()> {
+        if self
+            .swipe
+            .is_some_and(|swipe| swipe.kind == SwipeKind::Brightness)
+        {
+            self.contacts.insert(slot, Contact::Cancelled);
+            return Ok(());
+        }
         self.contacts.insert(slot, Contact::Swipe);
         self.swipe = Some(Swipe::new(
             SwipeKind::Brightness,
@@ -1537,6 +1543,20 @@ impl Runtime {
                 self.track_frame(now)?;
             }
             Some(Contact::Swipe) => {
+                let swipe_fingers = self
+                    .contacts
+                    .values()
+                    .filter(|contact| matches!(contact, Contact::Swipe))
+                    .count();
+                if swipe_fingers >= 2 {
+                    // Lifting to two fingers drops the swipe back to volume.
+                    self.swipe = Some(Swipe::new(
+                        SwipeKind::Volume,
+                        self.swipe_centroid(),
+                        f64::from(self.config.volume_swipe_step_px),
+                    ));
+                    return self.begin_level(LevelKind::Volume);
+                }
                 // The centroid would jump to the remaining finger, so the
                 // first lift ends the swipe.
                 self.swipe = None;
