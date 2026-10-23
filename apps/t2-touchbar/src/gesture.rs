@@ -47,10 +47,6 @@ impl Swipe {
         self.anchor += f64::from(steps) * self.step;
         steps
     }
-
-    pub fn fired(&self) -> bool {
-        self.fired
-    }
 }
 
 #[cfg(test)]
@@ -65,15 +61,6 @@ mod tests {
         assert_eq!(swipe.advance(1125.0), 2);
         assert_eq!(swipe.advance(1080.0), -1);
         assert_eq!(swipe.advance(1040.0), -1);
-    }
-
-    #[test]
-    fn swipe_reports_whether_it_has_fired() {
-        let mut swipe = Swipe::new(SwipeKind::Volume, 1000.0, 40.0);
-        swipe.advance(1030.0);
-        assert!(!swipe.fired());
-        swipe.advance(960.0);
-        assert!(swipe.fired());
     }
 
     #[test]
