@@ -69,5 +69,10 @@ Build a target from a clean Git checkout:
 ```
 
 A Fedora release consists of one `fedora-N.conf` target, one
-`fedora-N-editions.tsv` catalog, and the target-specific input compatibility
-patch. CI checks every catalog entry against Fedora's official `releases.json`.
+`fedora-N-editions.tsv` catalog, and an optional target-specific input
+compatibility patch. Fedora 44 needs the HID SPI-type and `kmalloc_obj` API
+adaptations; Fedora 45 builds the modules without patches. Input drivers are
+preloaded explicitly before the T2 USB controller enumerates devices, both in
+the live system and during the first installed boots. CI checks every catalog
+entry against Fedora's official `releases.json`, and verifies that the built
+precision trackpad module matches every supported T2 trackpad USB ID.

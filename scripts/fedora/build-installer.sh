@@ -53,7 +53,7 @@ required_variables=(
 	TARGET_ID FEDORA_RELEASE ARCH DEFAULT_EDITION EDITIONS_FILE
 	ISO_KERNEL_PATH ISO_INITRD_PATH ISO_KERNEL_RELEASE ANACONDA_VERSION
 	KERNEL_DEVEL_URL KERNEL_DEVEL_SHA256 FEDORA_METALINK FEDORA_ARCHIVE_BASEURL
-	INPUT_COMPAT_PATCH CONTAINER_IMAGE
+	CONTAINER_IMAGE
 	ARTIFACT_BASENAME
 )
 for variable in "${required_variables[@]}"; do
@@ -79,20 +79,25 @@ git ls-files --error-unmatch "$EDITIONS_REL" >/dev/null 2>&1 || {
 	printf 'edition catalog must be tracked by Git: %s\n' "$EDITIONS_REL" >&2
 	exit 1
 }
-[[ "$INPUT_COMPAT_PATCH" =~ ^[a-z0-9][a-z0-9._-]*\.patch$ ]] || {
-	printf 'invalid INPUT_COMPAT_PATCH in %s: %s\n' \
-		"$TARGET_REL" "$INPUT_COMPAT_PATCH" >&2
-	exit 1
-}
-PATCH_REL="auto-installer/patches/$INPUT_COMPAT_PATCH"
-[[ -f "$REPO_ROOT/$PATCH_REL" ]] || {
-	printf 'input compatibility patch is missing: %s\n' "$PATCH_REL" >&2
-	exit 1
-}
-git ls-files --error-unmatch "$PATCH_REL" >/dev/null 2>&1 || {
-	printf 'input compatibility patch must be tracked by Git: %s\n' "$PATCH_REL" >&2
-	exit 1
-}
+# Only older ISO kernels need source compatibility fixes. An empty value
+# selects unmodified modules; it must never become the patches directory.
+INPUT_COMPAT_PATCH=${INPUT_COMPAT_PATCH:-}
+if [[ -n "$INPUT_COMPAT_PATCH" ]]; then
+	[[ "$INPUT_COMPAT_PATCH" =~ ^[a-z0-9][a-z0-9._-]*\.patch$ ]] || {
+		printf 'invalid INPUT_COMPAT_PATCH in %s: %s\n' \
+			"$TARGET_REL" "$INPUT_COMPAT_PATCH" >&2
+		exit 1
+	}
+	PATCH_REL="auto-installer/patches/$INPUT_COMPAT_PATCH"
+	[[ -f "$REPO_ROOT/$PATCH_REL" ]] || {
+		printf 'input compatibility patch is missing: %s\n' "$PATCH_REL" >&2
+		exit 1
+	}
+	git ls-files --error-unmatch "$PATCH_REL" >/dev/null 2>&1 || {
+		printf 'input compatibility patch must be tracked by Git: %s\n' "$PATCH_REL" >&2
+		exit 1
+	}
+fi
 
 for command in curl git gzip sha256sum tar; do
 	command -v "$command" >/dev/null 2>&1 || {

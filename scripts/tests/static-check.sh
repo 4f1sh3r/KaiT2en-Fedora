@@ -37,6 +37,7 @@ shell_files=(
 	scripts/copr/make-kernel-srpm.sh
 	scripts/tests/edition-catalog.sh
 	scripts/tests/iso-download.sh
+	scripts/tests/installer-input.sh
 	scripts/tests/install-launcher.sh
 	scripts/tests/static-check.sh
 	scripts/tests/prepare-install.sh
@@ -276,14 +277,19 @@ grep -Fq 'uses: actions/download-artifact@v7' .github/workflows/installer.yml
 ! grep -InE 'uses: actions/(checkout|upload-artifact|download-artifact)@v4' \
 	.github/workflows/installer.yml
 
-patch_name=$(
-	# shellcheck disable=SC1091
-	source auto-installer/targets/fedora-44.conf
-	printf '%s\n' "$INPUT_COMPAT_PATCH"
-)
-[[ -f "auto-installer/patches/$patch_name" ]]
+for target_file in auto-installer/targets/fedora-*.conf; do
+	patch_name=$(
+		# shellcheck disable=SC1090
+		source "$target_file"
+		printf '%s\n' "${INPUT_COMPAT_PATCH:-}"
+	)
+	if [[ -n "$patch_name" ]]; then
+		[[ -f "auto-installer/patches/$patch_name" ]]
+		git apply --unidiff-zero --check "auto-installer/patches/$patch_name"
+	fi
+done
 
-git apply --unidiff-zero --check "auto-installer/patches/$patch_name"
+bash scripts/tests/installer-input.sh
 
 bash scripts/tests/wifi-firmware.sh
 bash scripts/tests/bt-firmware.sh

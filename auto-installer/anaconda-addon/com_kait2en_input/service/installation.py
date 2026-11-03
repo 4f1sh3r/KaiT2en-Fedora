@@ -243,7 +243,7 @@ class InstallTransitionDriversTask(Task):
             "dracut",
             [
                 "--force",
-                "--add-drivers",
+                "--force-drivers",
                 " ".join(MODULES),
                 initramfs,
                 KERNEL_RELEASE,

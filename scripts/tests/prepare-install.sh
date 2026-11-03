@@ -83,7 +83,8 @@ cat >"$fake_bin/cpio" <<'EOF'
 #!/usr/bin/env bash
 destination="$PWD/usr/lib/modules/$KAIT2EN_TEST_TARGET/updates/kait2en"
 mkdir -p "$destination"
-for module in t2bce_dma t2hid hid_t2magicmouse t2bce_core t2bce_vhci; do
+for module in t2bce_dma t2hid hid_t2magicmouse t2_trackpad_actuator t2_precision_trackpad t2bce_core t2bce_vhci; do
+	[[ "$module" != "${KAIT2EN_TEST_OMIT_MODULE:-}" ]] || continue
 	touch "$destination/$module.ko"
 done
 EOF
@@ -98,7 +99,7 @@ printf 'dracut %s\n' "$*" >>"$KAIT2EN_TEST_LOG"
 EOF
 cat >"$fake_bin/lsinitrd" <<'EOF'
 #!/usr/bin/env bash
-for module in t2bce_dma t2hid hid_t2magicmouse t2bce_core t2bce_vhci; do
+for module in t2bce_dma t2hid hid_t2magicmouse t2_trackpad_actuator t2_precision_trackpad t2bce_core t2bce_vhci; do
 	printf 'usr/lib/modules/test/updates/%s.ko.xz\n' "$module"
 done
 EOF
@@ -125,6 +126,7 @@ run_prepare() {
 		KAIT2EN_TEST_BLS_PREFIX="${bls_prefix:-/boot}" \
 		KAIT2EN_TEST_LOG="$log" \
 		KAIT2EN_TEST_DRACUT_FAIL="$dracut_fail" \
+		KAIT2EN_TEST_OMIT_MODULE="${KAIT2EN_TEST_OMIT_MODULE:-}" \
 		KAIT2EN_SKIP_BOOTSTRAP=1 \
 		KAIT2EN_TEST_MODE=1 \
 		KAIT2EN_WORK_PARENT="$work" \
@@ -140,7 +142,7 @@ for bls_prefix in /boot /root/boot /@/boot; do
 	grep -Fq "build-input-kmod kernel=$target arguments=3" "$log"
 	# Forced, not merely added: the modules are deleted from the disk below.
 	grep -Fq \
-		'dracut --force --force-drivers t2bce_dma t2hid hid_t2magicmouse t2bce_core t2bce_vhci' \
+		'dracut --force --force-drivers t2bce_dma t2hid hid_t2magicmouse t2_trackpad_actuator t2_precision_trackpad t2bce_core t2bce_vhci' \
 		"$log"
 	grep -Fq 'rpm -e kmod-kait2en-input' "$log"
 	[[ ! -d "$fake_modules/$target/updates/kait2en-transition" ]]
@@ -148,6 +150,16 @@ for bls_prefix in /boot /root/boot /@/boot; do
 	grep -Fxq 'phase=reboot_pending' "$fake_state/state"
 	grep -Fxq "target_kernel=$target" "$fake_state/state"
 done
+
+: >"$log"
+rm -f "$fake_state/state"
+if KAIT2EN_TEST_OMIT_MODULE=t2_precision_trackpad run_prepare 0 "$old" >"$work/missing-module.log" 2>&1; then
+	printf 'installer preparation accepted an RPM without the trackpad driver\n' >&2
+	exit 1
+fi
+grep -Fq 'temporary module is missing: t2_precision_trackpad' "$work/missing-module.log"
+! grep -Fq 'grubby --set-default-index=0' "$log"
+[[ ! -f "$fake_state/state" ]]
 
 : >"$log"
 rm -f "$fake_state/state"
