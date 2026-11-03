@@ -143,6 +143,9 @@ for product in 0278 027A 027B 027C 027D 027E 027F 0280 0340; do
 	grep -Fq "v000005ACp0000$product" <<<"$TRACKPAD_ALIASES"
 done
 
+# Exercise the actual unsigned RPM transaction under Fedora RPM policy.
+bash "$SOURCE_ROOT/scripts/tests/transition-rpm.sh" "$RPM_PATH" "$ISO_KERNEL_RELEASE"
+
 mkdir -p "$LAYOUT/scripts/macos"
 install -m 0644 "$SOURCE_ROOT/LICENSE" "$LAYOUT/LICENSE"
 install -m 0644 \

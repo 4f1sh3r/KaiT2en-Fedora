@@ -76,3 +76,8 @@ preloaded explicitly before the T2 USB controller enumerates devices, both in
 the live system and during the first installed boots. CI checks every catalog
 entry against Fedora's official `releases.json`, and verifies that the built
 precision trackpad module matches every supported T2 trackpad USB ID.
+
+The temporary input RPM is built locally and is unsigned. Its Anaconda
+installation uses `rpm --nosignature` for that package only; dependency and
+payload digest checks remain enabled. Command failures report the failing
+command and its output before any later installation step runs.

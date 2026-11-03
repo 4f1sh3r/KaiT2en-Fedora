@@ -47,6 +47,7 @@ shell_files=(
 	scripts/tests/live-bluetooth.sh
 	scripts/tests/rescue.sh
 	scripts/tests/live-wifi.sh
+	scripts/tests/transition-rpm.sh
 	scripts/tests/terminal-launcher.sh
 	scripts/tests/wifi-firmware.sh
 )

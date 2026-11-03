@@ -52,6 +52,7 @@ done
 # failure path when dracut omits the trackpad. No Anaconda installation needed.
 python3 - "$repo_root" "$work" <<'PY'
 import ast
+import io
 import os
 import pathlib
 import shutil
@@ -79,14 +80,20 @@ for module in modules:
 
 calls = []
 listing = "\n".join(module + ".ko" for module in modules)
+failure = None
 def redirect(command, args, **kwargs):
     calls.append((command, args, kwargs))
+    if command == failure:
+        kwargs["stdout"].write("simulated " + command + " failure")
+        return 42
+    if command == "lsinitrd":
+        kwargs["stdout"].write(listing)
+    return 0
 
-env = dict(constants, os=os, shutil=shutil, Task=object,
+env = dict(constants, io=io, os=os, shutil=shutil, Task=object,
            INSTALLER_ROOT=str(source),
            conf=SimpleNamespace(target=SimpleNamespace(system_root=str(root))),
-           util=SimpleNamespace(execWithRedirect=redirect,
-                                execWithCapture=lambda *a, **kw: listing))
+           util=SimpleNamespace(execWithRedirect=redirect))
 tree = ast.parse((service / "installation.py").read_text())
 cls = next(node for node in tree.body if isinstance(node, ast.ClassDef)
            and node.name == "InstallTransitionDriversTask")
@@ -99,6 +106,21 @@ forced = dracut[dracut.index("--force-drivers") + 1].split()
 for driver in ("t2hid", "t2_trackpad_actuator", "t2_precision_trackpad"):
     assert forced.index(driver) < forced.index("t2bce_core")
 assert not (root / "tmp" / constants["RPM_FILENAME"]).exists()
+rpm_args = next(args for command, args, _ in calls if command == "rpm")
+assert "--nosignature" in rpm_args
+assert "--nodeps" not in rpm_args and "--nodigest" not in rpm_args
+for failure in ("rpm", "depmod", "dracut", "lsinitrd"):
+    calls.clear()
+    try:
+        task.run()
+    except RuntimeError as error:
+        assert "KaiT2en " + failure + " failed (exit 42)" in str(error)
+        assert "simulated " + failure + " failure" in str(error)
+    else:
+        raise AssertionError("Anaconda ignored " + failure + " failure")
+    assert calls[-1][0] == failure
+    assert not (root / "tmp" / constants["RPM_FILENAME"]).exists()
+failure = None
 listing = listing.replace("t2_precision_trackpad.ko", "")
 try:
     task.run()
