@@ -60,7 +60,9 @@ if [[ ${1:-} == --default-kernel ]]; then
 	printf '%s\n' "$KAIT2EN_TEST_OLD_KERNEL"
 elif [[ ${1:-} == --info=ALL ]]; then
 	prefix=$KAIT2EN_TEST_BLS_PREFIX
-	printf 'index=0\nkernel="%s/vmlinuz-%s"\n' "$prefix" "$KAIT2EN_TEST_TARGET"
+	if [[ ${KAIT2EN_TEST_HIDE_TARGET:-0} == 0 ]]; then
+		printf 'index=0\nkernel="%s/vmlinuz-%s"\n' "$prefix" "$KAIT2EN_TEST_TARGET"
+	fi
 	printf 'index=1\nkernel="%s/vmlinuz-%s"\n' "$prefix" "$KAIT2EN_TEST_OLD_RELEASE"
 	printf 'index=2\nkernel="%s/vmlinuz-0-rescue-test"\n' "$prefix"
 else
@@ -127,6 +129,7 @@ run_prepare() {
 		KAIT2EN_TEST_LOG="$log" \
 		KAIT2EN_TEST_DRACUT_FAIL="$dracut_fail" \
 		KAIT2EN_TEST_OMIT_MODULE="${KAIT2EN_TEST_OMIT_MODULE:-}" \
+		KAIT2EN_TEST_HIDE_TARGET="${KAIT2EN_TEST_HIDE_TARGET:-0}" \
 		KAIT2EN_SKIP_BOOTSTRAP=1 \
 		KAIT2EN_TEST_MODE=1 \
 		KAIT2EN_WORK_PARENT="$work" \
@@ -151,6 +154,30 @@ for bls_prefix in /boot /root/boot /@/boot; do
 	grep -Fxq "target_kernel=$target" "$fake_state/state"
 done
 
+# F45's ISO already has a supported kernel. It must still upgrade and
+# prepare the newer kernel before DKMS dependencies can change the default.
+target=7.2.15-300.fc45.x86_64
+old=7.2.11-300.fc45.x86_64
+mkdir -p "$fake_modules/$target"
+touch "$fake_boot/vmlinuz-$old" "$fake_boot/vmlinuz-$target"
+printf 'ID=fedora\nVERSION_ID=45\n' >"$fake_os_release"
+: >"$log"
+rm -f "$fake_state/state"
+run_prepare 0 "$old" >/dev/null
+grep -Fq 'dnf upgrade --refresh -y --setopt=installonly_limit=0' "$log"
+grep -Fq "build-input-kmod kernel=$target arguments=3" "$log"
+grep -Fxq "target_kernel=$target" "$fake_state/state"
+python3 - "$log" "$target" <<'CHECK'
+import pathlib
+import sys
+lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+upgrade = next(i for i, line in enumerate(lines) if line.startswith("dnf upgrade "))
+dependencies = lines.index("install-dependencies " + sys.argv[2])
+build = next(i for i, line in enumerate(lines) if line.startswith("build-input-kmod "))
+assert upgrade < dependencies < build
+assert lines[-1] == "grubby --set-default-index=0"
+CHECK
+
 : >"$log"
 rm -f "$fake_state/state"
 if KAIT2EN_TEST_OMIT_MODULE=t2_precision_trackpad run_prepare 0 "$old" >"$work/missing-module.log" 2>&1; then
@@ -172,6 +199,16 @@ fi
 
 printf 'phase=reboot_pending\ntarget_kernel=%s\n' "$target" >"$fake_state/state"
 touch "$fake_autostart" "$fake_prepare_launcher" "$fake_terminal_launcher"
+: >"$log"
+if KAIT2EN_TEST_HIDE_TARGET=1 run_prepare 0 "$target" --complete >"$work/missing-entry.log" 2>&1; then
+	printf 'installer marked complete without a boot entry for its configured kernel\n' >&2
+	exit 1
+fi
+grep -Fq "no boot loader entry for $target" "$work/missing-entry.log"
+grep -Fxq 'phase=reboot_pending' "$fake_state/state"
+[[ -e "$fake_autostart" && -e "$fake_prepare_launcher" && -d "$fake_transition" ]]
+
+: >"$log"
 run_prepare 0 "$target" --complete >/dev/null
 [[ ! -e "$fake_autostart" ]]
 [[ ! -e "$fake_prepare_launcher" ]]
@@ -180,3 +217,5 @@ run_prepare 0 "$target" --complete >/dev/null
 [[ ! -e "$fake_state/lock" ]]
 grep -Fxq 'phase=complete' "$fake_state/state"
 grep -Fxq "target_kernel=$target" "$fake_state/state"
+
+grep -Fxq 'grubby --set-default-index=0' "$log"

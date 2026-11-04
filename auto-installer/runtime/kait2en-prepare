@@ -181,6 +181,12 @@ if [[ ${1:-} == --complete ]]; then
 	target_kernel=$(state_value target_kernel) || die 'prepared target kernel is missing'
 	[[ $(uname -r) == "$target_kernel" ]] ||
 		die "complete the installation while running $target_kernel"
+	# Dependency transactions may have changed Fedora's default kernel again.
+	# The next boot must use the kernel the regular installer just configured.
+	target_entry=$(boot_entry_index "$target_kernel")
+	[[ -n "$target_entry" ]] || die "no boot loader entry for $target_kernel"
+	grubby --set-default-index="$target_entry" ||
+		die "could not select configured kernel $target_kernel"
 	rm -f "$autostart_file"
 	write_state complete "$target_kernel"
 	remove_phase_one_artifacts
@@ -211,12 +217,10 @@ for command in dnf rpm rpm2cpio cpio grubby dracut lsinitrd depmod sort grep \
 	command -v "$command" >/dev/null 2>&1 || die "missing command: $command"
 done
 
-running_kernel=$(uname -r)
-if [[ "$running_kernel" =~ ^([0-9]+)\. && ${BASH_REMATCH[1]} -ge 7 ]]; then
-	write_state reboot_pending "$running_kernel"
-	printf '[kait2en] Fedora already runs supported kernel %s.\n' "$running_kernel"
-	exit 0
-fi
+# Even a supported ISO kernel can be superseded by the first dependency
+# transaction: DKMS pulls kernel-devel-matched and a newer kernel-core.
+# Upgrade and prepare that kernel before the regular installation, so its
+# module builds target the kernel that will actually boot.
 
 original_default=$(grubby --default-kernel) ||
 	die 'could not determine the current default kernel'

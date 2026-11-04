@@ -32,12 +32,14 @@ The repository checkout method remains available below for development builds.
    archive to a second USB drive. `sudo kait2en-rescue` mounts an already
    installed Fedora and chroots into it.
 4. Connect to Wi-Fi after the first login. One guided KaiT2en installer opens
-   automatically and updates Fedora. Reboot when its first phase succeeds.
+   automatically and updates Fedora, including when the ISO already has a
+   supported kernel. Reboot when its first phase prepares a newer kernel.
    If no terminal appears, open one and run `kait2en-install` without
    `sudo`; the installer requests administrator access when needed.
 5. After the reboot, the same installer continues automatically with the
-   regular, unchanged KaiT2en installer from GitHub `main`. Review its output
-   and reboot after success.
+   regular, unchanged KaiT2en installer from GitHub `main`. If the prepared
+   kernel is already running, it continues in the same window instead.
+   Review its output and reboot after success.
 
 Run `kait2en-install` again at any later time to fast-forward the clean Git
 checkout and rerun the regular project installer.
@@ -81,3 +83,9 @@ The temporary input RPM is built locally and is unsigned. Its Anaconda
 installation uses `rpm --nosignature` for that package only; dependency and
 payload digest checks remain enabled. Command failures report the failing
 command and its output before any later installation step runs.
+
+The first phase upgrades Fedora before installing the full build dependencies.
+This is necessary even on a supported ISO kernel: DKMS dependencies can pull a
+newer kernel before KaiT2en kernel-install hooks exist. Temporary input modules
+are prepared for the selected kernel before rebooting into it. Setup completion
+selects the kernel the regular installer actually configured as the default.
